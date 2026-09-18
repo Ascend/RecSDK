@@ -4,25 +4,23 @@ Date: Thu, 20 Aug 2026 17:57:42 +0800
 Subject: [PATCH] npu patch
 
 ---
- .../sequential/autoregressive_losses.py       |  11 +
+ .../sequential/autoregressive_losses.py       |  10 +
  .../modeling/sequential/embedding_modules.py  |   7 +-
  .../modeling/sequential/encoder_utils.py      |   4 +
  .../research/modeling/sequential/features.py  |   6 +
- .../research/modeling/sequential/hstu.py      | 249 +++++++++++++++---
+ .../research/modeling/sequential/hstu.py      | 242 +++++++++++++++---
  .../input_features_preprocessors.py           |   6 +-
  .../research/trainer/train.py                 | 194 +++++++++++++-
  main.py                                       |  49 +++-
  prefetch_shape.py                             |   5 +
- pt_jagged_dense_convert.py                    |  56 ++++
- 10 files changed, 538 insertions(+), 49 deletions(-)
+ 9 files changed, 474 insertions(+), 49 deletions(-)
  create mode 100644 prefetch_shape.py
- create mode 100644 pt_jagged_dense_convert.py
 
 diff --git a/generative_recommenders/research/modeling/sequential/autoregressive_losses.py b/generative_recommenders/research/modeling/sequential/autoregressive_losses.py
 index c32bedf..0d037d6 100644
 --- a/generative_recommenders/research/modeling/sequential/autoregressive_losses.py
 +++ b/generative_recommenders/research/modeling/sequential/autoregressive_losses.py
-@@ -23,6 +23,17 @@ import torch.nn.functional as F
+@@ -23,6 +23,16 @@ import torch.nn.functional as F
  from generative_recommenders.research.rails.similarities.module import SimilarityModule
  from torch.utils.checkpoint import checkpoint
  
@@ -34,8 +32,7 @@ index c32bedf..0d037d6 100644
 +    NPU_ENABLE = False
 +
 +if NPU_ENABLE:
-+    from pt_jagged_dense_convert import dense_to_jagged_wrapper
-+    torch.ops.fbgemm.dense_to_jagged = dense_to_jagged_wrapper
++    import fbgemm_ascend
 +
  
  class NegativesSampler(torch.nn.Module):
@@ -129,16 +126,15 @@ diff --git a/generative_recommenders/research/modeling/sequential/hstu.py b/gene
 index 3c89245..8a573eb 100644
 --- a/generative_recommenders/research/modeling/sequential/hstu.py
 +++ b/generative_recommenders/research/modeling/sequential/hstu.py
-@@ -22,6 +22,8 @@ Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for G
+@@ -22,6 +22,7 @@ Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for G
  
  import abc
  import math
 +import os
-+import logging
  from typing import Callable, Dict, List, Optional, Tuple, Union
  
  import torch
-@@ -42,10 +44,152 @@ from generative_recommenders.research.modeling.similarity_module import (
+@@ -42,10 +43,146 @@ from generative_recommenders.research.modeling.similarity_module import (
      SequentialEncoderWithLearnedSimilarityModule,
  )
  from generative_recommenders.research.rails.similarities.module import SimilarityModule
@@ -155,15 +151,9 @@ index 3c89245..8a573eb 100644
 +    NPU_ENABLE = False
 +
 +if NPU_ENABLE:
-+    try:
-+        torch.ops.load_library(os.getenv('LIB_FBGEMM_NPU_API_SO_PATH'))
-+    except FileNotFoundError as e:
-+        logging.warning(f'libfbgemm_npu_api.so is not exit')
-+    except Exception as e:
-+        logging.warning(f'libfbgemm_npu_api.so failed to load: {e}')
-+
-+    from pt_jagged_dense_convert import jagged_to_padded_dense_wrapper
-+    torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
++    import fbgemm_ascend
++    import rec_cust_ops
++    import ops_rec
 +
 +try:
 +    ENABLE_RELATIVE_ATTENTION_BIAS = bool(int(os.getenv('ENABLE_RAB', 1)))
@@ -274,7 +264,7 @@ index 3c89245..8a573eb 100644
 +        Returns:
 +            attn_output: Output tensor of shape (T, d).
 +        """
-+        return torch.ops.mexrec.hstu_jagged(tq.view(-1, self.num_heads, self.attention_dim),
++        return ops_rec.ascendc.attention.hstu_jagged(tq.view(-1, self.num_heads, self.attention_dim),
 +                                            tk.view(-1, self.num_heads, self.attention_dim),
 +                                            tv.view(-1, self.num_heads, self.attention_dim),
 +                                            None,
@@ -1046,69 +1036,5 @@ index 0000000..87a6c87
 +
 +args = {"offset": 0}
 \ No newline at end of file
-diff --git a/pt_jagged_dense_convert.py b/pt_jagged_dense_convert.py
-new file mode 100644
-index 0000000..d6b557c
---- /dev/null
-+++ b/pt_jagged_dense_convert.py
-@@ -0,0 +1,56 @@
-+#!/usr/bin/env python3
-+# -*- coding: utf-8 -*-
-+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
-+
-+import torch
-+
-+
-+def jagged_to_padded_dense(values, offsets, max_lengths, padding_value):
-+    return torch.ops.mxrec.jagged_to_padded_dense(
-+        values=values,
-+        offsets=offsets,
-+        max_lengths=max(max_lengths),
-+        padding_value=padding_value,
-+    )
-+
-+def dense_to_jagged(dense, offsets, total_L=None):
-+    if total_L is None:
-+        total_L = offsets[0][-1].item()
-+    out0, out1 = torch.ops.mxrec.dense_to_jagged(dense, offsets, total_L)
-+    return out0, out1
-+
-+
-+class JaggedToPaddedDense(torch.autograd.Function):
-+    @staticmethod
-+    def forward(ctx, values, offsets, max_lengths, padding_value):
-+        ctx.save_for_backward(*offsets)
-+        ctx.total_L = values.shape[0]
-+        return jagged_to_padded_dense(values, offsets, max_lengths, padding_value)
-+
-+    @staticmethod
-+    def backward(ctx, grad_output):
-+        offsets = list(ctx.saved_tensors)
-+        total_L = ctx.total_L
-+        grad_values, _ = dense_to_jagged(grad_output, offsets, total_L)
-+        return grad_values, None, None, None
-+
-+class DenseToJagged(torch.autograd.Function):
-+    @staticmethod
-+    def forward(ctx, dense, offsets, total_L=None):
-+        ctx.save_for_backward(*offsets)
-+        out0, out1 = dense_to_jagged(dense, offsets, total_L)
-+        ctx.dense_shape = dense.shape
-+        return out0, out1
-+
-+    @staticmethod
-+    def backward(ctx, grad_out0, grad_out1):
-+        offsets = list(ctx.saved_tensors)
-+        max_len = ctx.dense_shape[1]
-+        grad_dense = jagged_to_padded_dense(grad_out0, offsets, [max_len], 0.0)
-+        return grad_dense, None, None
-+
-+def jagged_to_padded_dense_wrapper(values, offsets, max_lengths, padding_value):
-+    return JaggedToPaddedDense.apply(values, offsets, max_lengths, padding_value)
-+
-+def dense_to_jagged_wrapper(dense, offsets, total_L=None):
-+    return DenseToJagged.apply(dense, offsets, total_L)
-\ No newline at end of file
 -- 
 2.52.0.windows.1
-

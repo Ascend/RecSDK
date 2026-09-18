@@ -17,7 +17,7 @@ Subject: [PATCH] patch
  examples/hstu/model/ranking_gr.py             |   3 +-
  examples/hstu/model/retrieval_gr.py           |  39 ++-
  examples/hstu/modules/fused_hstu_layer.py     |  11 +-
- examples/hstu/modules/hstu_attention.py       |  89 +++++-
+ examples/hstu/modules/hstu_attention.py       |  90 +++++-
  examples/hstu/modules/hstu_block.py           |   2 +-
  examples/hstu/modules/hstu_processor.py       | 126 +++++---
  .../hstu/modules/metrics/metric_modules.py    |   9 +-
@@ -29,7 +29,6 @@ Subject: [PATCH] patch
  .../hstu/modules/similarity/dot_product.py    |  38 +--
  .../ops/pt_ops/pt_add_position_embeddings.py  |  31 ++
  .../hstu/ops/pt_ops/pt_concat_2d_jagged.py    |  39 +++
- .../ops/pt_ops/pt_jagged_dense_convert.py     |  71 +++++
  examples/hstu/ops/pt_ops/pt_jagged_tensors.py | 240 +++++++++++++++
  .../hstu/ops/pt_ops/pt_norm_mul_dropout.py    |   2 +
  examples/hstu/ops/pt_ops/pt_position.py       | 152 ++++++++++
@@ -37,15 +36,14 @@ Subject: [PATCH] patch
  .../ops/triton_ops/triton_hstu_attention.py   |  58 ----
  .../training/configs/movielen_ranking.gin     |  12 +-
  .../training/configs/movielen_retrieval.gin   |   9 +-
- examples/hstu/training/pretrain_gr_ranking.py |  48 ++-
- .../hstu/training/pretrain_gr_retrieval.py    |  40 ++-
+ examples/hstu/training/pretrain_gr_ranking.py |  44 ++-
+ .../hstu/training/pretrain_gr_retrieval.py    |  36 ++-
  examples/hstu/training/trainer/training.py    | 133 ++++++++-
  examples/hstu/training/trainer/utils.py       |  35 ++-
  examples/hstu/utils/gin_config_args.py        |   7 +-
- 38 files changed, 1409 insertions(+), 418 deletions(-)
+ 37 files changed, 1331 insertions(+), 418 deletions(-)
  create mode 100644 examples/hstu/ops/pt_ops/pt_add_position_embeddings.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_concat_2d_jagged.py
- create mode 100644 examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_jagged_tensors.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_position.py
  create mode 100644 examples/hstu/ops/pt_ops/pt_split_2d_jagged.py
@@ -752,10 +750,11 @@ diff --git a/examples/hstu/modules/hstu_attention.py b/examples/hstu/modules/hst
 index 4257956..ba47353 100644
 --- a/examples/hstu/modules/hstu_attention.py
 +++ b/examples/hstu/modules/hstu_attention.py
-@@ -16,9 +16,11 @@ import abc
+@@ -16,9 +16,12 @@ import abc
  from typing import Optional, Union
  
  import torch
++import ops_rec
 -from commons.utils.nvtx_op import output_nvtx_hook
 +# from commons.utils.nvtx_op import output_nvtx_hook
  from configs import KernelBackend
@@ -765,7 +764,7 @@ index 4257956..ba47353 100644
  
  class HSTUAttention(torch.nn.Module):
      """
-@@ -137,6 +139,78 @@ class TorchHSTUAttention(HSTUAttention):
+@@ -137,6 +140,139 @@ class TorchHSTUAttention(HSTUAttention):
          ).view(-1, self.num_heads * self.linear_dim)
  
  
@@ -825,26 +824,87 @@ index 4257956..ba47353 100644
 +        if num_candidates is None:
 +            num_candidates = torch.zeros_like(num_contextuals)
 +
-+        return torch.ops.mxrec.hstu_jagged(tq.view(-1, self.num_heads, self.attention_dim),
-+                                          tk.view(-1, self.num_heads, self.attention_dim),
-+                                          tv.view(-1, self.num_heads, self.attention_dim),
-+                                          None,
-+                                          None,
-+                                          0,  # 0默认为下三角，跟TorchHSTUAttention的mask实现不一致
-+                                          max_seqlen,
-+                                          1.0 / max_seqlen,
-+                                          offsets,
-+                                          num_contextuals if num_candidates is not None else None,
-+                                          num_candidates,
-+                                          target_group_size,
-+                                          1.0 / (self.attention_dim**0.5),
-+                                          ).view(-1, self.num_heads * self.attention_dim)
++        return NpuHSTUFunction.apply(
++            tq, tk, tv, offsets, max_seqlen,
++            target_group_size, num_candidates, num_contextuals,
++            self.num_heads, self.attention_dim,
++        ).view(-1, self.num_heads * self.attention_dim)
++
++
++class NpuHSTUFunction(torch.autograd.Function):
++    """HSTU 融合算子训练封装：前向 hstu_v1(hstu_jagged) / 反向 hstu_v2(hstu_backward_v2)。"""
++
++    @staticmethod
++    def forward(ctx, tq, tk, tv, offsets, max_seqlen, target_group_size,
++                num_candidates, num_contextuals, num_heads, attention_dim):
++        ctx.save_for_backward(tq, tk, tv, offsets)
++        ctx.max_seqlen = int(max_seqlen)
++        ctx.target_group_size = int(target_group_size)
++        ctx.num_heads = num_heads
++        ctx.attention_dim = attention_dim
++        ctx.num_candidates = num_candidates
++        ctx.num_contextuals = num_contextuals
++
++        return ops_rec.ascendc.attention.hstu_jagged(
++            tq.view(-1, num_heads, attention_dim),
++            tk.view(-1, num_heads, attention_dim),
++            tv.view(-1, num_heads, attention_dim),
++            mask=None,
++            attn_bias=None,
++            mask_type=0,  # 0 默认为下三角，与 TorchHSTUAttention 的 mask 实现不一致
++            max_seq_len=max_seqlen,
++            silu_scale=1.0 / max_seqlen,
++            seq_offset=offsets,
++            num_context=num_contextuals,
++            num_target=num_candidates,
++            target_group_size=target_group_size,
++        )
++
++    @staticmethod
++    def backward(ctx, grad_output):
++        tq, tk, tv, offsets = ctx.saved_tensors
++        num_candidates = ctx.num_candidates
++        num_contextuals = ctx.num_contextuals
++        grad = grad_output.view(-1, ctx.num_heads, ctx.attention_dim)
++        q = tq.view(-1, ctx.num_heads, ctx.attention_dim)
++        k = tk.view(-1, ctx.num_heads, ctx.attention_dim)
++        v = tv.view(-1, ctx.num_heads, ctx.attention_dim)
++        dq, dk, dv, _rab_grad = ops_rec.ascendc.attention.hstu_backward_v2(
++            grad,
++            q,
++            k,
++            v,
++            ctx.max_seqlen,
++            ctx.max_seqlen,  # 前向 equal 语义：max_seqlen_q == max_seqlen_k
++            offsets,
++            offsets,  # seq_offset_q == seq_offset_k
++            None,  # rab
++            num_contextuals,
++            num_candidates,
++            0.0,  # scale：0.0 表示按 1/max_seqlen_q 计算，与前向 silu_scale 一致
++            ctx.target_group_size,
++            1.0,  # alpha：前向未传 alpha，等价于 1.0
++            -1,   # window_size_left：向左无限延伸
++            0,    # window_size_right：0 表示因果掩码，对应前向 mask_type=0
++        )
++        return (
++            dq.view_as(tq),
++            dk.view_as(tk),
++            dv.view_as(tv),
++            None,  # offsets
++            None,  # max_seqlen
++            None,  # target_group_size
++            None,  # num_candidates
++            None,  # num_contextuals
++            None,  # num_heads
++            None,  # attention_dim
++        )
 +
 +
  class TritonHSTUAttention(HSTUAttention):
      """
      Triton-based HUST implementation.
-@@ -250,7 +324,7 @@ class FusedHSTUAttention(HSTUAttention):
+@@ -250,7 +325,7 @@ class FusedHSTUAttention(HSTUAttention):
              self.linear_dim == self.attention_dim
          ), "only support linear_dim and attention_dim"
  
@@ -1740,83 +1800,6 @@ index 0000000..f7865fc
 +    out_values = torch.cat(out_values, dim=0)
 +    out_offsets = torch.tensor(out_offsets, device=values_a.device, dtype=offsets_a.dtype)
 +    return out_values, out_offsets
-diff --git a/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py b/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
-new file mode 100644
-index 0000000..ce235a4
---- /dev/null
-+++ b/examples/hstu/ops/pt_ops/pt_jagged_dense_convert.py
-@@ -0,0 +1,71 @@
-+# -*- coding: utf-8 -*-
-+# Copyright (c) Meta Platforms, Inc. and affiliates.
-+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
-+#
-+# Licensed under the Apache License, Version 2.0 (the "License");
-+# you may not use this file except in compliance with the License.
-+# You may obtain a copy of the License at
-+#
-+#    http://www.apache.org/licenses/LICENSE-2.0
-+#
-+# Unless required by applicable law or agreed to in writing, software
-+# distributed under the License is distributed on an "AS IS" BASIS,
-+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+# See the License for the specific language governing permissions and
-+# limitations under the License.
-+import torch
-+
-+
-+def jagged_to_padded_dense(values, offsets, max_lengths, padding_value) -> torch.Tensor:
-+    return torch.ops.mxrec.jagged_to_padded_dense(
-+        values=values,
-+        offsets=offsets,
-+        max_lengths=max(max_lengths),
-+        padding_value=padding_value,
-+    )
-+
-+def dense_to_jagged(dense, offsets, total_L=None):
-+    if total_L is None:
-+        total_L = offsets[0][-1].item()
-+
-+    out0, out1 = torch.ops.mxrec.dense_to_jagged(dense, offsets, total_L)
-+    return out0, out1
-+
-+
-+class JaggedToPaddedDense(torch.autograd.Function):
-+    @staticmethod
-+    def forward(ctx, values, offsets, max_lengths, padding_value):
-+        ctx.save_for_backward(*offsets)
-+        ctx.total_L = values.shape[0]
-+        return jagged_to_padded_dense(values, offsets, max_lengths, padding_value)
-+
-+    @staticmethod
-+    def backward(ctx, grad_output):
-+        offsets = list(ctx.saved_tensors)
-+        total_L = ctx.total_L
-+        grad_values, _ = dense_to_jagged(grad_output, offsets, total_L)
-+        return grad_values, None, None, None
-+
-+
-+class DenseToJagged(torch.autograd.Function):
-+    @staticmethod
-+    def forward(ctx, dense, offsets, total_L=None):
-+        ctx.save_for_backward(*offsets)
-+        out0, out1 = dense_to_jagged(dense, offsets, total_L)
-+        ctx.dense_shape = dense.shape
-+        return out0, out1
-+
-+    @staticmethod
-+    def backward(ctx, grad_out0, grad_out1):
-+        offsets = list(ctx.saved_tensors)
-+        max_len = ctx.dense_shape[1]
-+        grad_dense = jagged_to_padded_dense(grad_out0, offsets, [max_len], 0.0)
-+        return grad_dense, None, None
-+
-+
-+def jagged_to_padded_dense_wrapper(values, offsets, max_lengths, padding_value):
-+    return JaggedToPaddedDense.apply(values, offsets, max_lengths, padding_value)
-+
-+
-+def dense_to_jagged_wrapper(dense, offsets, total_L=None):
-+    return DenseToJagged.apply(dense, offsets, total_L)
 diff --git a/examples/hstu/ops/pt_ops/pt_jagged_tensors.py b/examples/hstu/ops/pt_ops/pt_jagged_tensors.py
 new file mode 100644
 index 0000000..bca95d4
@@ -2421,18 +2404,17 @@ index 1b67a3a..41b7561 100644
  import warnings
  
  # Ignore all FutureWarnings
-@@ -23,6 +24,10 @@ from typing import List, Union
+@@ -23,6 +24,9 @@ from typing import List, Union
  import commons.utils.initialize as init
  import gin
  import torch  # pylint: disable-unused-import
 +import torch_npu
-+import sysconfig
-+torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
++import fbgemm_ascend
 +import mindspeed.megatron_adaptor
  from commons.distributed.batch_shuffler_factory import BatchShufflerFactory
  from commons.distributed.sharding import make_optimizer_and_shard
  from commons.pipeline import TrainPipelineFactory
-@@ -51,7 +56,12 @@ from utils import (  # from hstu.utils
+@@ -51,7 +55,9 @@ from utils import (  # from hstu.utils
      TensorModelParallelArgs,
      TrainerArgs,
  )
@@ -2440,13 +2422,10 @@ index 1b67a3a..41b7561 100644
 +from megatron.training.arguments import parse_args, validate_args
 +from megatron.training.yaml_arguments import validate_yaml
 +from megatron.training.global_vars import set_global_variables
-+from ops.pt_ops.pt_jagged_dense_convert import jagged_to_padded_dense_wrapper, dense_to_jagged_wrapper
-+torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
-+torch.ops.fbgemm.dense_to_jagged = dense_to_jagged_wrapper
  
  def create_ranking_config(
      dataset_args: Union[DatasetArgs, BenchmarkDatasetArgs],
-@@ -77,13 +87,32 @@ def main():
+@@ -77,13 +83,32 @@ def main():
          description="HSTU Example Arguments", allow_abbrev=False
      )
      parser.add_argument("--gin-config-file", type=str)
@@ -2481,7 +2460,7 @@ index 1b67a3a..41b7561 100644
      optimizer_args = OptimizerArgs()
      tp_args = TensorModelParallelArgs()
  
-@@ -92,9 +121,12 @@ def main():
+@@ -92,9 +117,12 @@ def main():
          tensor_model_parallel_size=tp_args.tensor_model_parallel_size
      )
      init.set_random_seed(trainer_args.seed)
@@ -2496,7 +2475,7 @@ index 1b67a3a..41b7561 100644
      )
      hstu_config = create_hstu_config(network_args, tp_args)
      task_config = create_ranking_config(dataset_args, network_args, embedding_args)
-@@ -143,9 +175,9 @@ def main():
+@@ -143,9 +171,9 @@ def main():
      train_dataloader, test_dataloader = get_data_loader(
          "ranking", dataset_args, trainer_args, task_config.num_tasks
      )
@@ -2508,7 +2487,7 @@ index 1b67a3a..41b7561 100644
      )
  
      maybe_load_ckpts(trainer_args.ckpt_load_dir, model, dense_optimizer)
-@@ -163,7 +195,7 @@ def main():
+@@ -163,7 +191,7 @@ def main():
          pipeline_name,
          model=model_train,
          optimizer=dense_optimizer,
@@ -2529,31 +2508,27 @@ index 06266cf..cab5d39 100644
  import warnings
  
  # Ignore all FutureWarnings
-@@ -23,6 +24,10 @@ from typing import List, Union
+@@ -23,6 +24,9 @@ from typing import List, Union
  import commons.utils.initialize as init
  import gin
  import torch  # pylint: disable-unused-import
 +import torch_npu
-+import sysconfig
-+torch.ops.load_library(f"{sysconfig.get_path('purelib')}/libfbgemm_npu_api.so")
++import fbgemm_ascend
 +import mindspeed.megatron_adaptor
  from commons.distributed.batch_shuffler_factory import BatchShufflerFactory
  from commons.distributed.sharding import make_optimizer_and_shard
  from commons.pipeline import TrainPipelineFactory
-@@ -49,6 +54,12 @@ from utils import (  # from hstu.utils
+@@ -49,6 +53,9 @@ from utils import (  # from hstu.utils
      TensorModelParallelArgs,
      TrainerArgs,
  )
 +from megatron.training.arguments import parse_args, validate_args
 +from megatron.training.yaml_arguments import validate_yaml
 +from megatron.training.global_vars import set_global_variables
-+from ops.pt_ops.pt_jagged_dense_convert import jagged_to_padded_dense_wrapper, dense_to_jagged_wrapper
-+torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
-+torch.ops.fbgemm.dense_to_jagged = dense_to_jagged_wrapper
  
  
  def create_retrieval_config(
-@@ -74,13 +85,32 @@ def main():
+@@ -74,13 +81,32 @@ def main():
          description="Distributed GR Arguments", allow_abbrev=False
      )
      parser.add_argument("--gin-config-file", type=str)
@@ -2588,7 +2563,7 @@ index 06266cf..cab5d39 100644
      optimizer_args = OptimizerArgs()
      tp_args = TensorModelParallelArgs()
  
-@@ -89,7 +119,9 @@ def main():
+@@ -89,7 +115,9 @@ def main():
          tensor_model_parallel_size=tp_args.tensor_model_parallel_size
      )
      init.set_random_seed(trainer_args.seed)
@@ -2599,7 +2574,7 @@ index 06266cf..cab5d39 100644
      hstu_config = create_hstu_config(network_args, tp_args)
      task_config = create_retrieval_config(dataset_args, network_args, embedding_args)
      model = get_retrieval_model(hstu_config=hstu_config, task_config=task_config)
-@@ -143,7 +175,7 @@ def main():
+@@ -143,7 +171,7 @@ def main():
          pipeline_name,
          model=model_train,
          optimizer=dense_optimizer,

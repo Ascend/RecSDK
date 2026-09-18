@@ -64,7 +64,7 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/modules/paged_hstu_infer_layer.py
 --- a/examples/hstu/modules/paged_hstu_infer_layer.py	(revision 843c3f37f6c772dff19c274ba4423931ea699051)
 +++ b/examples/hstu/modules/paged_hstu_infer_layer.py	(date 1766367310839)
-@@ -14,13 +14,14 @@
+@@ -14,12 +14,13 @@
  # limitations under the License.
  # import hstu_attn
  # import paged_kvcache_ops
@@ -78,8 +78,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
  from modules.jagged_data import JaggedData
 +from modules.hstu_triton_op import triton_hstu_jagged_forword#, tune_block_config
  import torch_npu
- 
- 
+ import ops_rec
 @@ -51,14 +52,96 @@
          self.expert_number = expert_number
          self.experts = torch.nn.ModuleList([
@@ -448,7 +447,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
 -                seq_len,
 -            )
 -        else:
--            jagged_attn_output = torch.ops.mxrec.hstu_jagged(
+-            jagged_attn_output = ops_rec.ascendc.attention.hstu_jagged(
 -                q=query,
 -                k=key,
 -                v=value,
@@ -478,7 +477,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
 +                    core_num=28
 +                )
 +            else:
-+                jagged_attn_output = torch.ops.mxrec.hstu_jagged(
++                jagged_attn_output = ops_rec.ascendc.attention.hstu_jagged(
 +                    q=query,
 +                    k=key,
 +                    v=value,
@@ -567,7 +566,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
 -                seq_len,
 -            )
 -        else:
--            jagged_attn_output = torch.ops.mxrec.hstu_jagged(
+-            jagged_attn_output = ops_rec.ascendc.attention.hstu_jagged(
 -                q=query,
 -                k=key,
 -                v=value,
@@ -597,7 +596,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
 +                    core_num=28
 +                )
 +            else:
-+                jagged_attn_output = torch.ops.mxrec.hstu_jagged(
++                jagged_attn_output = ops_rec.ascendc.attention.hstu_jagged(
 +                    q=query,
 +                    k=key,
 +                    v=value,
@@ -1335,7 +1334,7 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples/hstu/benchmark/inference_benchmark_2b_random.py
 --- a/examples/hstu/benchmark/inference_benchmark_2b_random.py	(revision 843c3f37f6c772dff19c274ba4423931ea699051)
 +++ b/examples/hstu/benchmark/inference_benchmark_2b_random.py	(date 1765940494541)
-@@ -52,6 +52,8 @@
+@@ -44,6 +44,8 @@
  MODEL_PATH = os.getenv("MODEL_PATH")
  PERCISE_FLAG = os.getenv("PERCISE_VALIDATE", "0") == "1"
  COMPILE_FLAG = os.getenv("USE_COMPILE", "0") == "1"
@@ -1344,7 +1343,7 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples
  RUN_NUM = 1 if PERCISE_FLAG else int(os.getenv("RUN_NUM"))
  porf_path = os.getenv("PROF_SAVE_PATH")
  USE_GRAPH = int(os.getenv("USE_GRAPH")) == 1
-@@ -59,7 +61,21 @@
+@@ -51,12 +53,26 @@
  is_save_input_and_output = int(os.getenv("SAVE_INPUT_AND_PUTPUT")) == 1
  batch_size = int(os.getenv("BATCH_SIZE", "1"))
  layer_num = int(os.getenv("LAYER_NUM", "1"))
@@ -1363,11 +1362,8 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples
 +torch_npu.npu.aclnn.allow_hf32 = True
 +torch_npu.npu.conv.allow_hf32 = True
 +torch_npu.npu.matmul.allow_hf32 = True
- 
- @torch.library.register_fake("mxrec::jagged_to_padded_dense.v1")
- def jagged_to_padded_dense_v1_fake(values, offsets, max_lengths, padding_value):
-@@ -106,8 +122,8 @@
- 
+-
++
  def run_ranking_gr_inference():
      max_batch_size = batch_size
 -    max_seqlen = 2048
@@ -1377,7 +1373,7 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples
      HASH_SIZE = 1000000
      max_incremental_seqlen = (max_seqlen - max_num_candidates) // 2
  
-@@ -126,14 +142,22 @@
+@@ -75,14 +91,22 @@
          [fc.max_sequence_length * len(fc.feature_names) for fc in feature_configs]
      )
  
@@ -1406,7 +1402,7 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples
      }
  
      hstu_config = get_inference_hstu_config(
-@@ -143,7 +167,7 @@
+@@ -92,7 +116,7 @@
          head_dim=head_dim,
          dtype=inference_dtype,
          max_batch_size=max_batch_size,
@@ -1415,7 +1411,7 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples
      )
  
      emb_configs = [
-@@ -177,10 +201,15 @@
+@@ -126,10 +150,15 @@
              cudagraph_configs=hstu_cudagraph_configs,
          )
  
@@ -1435,7 +1431,7 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples
  
          total_params = sum(param.numel() for name, param in model_predict.named_parameters()
                             if not name.startswith("_embedding_collection"))
-@@ -190,36 +219,41 @@
+@@ -139,36 +168,41 @@
  
          if use_float16:
              model_predict.half()
@@ -1515,7 +1511,7 @@ diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k.sh
  export MODEL_PATH="hstu3B.bin"
  export USE_MOE=0     #  USE_FFN 和 USE_MOE 不能同时开启
  export LAYER_NUM=7
-@@ -30,9 +29,19 @@
+@@ -30,8 +29,18 @@
  export MOE_EXPERT_ACT_NUM=2
  export USE_FFN=1     #  USE_FFN 和 USE_MOE 不能同时开启
  export USE_FFN_NUMBER=2
@@ -1533,9 +1529,9 @@ diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k.sh
 -export USE_NEW_HSTU_OP=0
 +export USE_NEW_HSTU_OP=1
 +export USE_TRITON_HSTU_OP=0
- 
- 
- #库路径
+-
++
+ # prof路径
 @@ -45,15 +54,21 @@
  export BATCH_SIZE=1
  
@@ -1558,4 +1554,3 @@ diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k.sh
  
  #执行
  LOG_SUFFIX="$(date '+%Y%m%d_%H%M%S')_2k_compile${USE_COMPILE}_aclgraph${ENABLE_ACLGRAPH}_precise${GR_VLLM_PRECISE}_e2e${GR_VLLM_E2E}"
- 

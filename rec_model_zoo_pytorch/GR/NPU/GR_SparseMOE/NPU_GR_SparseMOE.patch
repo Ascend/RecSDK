@@ -16,15 +16,15 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples
  import random
  import json
  import numpy as np
-@@ -57,6 +58,8 @@
+@@ -49,6 +50,8 @@
  is_use_gpu_input = int(os.getenv("USE_GPU_INPUT")) == 1
  is_save_input_and_output = int(os.getenv("SAVE_INPUT_AND_PUTPUT")) == 1
  batch_size = int(os.getenv("BATCH_SIZE", "1"))
 +layer_num = int(os.getenv("LAYER_NUM", "1"))
 +use_float16 = int(os.getenv("USE_FLOAT16", "0")) == 1
  
- @torch.library.register_fake("mxrec::jagged_to_padded_dense.v1")
- def jagged_to_padded_dense_v1_fake(values, offsets, max_lengths, padding_value):
+ def run_ranking_gr_inference():
+     max_batch_size = batch_size
 @@ -126,11 +129,11 @@
      hidden_dim_size = 4096
      num_heads = 16
@@ -225,16 +225,17 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/modules/paged_hstu_infer_layer.py
 --- a/examples/hstu/modules/paged_hstu_infer_layer.py	(revision c1f4c20da34db33791bc5982b971108354dae875)
 +++ b/examples/hstu/modules/paged_hstu_infer_layer.py	(date 1764331176388)
-@@ -16,12 +16,125 @@
+@@ -16,11 +16,126 @@
  # import paged_kvcache_ops
- from typing import List
- 
++from typing import List
++
 +import os
  import torch
  import torch.nn.functional as F
  from configs import InferenceHSTUConfig
  from modules.jagged_data import JaggedData
  import torch_npu
+ import ops_rec
  
 +
 +def float8_matmul(input, line, weight_mxfp8, weight_scale, bias_enable=False,):
@@ -351,7 +352,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
  class PagedHSTUInferLayer(torch.nn.Module):
      """
      x = ln(x)
-@@ -34,9 +147,9 @@
+@@ -34,9 +149,9 @@
      """
  
      def __init__(
@@ -364,7 +365,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
      ):
          super().__init__()
          self.layer_idx = layer_idx
-@@ -50,7 +163,7 @@
+@@ -50,7 +165,7 @@
          self._eps = config.layernorm_epsilon
          self._is_causal = config.is_causal
          self._target_group_size = config.target_group_size
@@ -373,7 +374,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
          self._residual = config.residual
  
          self._split_arg_list = [
-@@ -144,23 +257,60 @@
+@@ -144,22 +259,60 @@
              requires_grad=False,
          )
  
@@ -429,7 +430,6 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
 -        num_tokens: int,
 -        layer_input: torch.Tensor,
 -        jd: JaggedData,
--        seq_len: List[int],
 +            self,
 +            batch_size: int,
 +            num_tokens: int,
@@ -441,7 +441,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
          normed_input = F.layer_norm(
              layer_input,
              normalized_shape=[self._embedding_dim],
-@@ -169,7 +319,11 @@
+@@ -169,7 +322,11 @@
              eps=self._eps,
          )
  
@@ -454,23 +454,24 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
          (user, value, query, key) = torch.split(
              mixed_uvqk,
              self._split_arg_list,
-@@ -180,19 +334,34 @@
+@@ -180,21 +337,34 @@
          query = query.view(-1, self._num_heads, self._attention_dim_per_head)
          key = key.view(-1, self._num_heads, self._attention_dim_per_head)
  
--        jagged_attn_output = torch.ops.mxrec.hstu_dense(
--            query,
--            key,
--            value,
--            None,
--            None,
--            0,  # mask_type, 0 表示下三角
--            jd.max_seqlen,
--            1.0 / (self._attention_dim_per_head ** 0.5),
--            "jagged",
--            seq_len,
+-        jagged_attn_output = ops_rec.ascendc.attention.hstu_jagged(
+-            q=query,
+-            k=key,
+-            v=value,
+-            mask=None,
+-            attn_bias=None,
+-            mask_type=0,
+-            max_seq_len=jd.max_seqlen,
+-            silu_scale=1.0 / (self._attention_dim_per_head ** 0.5),
+-            seq_offset=jd.seqlen_offsets.to(torch.int64),
+-            num_context=None,
+-            num_target=None,
+-            target_group_size=1,
 -        )
--
 +        if not self.use_new_hstu_op:
 +            jagged_attn_output = torch.ops.mxrec.hstu_dense(
 +                query,
@@ -485,7 +486,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
 +                seq_len,
 +            )
 +        else:
-+            jagged_attn_output = torch.ops.mxrec.hstu_jagged(
++            jagged_attn_output = ops_rec.ascendc.attention.hstu_jagged(
 +                q=query,
 +                k=key,
 +                v=value,
@@ -499,10 +500,11 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
 +                num_target=None,
 +                target_group_size=1,
 +            )
+-
  
          jagged_attn_output = jagged_attn_output.view(
              -1, self._num_heads * self._linear_dim_per_head
-@@ -205,7 +374,21 @@
+@@ -205,7 +375,21 @@
              eps=self._eps,
          )
  
@@ -539,7 +541,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
          (user, value, query, key) = torch.split(
              self.uvqk_buffer_[:num_tokens, ...],
              self._split_arg_list,
-@@ -240,12 +428,12 @@
+@@ -240,11 +428,12 @@
  
      @torch.inference_mode()
      def forward_output(
@@ -548,7 +550,6 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
 -        num_tokens: int,
 -        input_buffer: torch.Tensor,
 -        jd: JaggedData,
--        seq_len: List[int],
 +            self,
 +            batch_size: int,
 +            num_tokens: int,
@@ -558,21 +559,23 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
      ) -> JaggedData:
          (user, value, query, key) = torch.split(
              self.uvqk_buffer_[:num_tokens, ...],
-@@ -257,18 +445,35 @@
+@@ -257,20 +446,35 @@
          query = query.view(-1, self._num_heads, self._attention_dim_per_head)
          key = key.view(-1, self._num_heads, self._attention_dim_per_head)
  
--        jagged_attn_output = torch.ops.mxrec.hstu_dense(
--            query,
--            key,
--            value,
--            None,
--            None,
--            0,  # mask_type, 0 表示下三角
--            jd.max_seqlen,
--            1.0 / (self._attention_dim_per_head ** 0.5),
--            "jagged",
--            seq_len,
+-        jagged_attn_output = ops_rec.ascendc.attention.hstu_jagged(
+-            q=query,
+-            k=key,
+-            v=value,
+-            mask=None,
+-            attn_bias=None,
+-            mask_type=0,
+-            max_seq_len=jd.max_seqlen,
+-            silu_scale=1.0 / (self._attention_dim_per_head ** 0.5),
+-            seq_offset=jd.seqlen_offsets.to(torch.int64),
+-            num_context=None,
+-            num_target=None,
+-            target_group_size=1,
 -        )
 +
 +        if not self.use_new_hstu_op:
@@ -589,7 +592,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
 +                seq_len,
 +            )
 +        else:
-+            jagged_attn_output = torch.ops.mxrec.hstu_jagged(
++            jagged_attn_output = ops_rec.ascendc.attention.hstu_jagged(
 +                q=query,
 +                k=key,
 +                v=value,
@@ -606,7 +609,7 @@ diff --git a/examples/hstu/modules/paged_hstu_infer_layer.py b/examples/hstu/mod
  
          jagged_attn_output = jagged_attn_output.view(
              -1, self._num_heads * self._linear_dim_per_head
-@@ -281,13 +486,49 @@
+@@ -281,13 +485,49 @@
              eps=self._eps,
          )
  
@@ -671,7 +674,39 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modules/hstu_block_inference.py
 --- a/examples/hstu/modules/hstu_block_inference.py	(revision c1f4c20da34db33791bc5982b971108354dae875)
 +++ b/examples/hstu/modules/hstu_block_inference.py	(date 1764331143902)
-@@ -137,14 +137,17 @@
+@@ -79,9 +79,10 @@
+     ) -> torch.Tensor:
+         if self._hstu_graph is None or not use_cudagraph:
+             hidden_data = hidden_states
++            seq_len = jd.seqlen_offsets.tolist()
+             for hstu_layer in self._attention_layers:
+                 hidden_data = hstu_layer.forward_naive(
+-                    batch_size, num_tokens, hidden_data, jd
++                    batch_size, num_tokens, hidden_data, jd, seq_len
+                 )
+             return hidden_data
+         else:
+@@ -110,17 +111,19 @@
+                 has_interleaved_action=jd.has_interleaved_action,
+             )
+             hidden_data = hidden_states
++            seq_len = jagged_metadata.seqlen_offsets.tolist()
+             for hstu_layer in self._attention_layers:
+                 hstu_layer.forward_input(
+                     batch_size,
+                     num_tokens,
+                     hidden_data,
+                     jagged_metadata,
+                 )
+                 hidden_data = hstu_layer.forward_output(
+                     batch_size,
+                     num_tokens,
+                     hidden_data,
+                     jagged_metadata,
++                    seq_len,
+                 )
+             return hidden_data
+@@ -137,14 +140,17 @@
          with torch.inference_mode():
              batch_size = 2 ** math.ceil(math.log2(batch_size))
              if num_tokens not in self._hstu_graph[batch_size]:  # type: ignore
@@ -691,17 +726,17 @@ diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modul
  
              hstu_output = torch.zeros_like(hidden_states[:num_tokens, ...])
              hstu_output.copy_(
-@@ -216,26 +219,18 @@
+@@ -216,26 +222,18 @@
          # 针对 NPU 设备的优化配置 [2,5](@ref)
          backend = 'inductor'  # 或者使用 NPU 专用后端
  
 -        def create_cross_layer_function(current_layer, next_layer):
 -            def cross_layer_forward(batch_size, num_tokens, hidden_states,
--                                   jagged_metadata, kvcache_metadata):
+-                                   jagged_metadata):
 -                # 执行当前层的forward_output
 -                intermediate_output = current_layer.forward_output(
 -                    batch_size, num_tokens, hidden_states,
--                    jagged_metadata, kvcache_metadata
+-                    jagged_metadata
 -                )
 -                # 执行下一层的forward_input
 -                next_input = next_layer.forward_input(
@@ -725,7 +760,7 @@ diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modul
              # 编译 forward_input 方法
              if hasattr(layer, 'forward_input') and not hasattr(layer, f'_forward_input_compiled_{batch_size}_{num_tokens}'):
                  layer.forward_input = torch.compile(
-@@ -255,24 +250,6 @@
+@@ -255,24 +253,6 @@
                  )
                  setattr(layer, f'_forward_output_compiled_{batch_size}_{num_tokens}', True)
  
@@ -750,7 +785,7 @@ diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modul
  
      def capture_graph(
          self,
-@@ -327,170 +304,65 @@
+@@ -327,160 +307,65 @@
  
          # Create and capture the graph
          num_layers = self.config.num_layers
@@ -760,7 +795,7 @@ diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modul
              self._attention_layers[layer_idx].output_buffer_
              for layer_idx in range(num_layers)
          ]
-         seq_len = static_jagged_metadata.seqlen_offsets.tolist()
++        seq_len = static_jagged_metadata.seqlen_offsets.tolist()
          if os.getenv("USE_COMPILE", "0") == "1":
 -            # print(f'[DEBUG] start compile methods... batchsize:{batch_size} num_tokens:{num_tokens}')
              self._compile_methods(batch_size, num_tokens)
@@ -780,7 +815,6 @@ diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modul
 -                        num_tokens,
 -                        input_buffer[layer_idx],
 -                        static_jagged_metadata,
--                        seq_len,
 -                    )
 -                else:
 -                    static_output = self._attention_layers[layer_idx].forward_output(
@@ -788,7 +822,6 @@ diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modul
 -                        num_tokens,
 -                        input_buffer[layer_idx],
 -                        static_jagged_metadata,
--                        seq_len,
 -                    )
 -                    static_uvqk = self._attention_layers[layer_idx + 1].forward_input(
 -                        batch_size,
@@ -802,7 +835,6 @@ diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modul
 -                num_tokens,
 -                input_buffer[num_layers - 1],
 -                static_jagged_metadata,
--                seq_len,
 -            )
 -            # print(f'[DEBUG] compile complete')
 -            if os.getenv("GR_VLLM_ACLGRAPH_CPU_PROFILING", "0") == "1":
@@ -859,7 +891,6 @@ diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modul
 -                                    num_tokens,
 -                                    input_buffer[layer_idx],
 -                                    static_jagged_metadata,
--                                    seq_len,
 -                                )
 -                            else:
 -                                static_output = self._attention_layers[layer_idx].forward_output(
@@ -867,7 +898,6 @@ diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modul
 -                                    num_tokens,
 -                                    input_buffer[layer_idx],
 -                                    static_jagged_metadata,
--                                    seq_len,
 -                                )
 -                                static_uvqk = self._attention_layers[layer_idx + 1].forward_input(
 -                                    batch_size,
@@ -881,7 +911,6 @@ diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modul
 -                            num_tokens,
 -                            input_buffer[num_layers - 1],
 -                            static_jagged_metadata,
--                            seq_len,
 -                        )
 -                        torch.npu.synchronize()
 -                        prof.step()
@@ -922,7 +951,6 @@ diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modul
 -                        num_tokens,
 -                        input_buffer[layer_idx],
 -                        static_jagged_metadata,
--                        seq_len,
 -                    )
 -                else:
 -                    static_output = self._attention_layers[layer_idx].forward_output(
@@ -930,7 +958,6 @@ diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modul
 -                        num_tokens,
 -                        input_buffer[layer_idx],
 -                        static_jagged_metadata,
--                        seq_len,
 -                    )
 -                    static_uvqk = self._attention_layers[layer_idx + 1].forward_input(
 -                        batch_size,
@@ -960,7 +987,6 @@ diff --git a/examples/hstu/modules/hstu_block_inference.py b/examples/hstu/modul
 -                num_tokens,
 -                input_buffer[num_layers - 1],
 -                static_jagged_metadata,
--                seq_len
 -            )
 +
  
@@ -974,7 +1000,7 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k.sh
 --- a/examples/hstu/run_random_2k.sh	(revision c1f4c20da34db33791bc5982b971108354dae875)
 +++ b/examples/hstu/run_random_2k.sh	(date 1764331048585)
-@@ -21,8 +21,19 @@
+@@ -21,6 +21,16 @@
  #是否保存输入和输出tensor, 和GPU对比精度
  export SAVE_INPUT_AND_PUTPUT=0
  
@@ -992,11 +1018,8 @@ diff --git a/examples/hstu/run_random_2k.sh b/examples/hstu/run_random_2k.sh
 +
 +export ENABLE_MATMUL_FP8=0
 +export USE_NEW_HSTU_OP=0
-+
  
- #库路径
- export LIB_FBGEMM_NPU_API_SO_PATH=/usr/local/python3.11.13/lib/python3.11/site-packages/libfbgemm_npu_api.so
-@@ -33,6 +44,8 @@
+@@ -33,6 +43,8 @@
  #batchsize 可选值 1 2 4
  export BATCH_SIZE=1
  
@@ -1040,4 +1063,3 @@ diff --git a/examples/hstu/modules/utils.py b/examples/hstu/modules/utils.py
  
      return JaggedData(
          values=sequence_embeddings,
-

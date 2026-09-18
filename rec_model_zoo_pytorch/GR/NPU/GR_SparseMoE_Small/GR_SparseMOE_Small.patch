@@ -2,27 +2,6 @@ diff --git a/examples/hstu/benchmark/inference_benchmark_2b_random.py b/examples
 index 8a74a62..d771cc1 100644
 --- a/examples/hstu/benchmark/inference_benchmark_2b_random.py
 +++ b/examples/hstu/benchmark/inference_benchmark_2b_random.py
-@@ -40,14 +40,13 @@ from inference_ranking_gr import InferenceRankingGR
- from out_compare import compare_npu_and_gpu_out
- import torch_npu
- 
--lib_fbgemm_npu_api_so_path = os.getenv('LIB_FBGEMM_NPU_API_SO_PATH')
--torch.ops.load_library(lib_fbgemm_npu_api_so_path)
-+import fbgemm_ascend
-+libhstu_npu_api_so = os.getenv("LIBHSTU_NPU_API_SO", default = None)
-+if libhstu_npu_api_so is not None:
-+    torch.ops.load_library(libhstu_npu_api_so)
-+else:
-+    import rec_ops
- 
--from pt_jagged_dense_convert import jagged_to_padded_dense_wrapper
--from pt_jagged_dense_convert import dense_to_jagged_wrapper
--
--torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
--torch.ops.fbgemm.dense_to_jagged = dense_to_jagged_wrapper
- 
- MODEL_PATH = os.getenv("MODEL_PATH")
- PERCISE_FLAG = os.getenv("PERCISE_VALIDATE", "0") == "1"
 @@ -58,7 +57,8 @@ RUN_NUM = 1 if PERCISE_FLAG else int(os.getenv("RUN_NUM"))
  porf_path = os.getenv("PROF_SAVE_PATH")
  USE_GRAPH = int(os.getenv("USE_GRAPH")) == 1
@@ -33,15 +12,6 @@ index 8a74a62..d771cc1 100644
  batch_size = int(os.getenv("BATCH_SIZE", "1"))
  layer_num = int(os.getenv("LAYER_NUM", "1"))
  hidden_dim = int(os.getenv("HIDDEN_DIM", "1"))
-@@ -77,7 +77,7 @@ torch_npu.npu.aclnn.allow_hf32 = True
- torch_npu.npu.conv.allow_hf32 = True
- torch_npu.npu.matmul.allow_hf32 = True
- 
--@torch.library.register_fake("mxrec::jagged_to_padded_dense.v1")
-+# @torch.library.register_fake("mxrec::jagged_to_padded_dense.v1")
- def jagged_to_padded_dense_v1_fake(values, offsets, max_lengths, padding_value):
-     """
-     为 mxrec.jagged_to_padded_dense.v1 算子注册伪实现
 @@ -203,11 +203,11 @@ def run_ranking_gr_inference():
  
          if use_random_parm:
@@ -177,7 +147,7 @@ index 1fccce8..a9c0240 100644
  
  
      def forward(
-@@ -77,18 +78,32 @@ class HSTUBlockInference(torch.nn.Module):
+@@ -77,18 +78,31 @@ class HSTUBlockInference(torch.nn.Module):
          use_cudagraph: bool = True,
      ) -> torch.Tensor:
          if self._hstu_graph is None or not use_cudagraph:
@@ -187,7 +157,6 @@ index 1fccce8..a9c0240 100644
 -                hidden_data = hstu_layer.forward_naive(
 -                    batch_size, num_tokens, hidden_data, jd, seq_len
 +            if os.getenv("USE_COMPILE", "0") == "1" and self._compile_predict is None:
-+                torch._dynamo.disallow_in_graph(torch.ops.mxrec.hstu_jagged)
 +                self._compile_predict = torch.compile(
 +                    self.predict_nograph, backend="inductor", dynamic=False
                  )
@@ -225,7 +194,7 @@ index 1fccce8..a9c0240 100644
              for hstu_layer in self._attention_layers:
                  hstu_layer.forward_input(
                      batch_size,
-@@ -214,41 +229,41 @@ class HSTUBlockInference(torch.nn.Module):
+@@ -214,41 +228,40 @@ class HSTUBlockInference(torch.nn.Module):
  
              torch_npu.npu.mem_get_info()[0]
  
@@ -236,8 +205,7 @@ index 1fccce8..a9c0240 100644
          backend = 'inductor'  # 或者使用 NPU 专用后端
 -
 -
-+        torch._dynamo.disallow_in_graph(torch.ops.mxrec.hstu_jagged)
-+        
++
          # 编译每个 attention layer 的方法
          for layer_idx in range(self.config.num_layers):
              layer = self._attention_layers[layer_idx]
@@ -456,7 +424,7 @@ index 7c283e7..d74c2ea 100644
              else:
 +                # 精度对比模式打开确定性开关
 +                deterministic = os.getenv("PERCISE_VALIDATE", "0") == "1"
-                 jagged_attn_output = torch.ops.mxrec.hstu_jagged(
+                 jagged_attn_output = ops_rec.ascendc.attention.hstu_jagged(
                      q=query,
                      k=key,
 @@ -630,10 +633,12 @@ class PagedHSTUInferLayer(torch.nn.Module):
@@ -591,7 +559,7 @@ rename to examples/hstu/run_random_2k_05B.sh
 index 0b7c028..4ff74b3 100644
 --- a/examples/hstu/run_random_2k.sh
 +++ b/examples/hstu/run_random_2k_05B.sh
-@@ -4,51 +4,47 @@ rm -rf /tmp/torchinductor_*
+@@ -4,47 +4,47 @@ rm -rf /tmp/torchinductor_*
  export USE_COMPILE=0
  
  #开启ACLgraph
@@ -644,10 +612,6 @@ index 0b7c028..4ff74b3 100644
  export ENABLE_MATMUL_FP8=0
  export USE_NEW_HSTU_OP=1
 -export USE_TRITON_HSTU_OP=0
--
--
--#库路径
--export LIB_FBGEMM_NPU_API_SO_PATH=/usr/local/python3.11.13/lib/python3.11/site-packages/libfbgemm_npu_api.so
  
  # prof路径
 -export PROF_SAVE_PATH="prof_result_2k"

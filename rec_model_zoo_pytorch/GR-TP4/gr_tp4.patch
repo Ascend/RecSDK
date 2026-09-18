@@ -103,13 +103,14 @@ new file mode 100644
 index 00000000..8d78bb9e
 --- /dev/null
 +++ b/model_zoo/fuxi_alpha_kuairand_demo.py
-@@ -0,0 +1,559 @@
+@@ -0,0 +1,557 @@
 +import os
 +import time
 +import argparse
 +import json
 +import torch
 +import torch_npu
++import fbgemm_ascend
 +import torchair
 +import random
 +
@@ -129,9 +130,6 @@ index 00000000..8d78bb9e
 +from vllm.config import KVTransferConfig
 +from vllm.sampling_params import SamplingParams
 +
-+
-+lib_fbgemm_npu_api_so_path = os.getenv('LIB_FBGEMM_NPU_API_SO_PATH')
-+torch.ops.load_library(lib_fbgemm_npu_api_so_path)
 +
 +os.environ.update({
 +    "VLLM_ENABLE_V1_MULTIPROCESSING": "0",
@@ -668,7 +666,7 @@ new file mode 100644
 index 00000000..8a73a119
 --- /dev/null
 +++ b/model_zoo/hstu_inference_ranking_utils.py
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,118 @@
 +import os
 +
 +import json
@@ -677,13 +675,11 @@ index 00000000..8a73a119
 +import pandas as pd
 +import torch
 +import torch_npu
++import fbgemm_ascend
 +
 +from torch.utils.data.dataset import IterableDataset
 +from torch.utils.data import DataLoader
 +from typing import Iterator, List, Optional
-+
-+lib_fbgemm_npu_api_so_path = os.getenv('LIB_FBGEMM_NPU_API_SO_PATH')
-+torch.ops.load_library(lib_fbgemm_npu_api_so_path)
 +
 +
 +def load_seq(x: str):
@@ -795,7 +791,7 @@ new file mode 100644
 index 00000000..87380737
 --- /dev/null
 +++ b/model_zoo/run.sh
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,96 @@
 +#!/bin/bash
 +
 +source /home/m00836041/b120/ascend-toolkit/set_env.sh
@@ -808,8 +804,6 @@ index 00000000..87380737
 +export MODEL_PATH="/home/m00836041/omni_model"
 +
 +export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3
-+
-+export LIB_FBGEMM_NPU_API_SO_PATH=/usr/local/python3.11.13/lib/python3.11/site-packages/libfbgemm_npu_api.so
 +
 +export USE_PD_MERGE=1
 +
@@ -2059,6 +2053,14 @@ diff --git a/omni/layers/attention/backend/attention.py b/omni/layers/attention/
 index 1e5a6823..6acc5c76 100644
 --- a/omni/layers/attention/backend/attention.py
 +++ b/omni/layers/attention/backend/attention.py
+@@ -21,6 +21,7 @@
+ import os
+ import numpy as np
+ import torch
+ import torch_npu
++import ops_rec
+ import torchair as tng
+ from dataclasses import dataclass
 @@ -123,6 +123,7 @@ class AscendMetadata:
      sin: Optional[torch.Tensor] = None
      is_pd_seperate_d: bool = False
@@ -2175,7 +2177,7 @@ index 1e5a6823..6acc5c76 100644
  
 -                if len(attn_metadata.query_lens_list) == 1:
 +                if attn_metadata.additional_metadata != None:
-+                    attn_output = torch.ops.mxrec.hstu_jagged(
++                    attn_output = ops_rec.ascendc.attention.hstu_jagged(
 +                        q=query,
 +                        k=key,
 +                        v=value,

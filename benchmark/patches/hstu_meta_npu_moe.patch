@@ -234,20 +234,6 @@ index 16026e5c7e25d7b43ad6f845bbb39b61ab536fdd..c7714b3b1dde6d217d164eb1c6e6a329
          past_lengths=seq_features.past_lengths,
          past_ids=seq_features.past_ids,
          # pyre-fixme[29]: `Union[Tensor, Module]` is not a function.
-diff --git a/generative_recommenders/research/modeling/sequential/autoregressive_losses.py b/generative_recommenders/research/modeling/sequential/autoregressive_losses.py
-index 0d037d67ba4ee4f490a67e3afbbd552f5028ed23..31addd04139de845d2262825fc0c1433f2df4be0 100644
---- a/generative_recommenders/research/modeling/sequential/autoregressive_losses.py
-+++ b/generative_recommenders/research/modeling/sequential/autoregressive_losses.py
-@@ -31,8 +31,7 @@ except ImportError:
-     NPU_ENABLE = False
- 
- if NPU_ENABLE:
--    from pt_jagged_dense_convert import dense_to_jagged_wrapper
--    torch.ops.fbgemm.dense_to_jagged = dense_to_jagged_wrapper
-+    import fbgemm_ascend  # noqa: F401
- 
- 
- class NegativesSampler(torch.nn.Module):
 diff --git a/generative_recommenders/research/modeling/sequential/hstu.py b/generative_recommenders/research/modeling/sequential/hstu.py
 index 8a573eb0c30e6094cb9e5b7d73f18d98d6efae75..2e035e3cbe7fa191a7271016888e197185ccfef4 100644
 --- a/generative_recommenders/research/modeling/sequential/hstu.py
@@ -260,37 +246,6 @@ index 8a573eb0c30e6094cb9e5b7d73f18d98d6efae75..2e035e3cbe7fa191a7271016888e1971
  
  TIMESTAMPS_KEY = "timestamps"
  
-@@ -55,16 +56,22 @@ try:
- except ImportError:
-     NPU_ENABLE = False
- 
-+try:
-+    ENABLE_J2D_REPLACE_J2PD = bool(
-+        int(os.getenv("ENABLE_J2D_REPLACE_J2PD", "0"))
-+    )
-+except ValueError as exc:
-+    raise ValueError(
-+        "ENABLE_J2D_REPLACE_J2PD environment variable is not a valid integer."
-+    ) from exc
-+
- if NPU_ENABLE:
--    try:
--        torch.ops.load_library(os.getenv('LIB_FBGEMM_NPU_API_SO_PATH'))
--    except FileNotFoundError as e:
--        logging.warning(f'libfbgemm_npu_api.so is not exit')
--    except Exception as e:
--        logging.warning(f'libfbgemm_npu_api.so failed to load: {e}')
-+    import fbgemm_ascend  # noqa: F401
-+
-+    if ENABLE_J2D_REPLACE_J2PD:
-+        from pt_jagged_dense_convert import jagged_2d_to_dense_wrapper
- 
--    from pt_jagged_dense_convert import jagged_to_padded_dense_wrapper
--    torch.ops.fbgemm.jagged_to_padded_dense = jagged_to_padded_dense_wrapper
-+        torch.ops.fbgemm.jagged_to_padded_dense = jagged_2d_to_dense_wrapper
- 
- try:
-     ENABLE_RELATIVE_ATTENTION_BIAS = bool(int(os.getenv('ENABLE_RAB', 1)))
 @@ -76,6 +83,25 @@ try:
  except ValueError:
      raise ValueError("NPU_FUSED_INDEX_SELECT environment variable is not a valid integer.")
@@ -579,7 +534,7 @@ index 3bb2f7e6f9ad6b48a1646f93de1bc60153cc06c6..4ffc23e6cd7943e33a7d8b4d83592e58
  import gin
  import torch
  import torch.multiprocessing as mp
-@@ -37,6 +36,11 @@ try:
+@@ -37,5 +36,10 @@ try:
  except ImportError:
      NPU_ENABLE = False
  
@@ -590,86 +545,3 @@ index 3bb2f7e6f9ad6b48a1646f93de1bc60153cc06c6..4ffc23e6cd7943e33a7d8b4d83592e58
 +
  from absl import app, flags
  from generative_recommenders.research.trainer.train import train_fn
- 
-diff --git a/pt_jagged_dense_convert.py b/pt_jagged_dense_convert.py
-index d6b557cb3b9f7fdcbf023106a747a93f1fd3dfdb..db6437d7b0ea67faec4a94649fb4512138e827bf 100644
---- a/pt_jagged_dense_convert.py
-+++ b/pt_jagged_dense_convert.py
-@@ -1,56 +1,20 @@
--#!/usr/bin/env python3
--# -*- coding: utf-8 -*-
--# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
--
--import torch
--
--
--def jagged_to_padded_dense(values, offsets, max_lengths, padding_value):
--    return torch.ops.mxrec.jagged_to_padded_dense(
--        values=values,
--        offsets=offsets,
--        max_lengths=max(max_lengths),
--        padding_value=padding_value,
--    )
--
--def dense_to_jagged(dense, offsets, total_L=None):
--    if total_L is None:
--        total_L = offsets[0][-1].item()
--    out0, out1 = torch.ops.mxrec.dense_to_jagged(dense, offsets, total_L)
--    return out0, out1
--
--
--class JaggedToPaddedDense(torch.autograd.Function):
--    @staticmethod
--    def forward(ctx, values, offsets, max_lengths, padding_value):
--        ctx.save_for_backward(*offsets)
--        ctx.total_L = values.shape[0]
--        return jagged_to_padded_dense(values, offsets, max_lengths, padding_value)
--
--    @staticmethod
--    def backward(ctx, grad_output):
--        offsets = list(ctx.saved_tensors)
--        total_L = ctx.total_L
--        grad_values, _ = dense_to_jagged(grad_output, offsets, total_L)
--        return grad_values, None, None, None
--
--class DenseToJagged(torch.autograd.Function):
--    @staticmethod
--    def forward(ctx, dense, offsets, total_L=None):
--        ctx.save_for_backward(*offsets)
--        out0, out1 = dense_to_jagged(dense, offsets, total_L)
--        ctx.dense_shape = dense.shape
--        return out0, out1
--
--    @staticmethod
--    def backward(ctx, grad_out0, grad_out1):
--        offsets = list(ctx.saved_tensors)
--        max_len = ctx.dense_shape[1]
--        grad_dense = jagged_to_padded_dense(grad_out0, offsets, [max_len], 0.0)
--        return grad_dense, None, None
--
--def jagged_to_padded_dense_wrapper(values, offsets, max_lengths, padding_value):
--    return JaggedToPaddedDense.apply(values, offsets, max_lengths, padding_value)
--
--def dense_to_jagged_wrapper(dense, offsets, total_L=None):
--    return DenseToJagged.apply(dense, offsets, total_L)
-\ No newline at end of file
-+#!/usr/bin/env python3
-+# -*- coding: utf-8 -*-
-+# Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
-+
-+from typing import Sequence
-+
-+import torch
-+
-+
-+def jagged_2d_to_dense_wrapper(
-+    values: torch.Tensor,
-+    offsets: Sequence[torch.Tensor],
-+    max_lengths: Sequence[int],
-+    padding_value: float = 0.0,
-+) -> torch.Tensor:
-+    return torch.ops.fbgemm.jagged_2d_to_dense(
-+        values=values,
-+        offsets=offsets[0],
-+        max_sequence_length=max_lengths[0],
-+    )
