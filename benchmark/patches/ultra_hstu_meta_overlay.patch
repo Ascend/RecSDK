@@ -1,0 +1,560 @@
+diff --git a/generative_recommenders/research/modeling/sequential/autoregressive_losses.py b/generative_recommenders/research/modeling/sequential/autoregressive_losses.py
+index 0d037d6..b65da28 100644
+--- a/generative_recommenders/research/modeling/sequential/autoregressive_losses.py
++++ b/generative_recommenders/research/modeling/sequential/autoregressive_losses.py
+@@ -31,4 +31,12 @@ try:
+ except ImportError:
+     NPU_ENABLE = False
+-
++
++import os as _ultra_os
++
++_ULTRA_DEVICE_TYPE = _ultra_os.getenv("ULTRA_DEVICE_TYPE", "auto").strip().lower()
++if _ULTRA_DEVICE_TYPE == "cuda":
++    NPU_ENABLE = False
++elif _ULTRA_DEVICE_TYPE == "npu" and not NPU_ENABLE:
++    raise RuntimeError("ULTRA_DEVICE_TYPE=npu requires torch_npu to be installed")
++
+ if NPU_ENABLE:
+diff --git a/generative_recommenders/research/modeling/sequential/hstu.py b/generative_recommenders/research/modeling/sequential/hstu.py
+index 7476674..2556e78 100644
+--- a/generative_recommenders/research/modeling/sequential/hstu.py
++++ b/generative_recommenders/research/modeling/sequential/hstu.py
+@@ -41,4 +41,12 @@ try:
+ except ImportError:
+     NPU_ENABLE = False
+-
++
++import os as _ultra_os
++
++_ULTRA_DEVICE_TYPE = _ultra_os.getenv("ULTRA_DEVICE_TYPE", "auto").strip().lower()
++if _ULTRA_DEVICE_TYPE == "cuda":
++    NPU_ENABLE = False
++elif _ULTRA_DEVICE_TYPE == "npu" and not NPU_ENABLE:
++    raise RuntimeError("ULTRA_DEVICE_TYPE=npu requires torch_npu to be installed")
++
+ if NPU_ENABLE:
+diff --git a/generative_recommenders/research/trainer/train.py b/generative_recommenders/research/trainer/train.py
+index abce52d..44746f6 100644
+--- a/generative_recommenders/research/trainer/train.py
++++ b/generative_recommenders/research/trainer/train.py
+@@ -53,4 +53,12 @@ try:
+ except ImportError:
+     NPU_ENABLE = False
+-
++
++import os as _ultra_os
++
++_ULTRA_DEVICE_TYPE = _ultra_os.getenv("ULTRA_DEVICE_TYPE", "auto").strip().lower()
++if _ULTRA_DEVICE_TYPE == "cuda":
++    NPU_ENABLE = False
++elif _ULTRA_DEVICE_TYPE == "npu" and not NPU_ENABLE:
++    raise RuntimeError("ULTRA_DEVICE_TYPE=npu requires torch_npu to be installed")
++
+ from generative_recommenders.research.data.eval import (
+diff --git a/main.py b/main.py
+index 97566a2..7c0d98f 100644
+--- a/main.py
++++ b/main.py
+@@ -35,5 +35,18 @@ try:
+ except ImportError:
+     NPU_ENABLE = False
+-
++
++import os as _ultra_os
++
++_DEVICE_TYPE = _ultra_os.getenv("ULTRA_DEVICE_TYPE", "auto").strip().lower()
++if _DEVICE_TYPE == "cuda":
++    NPU_ENABLE = False
++elif _DEVICE_TYPE == "npu" and not NPU_ENABLE:
++    raise RuntimeError("ULTRA_DEVICE_TYPE=npu requires torch_npu to be installed")
++elif _DEVICE_TYPE not in {"auto", "npu", "cuda"}:
++    raise RuntimeError("ULTRA_DEVICE_TYPE must be one of: auto, npu, cuda")
++
+ from absl import app, flags
++if _ultra_os.getenv("ULTRA_HSTU", "0").strip().lower() in {"1", "true", "yes", "y", "on"}:
++    import ultra_hstu_runtime  # noqa: F401
++
+ from generative_recommenders.research.trainer.train import train_fn
+diff --git a/ultra_hstu_runtime.py b/ultra_hstu_runtime.py
+new file mode 100644
+--- /dev/null
++++ b/ultra_hstu_runtime.py
+@@ -0,0 +1,477 @@
++"""Runtime ULTRA-HSTU 2.0 overlay for Meta HSTU benchmark.
++
++This module is imported before ``train_fn``.  It keeps the original HSTU
++factory, config and entrypoint intact, then patches the HSTU building blocks
++in place:
++
++* action/rating embeddings are added to item token embeddings;
++* each STU layer gets a stable layer index;
++* the training-time jagged attention path uses Semi-Local Attention and
++  optional Attention Truncation.
++
++The first NPU version intentionally uses the existing FBGEMM jagged wrappers
++provided by ``hstu_meta_npu.patch``.  A dedicated SLA jagged custom op can be
++plugged into ``_ultra_hstu_attention`` later without touching the benchmark
++entrypoint.
++"""
++
++from __future__ import annotations
++
++import importlib
++import inspect
++import logging
++import os
++import threading
++from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
++
++import torch
++import torch.nn as nn
++import torch.nn.functional as F
++
++
++_LOGGER = logging.getLogger(__name__)
++_STATE = threading.local()
++_PATCHED = False
++_WARNED: set[str] = set()
++
++
++def _env_bool(name: str, default: bool) -> bool:
++    raw = os.getenv(name)
++    if raw is None:
++        return default
++    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
++
++
++def _env_int(name: str, default: int) -> int:
++    raw = os.getenv(name)
++    if raw is None or raw.strip() == "":
++        return default
++    try:
++        return int(raw)
++    except ValueError:
++        _warn_once(name, "Invalid integer for %s=%r, using %d", name, raw, default)
++        return default
++
++
++def _warn_once(key: str, message: str, *args: Any) -> None:
++    if key in _WARNED:
++        return
++    _WARNED.add(key)
++    _LOGGER.warning(message, *args)
++
++
++def _as_int(value: Any, default: int) -> int:
++    if value is None:
++        return default
++    if isinstance(value, torch.Tensor):
++        if value.numel() == 1:
++            return int(value.item())
++        return default
++    try:
++        return int(value)
++    except (TypeError, ValueError):
++        return default
++
++
++def _is_nonempty_tensor(value: Any) -> bool:
++    return isinstance(value, torch.Tensor) and value.numel() > 0
++
++
++def _jagged_to_padded(values: torch.Tensor, offsets: torch.Tensor, max_len: int) -> torch.Tensor:
++    return torch.ops.fbgemm.jagged_to_padded_dense(
++        values=values,
++        offsets=[offsets],
++        max_lengths=[max_len],
++        padding_value=0.0,
++    )
++
++
++def _dense_to_jagged(values: torch.Tensor, offsets: torch.Tensor) -> torch.Tensor:
++    total_l = int(offsets[-1].item())
++    try:
++        return torch.ops.fbgemm.dense_to_jagged(values, [offsets], total_l)[0]
++    except TypeError:
++        return torch.ops.fbgemm.dense_to_jagged(values, [offsets])[0]
++
++
++def _bind_partial(signature: inspect.Signature, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> Dict[str, Any]:
++    try:
++        bound = signature.bind_partial(*args, **kwargs)
++        return dict(bound.arguments)
++    except TypeError:
++        return dict(kwargs)
++
++
++def _restore_call(
++    signature: inspect.Signature,
++    original: Any,
++    bound_values: Dict[str, Any],
++    args: Tuple[Any, ...],
++    kwargs: Dict[str, Any],
++) -> Any:
++    try:
++        bound = signature.bind_partial(**bound_values)
++        return original(*bound.args, **bound.kwargs)
++    except TypeError:
++        return original(*args, **kwargs)
++
++
++def _normalize_mask(mask: torch.Tensor, batch_size: int, num_heads: int, max_len: int) -> torch.Tensor:
++    if mask.dtype != torch.bool:
++        mask = mask != 0
++    if mask.dim() == 2:
++        mask = mask.reshape(1, 1, max_len, max_len)
++    elif mask.dim() == 3:
++        if mask.size(0) == batch_size:
++            mask = mask.reshape(batch_size, 1, max_len, max_len)
++        elif mask.size(0) == num_heads:
++            mask = mask.reshape(1, num_heads, max_len, max_len)
++        else:
++            mask = mask.reshape(1, 1, max_len, max_len)
++    elif mask.dim() == 4:
++        pass
++    else:
++        raise ValueError(f"Unsupported attention mask shape {tuple(mask.shape)}")
++    return mask
++
++
++def build_ultra_attention_mask(
++    lengths: torch.Tensor,
++    max_seq_len: int,
++    local_window: int,
++    global_window: int,
++    truncation_length: int,
++    layer_idx: int,
++    num_full_layers: int,
++) -> torch.Tensor:
++    """Build a bool [B, N, N] Semi-Local Attention mask.
++
++    Valid keys are the union of the causal local window and the first
++    ``global_window`` global tokens.  When ``layer_idx >= num_full_layers``,
++    Attention Truncation keeps only the newest ``truncation_length`` tokens for
++    both queries and keys.
++    """
++
++    if local_window <= 0 and global_window <= 0:
++        raise ValueError("ULTRA-HSTU requires ULTRA_LOCAL_WINDOW or ULTRA_GLOBAL_WINDOW > 0")
++
++    device = lengths.device
++    positions = torch.arange(max_seq_len, device=device)
++    q_pos = positions.view(1, max_seq_len, 1)
++    k_pos = positions.view(1, 1, max_seq_len)
++    causal = k_pos <= q_pos
++
++    if local_window > 0:
++        local_mask = k_pos >= (q_pos - local_window + 1)
++    else:
++        local_mask = torch.zeros(1, max_seq_len, max_seq_len, device=device, dtype=torch.bool)
++
++    if global_window > 0:
++        global_mask = k_pos < global_window
++    else:
++        global_mask = torch.zeros(1, max_seq_len, max_seq_len, device=device, dtype=torch.bool)
++
++    mask = causal & (local_mask | global_mask)
++    mask = mask.expand(lengths.numel(), max_seq_len, max_seq_len)
++
++    valid = positions.view(1, max_seq_len) < lengths.view(-1, 1)
++    mask = mask & valid.unsqueeze(1) & valid.unsqueeze(2)
++
++    if truncation_length > 0 and layer_idx >= num_full_layers:
++        start = torch.clamp(lengths - truncation_length, min=0)
++        active = positions.view(1, max_seq_len) >= start.view(-1, 1)
++        mask = mask & active.unsqueeze(1) & active.unsqueeze(2)
++
++    return mask
++
++
++def _maybe_add_relative_bias(
++    qk_attn: torch.Tensor,
++    rel_attn_bias: Optional[nn.Module],
++    all_timestamps: Optional[torch.Tensor],
++) -> torch.Tensor:
++    if rel_attn_bias is None or all_timestamps is None:
++        return qk_attn
++    bias = rel_attn_bias(all_timestamps)
++    if bias.dim() == 2:
++        bias = bias.reshape(1, 1, bias.size(0), bias.size(1))
++    elif bias.dim() == 3:
++        bias = bias.unsqueeze(1)
++    elif bias.dim() != 4:
++        _warn_once("rab_shape", "Unexpected relative bias shape %s, skipping", tuple(bias.shape))
++        return qk_attn
++    return qk_attn + bias.to(device=qk_attn.device, dtype=qk_attn.dtype)
++
++
++def _ultra_hstu_attention(original: Any, signature: inspect.Signature, *args: Any, **kwargs: Any) -> Any:
++    values = _bind_partial(signature, args, kwargs)
++
++    cache_keys = (
++        "delta_x_offsets",
++        "cached_q",
++        "cached_k",
++        "cached_v",
++        "cached_outputs",
++    )
++    if any(_is_nonempty_tensor(values.get(key)) for key in cache_keys):
++        return original(*args, **kwargs)
++
++    required = ("q", "k", "v", "x_offsets", "num_heads", "attention_dim", "linear_dim", "n")
++    if any(key not in values for key in required):
++        _warn_once("attention_signature", "Unknown HSTU attention signature, falling back to original attention")
++        return original(*args, **kwargs)
++
++    q = values["q"]
++    k = values["k"]
++    v = values["v"]
++    x_offsets = values["x_offsets"]
++    num_heads = _as_int(values.get("num_heads"), 1)
++    attention_dim = _as_int(values.get("attention_dim"), max(1, q.size(-1) // max(1, num_heads)))
++    linear_dim = _as_int(values.get("linear_dim"), max(1, v.size(-1) // max(1, num_heads)))
++    max_seq_len = _as_int(values.get("n"), 0)
++    if max_seq_len <= 0:
++        return original(*args, **kwargs)
++
++    lengths = (x_offsets[1:] - x_offsets[:-1]).to(dtype=torch.long)
++    batch_size = int(lengths.numel())
++    local_window = _env_int("ULTRA_LOCAL_WINDOW", max_seq_len)
++    global_window = _env_int("ULTRA_GLOBAL_WINDOW", 0)
++    truncation_length = _env_int("ULTRA_TRUNCATION_LENGTH", 0)
++    num_full_layers = _env_int("ULTRA_FULL_LAYERS", 0)
++    layer_idx = int(getattr(_STATE, "layer_idx", 0))
++
++    padded_q = _jagged_to_padded(q, x_offsets, max_seq_len)
++    padded_k = _jagged_to_padded(k, x_offsets, max_seq_len)
++    padded_v = _jagged_to_padded(v, x_offsets, max_seq_len)
++
++    q_dense = padded_q.reshape(batch_size, max_seq_len, num_heads, attention_dim)
++    k_dense = padded_k.reshape(batch_size, max_seq_len, num_heads, attention_dim)
++    v_dense = padded_v.reshape(batch_size, max_seq_len, num_heads, linear_dim)
++
++    qk_attn = torch.einsum("bnhd,bmhd->bhnm", q_dense, k_dense)
++    qk_attn = _maybe_add_relative_bias(
++        qk_attn=qk_attn,
++        rel_attn_bias=values.get("rel_attn_bias"),
++        all_timestamps=values.get("all_timestamps"),
++    )
++    qk_attn = F.silu(qk_attn) / max(1, max_seq_len)
++
++    ultra_mask = build_ultra_attention_mask(
++        lengths=lengths,
++        max_seq_len=max_seq_len,
++        local_window=local_window,
++        global_window=global_window,
++        truncation_length=truncation_length,
++        layer_idx=layer_idx,
++        num_full_layers=num_full_layers,
++    ).unsqueeze(1)
++
++    base_mask = values.get("invalid_attn_mask")
++    if isinstance(base_mask, torch.Tensor):
++        base_mask = _normalize_mask(
++            base_mask.to(device=q.device),
++            batch_size=batch_size,
++            num_heads=num_heads,
++            max_len=max_seq_len,
++        )
++        ultra_mask = ultra_mask & base_mask
++
++    qk_attn = qk_attn * ultra_mask.to(dtype=qk_attn.dtype)
++    attn_dense = torch.einsum("bhnm,bmhd->bnhd", qk_attn, v_dense)
++    attn_output = _dense_to_jagged(
++        attn_dense.reshape(batch_size, max_seq_len, num_heads * linear_dim),
++        x_offsets,
++    )
++    return attn_output, padded_q, padded_k
++
++
++def _extract_rating_tensor(bound_values: Dict[str, Any]) -> Optional[torch.Tensor]:
++    for value in bound_values.values():
++        if isinstance(value, dict):
++            for key in ("ratings", "rating", "actions", "action"):
++                ratings = value.get(key)
++                if isinstance(ratings, torch.Tensor):
++                    return ratings
++    return None
++
++
++def _extract_id_tensor(bound_values: Dict[str, Any], ratings: torch.Tensor) -> Optional[torch.Tensor]:
++    for key in ("past_ids", "ids", "input_ids", "historical_ids"):
++        value = bound_values.get(key)
++        if isinstance(value, torch.Tensor) and value.shape == ratings.shape:
++            return value
++    for value in bound_values.values():
++        if isinstance(value, torch.Tensor) and value.shape == ratings.shape and not torch.is_floating_point(value):
++            return value
++    return None
++
++
++def _replace_embedding_result(result: Any, ratings: torch.Tensor, action_values: torch.Tensor) -> Any:
++    def matches(tensor: Any) -> bool:
++        return (
++            isinstance(tensor, torch.Tensor)
++            and torch.is_floating_point(tensor)
++            and tensor.dim() == ratings.dim() + 1
++            and tuple(tensor.shape[:-1]) == tuple(ratings.shape)
++            and tensor.size(-1) == action_values.size(-1)
++        )
++
++    if matches(result):
++        return result + action_values.to(device=result.device, dtype=result.dtype)
++
++    if isinstance(result, tuple):
++        items = list(result)
++        for index, value in enumerate(items):
++            if matches(value):
++                items[index] = value + action_values.to(device=value.device, dtype=value.dtype)
++                if hasattr(result, "_fields"):
++                    return type(result)(*items)
++                return tuple(items)
++    elif isinstance(result, list):
++        items = list(result)
++        for index, value in enumerate(items):
++            if matches(value):
++                items[index] = value + action_values.to(device=value.device, dtype=value.dtype)
++                return items
++
++    _warn_once("action_output", "Could not find preprocessor embedding output for ULTRA action encoding")
++    return result
++
++
++def _install_action_preprocessor() -> None:
++    if not _env_bool("ULTRA_ACTION_ENCODING", True):
++        return
++
++    module = importlib.import_module(
++        "generative_recommenders.research.modeling.sequential.input_features_preprocessors"
++    )
++    class_name = "LearnablePositionalEmbeddingInputFeaturesPreprocessor"
++    base_cls = getattr(module, class_name)
++    if getattr(base_cls, "_ultra_hstu_wrapped", False):
++        return
++
++    base_init = base_cls.__init__
++    base_forward = base_cls.forward
++    init_signature = inspect.signature(base_init)
++    forward_signature = inspect.signature(base_forward)
++
++    class UltraActionInputFeaturesPreprocessor(base_cls):  # type: ignore[misc, valid-type]
++        _ultra_hstu_wrapped = True
++
++        def __init__(self, *args: Any, **kwargs: Any) -> None:
++            super().__init__(*args, **kwargs)
++            init_values = _bind_partial(init_signature, (self, *args), kwargs)
++            embedding_dim = _as_int(init_values.get("embedding_dim"), 0)
++            if embedding_dim <= 0:
++                embedding_dim = _as_int(getattr(self, "_embedding_dim", 0), 0)
++            if embedding_dim <= 0:
++                raise ValueError("Unable to infer embedding_dim for ULTRA action encoding")
++
++            num_actions = _env_int("ULTRA_NUM_ACTIONS", 6)
++            self._ultra_action_embedding = nn.Embedding(num_actions, embedding_dim, padding_idx=0)
++            nn.init.normal_(self._ultra_action_embedding.weight, mean=0.0, std=0.02)
++            with torch.no_grad():
++                self._ultra_action_embedding.weight[0].zero_()
++
++        def forward(self, *args: Any, **kwargs: Any) -> Any:
++            result = super().forward(*args, **kwargs)
++            bound_values = _bind_partial(forward_signature, (self, *args), kwargs)
++            ratings = _extract_rating_tensor(bound_values)
++            if ratings is None:
++                return result
++
++            action_ids = ratings.to(dtype=torch.long)
++            action_ids = torch.clamp(action_ids, min=0, max=self._ultra_action_embedding.num_embeddings - 1)
++            action_values = self._ultra_action_embedding(action_ids)
++
++            id_tensor = _extract_id_tensor(bound_values, ratings)
++            if id_tensor is not None:
++                action_values = action_values * id_tensor.ne(0).unsqueeze(-1).to(dtype=action_values.dtype)
++            return _replace_embedding_result(result, ratings, action_values)
++
++    UltraActionInputFeaturesPreprocessor.__name__ = class_name
++    UltraActionInputFeaturesPreprocessor.__qualname__ = class_name
++    setattr(module, class_name, UltraActionInputFeaturesPreprocessor)
++
++
++def _assign_stu_layer_ids(hstu_module: Any, stu_cls: type) -> None:
++    layer_id = 0
++    for child in hstu_module.modules():
++        if isinstance(child, stu_cls):
++            setattr(child, "_ultra_layer_idx", layer_id)
++            layer_id += 1
++    setattr(hstu_module, "_ultra_num_layers", layer_id)
++
++
++def _install_hstu_patches() -> None:
++    hstu_module = importlib.import_module("generative_recommenders.research.modeling.sequential.hstu")
++    original_attention = getattr(hstu_module, "_hstu_attention_maybe_from_cache")
++    attention_signature = inspect.signature(original_attention)
++
++    def attention_wrapper(*args: Any, **kwargs: Any) -> Any:
++        if not _env_bool("ULTRA_SLA", True):
++            return original_attention(*args, **kwargs)
++        return _ultra_hstu_attention(original_attention, attention_signature, *args, **kwargs)
++
++    setattr(hstu_module, "_hstu_attention_maybe_from_cache", attention_wrapper)
++
++    stu_cls = getattr(hstu_module, "SequentialTransductionUnitJagged")
++    for method_name in ("jagged_forward", "forward"):
++        if not hasattr(stu_cls, method_name):
++            continue
++        original_method = getattr(stu_cls, method_name)
++        if getattr(original_method, "_ultra_hstu_wrapped", False):
++            continue
++
++        def make_layer_wrapper(method: Any) -> Any:
++            def layer_wrapper(self: nn.Module, *args: Any, **kwargs: Any) -> Any:
++                old_layer_idx = getattr(_STATE, "layer_idx", None)
++                _STATE.layer_idx = int(getattr(self, "_ultra_layer_idx", 0))
++                try:
++                    return method(self, *args, **kwargs)
++                finally:
++                    if old_layer_idx is None:
++                        try:
++                            delattr(_STATE, "layer_idx")
++                        except AttributeError:
++                            pass
++                    else:
++                        _STATE.layer_idx = old_layer_idx
++
++            layer_wrapper._ultra_hstu_wrapped = True  # type: ignore[attr-defined]
++            return layer_wrapper
++
++        setattr(stu_cls, method_name, make_layer_wrapper(original_method))
++
++    hstu_cls = getattr(hstu_module, "HSTU")
++    original_init = hstu_cls.__init__
++    if not getattr(original_init, "_ultra_hstu_wrapped", False):
++
++        def hstu_init_wrapper(self: nn.Module, *args: Any, **kwargs: Any) -> None:
++            original_init(self, *args, **kwargs)
++            _assign_stu_layer_ids(self, stu_cls)
++
++        hstu_init_wrapper._ultra_hstu_wrapped = True  # type: ignore[attr-defined]
++        setattr(hstu_cls, "__init__", hstu_init_wrapper)
++
++
++def install() -> None:
++    global _PATCHED
++    if _PATCHED:
++        return
++    _install_action_preprocessor()
++    _install_hstu_patches()
++    _PATCHED = True
++    _LOGGER.warning(
++        "ULTRA-HSTU enabled: action=%s sla=%s k1=%d k2=%d full_layers=%d trunc=%d",
++        _env_bool("ULTRA_ACTION_ENCODING", True),
++        _env_bool("ULTRA_SLA", True),
++        _env_int("ULTRA_LOCAL_WINDOW", -1),
++        _env_int("ULTRA_GLOBAL_WINDOW", 0),
++        _env_int("ULTRA_FULL_LAYERS", 0),
++        _env_int("ULTRA_TRUNCATION_LENGTH", 0),
++    )
++
++
++if not _env_bool("ULTRA_HSTU_DISABLE_AUTO_INSTALL", False):
++    install()
