@@ -56,6 +56,7 @@ python run.py xxx.json --eager
 |DBMTL|[DBMTL.json](configs/DBMTL.json)|
 |DCN|[DCN.json](configs/DCN.json)|
 |DCNv2|[DCNv2.json](configs/DCNv2.json)|
+|DECISION_TRANSFORMER|[DecisionTransformer.json](configs/DecisionTransformer.json)|
 |DeepFM|[DeepFM.json](configs/DeepFM.json)|
 |DIEN|[DIEN.json](configs/DIEN.json)|
 |DIFM|[DIFM.json](configs/DIFM.json)|
@@ -187,6 +188,33 @@ ETA通过`MODEL_TYPE`控制模型数据类型（默认`float32`,可选`bfloat16`
 
 两个配置均使用训练框架收集的全部有效`train_times`统计性能。`RESULTS_DIR`使用rec-models默认值，ETA和ESMM\_TRAIN的结果分别保存到`benchmark/models/eta/save_results_NPU`和`benchmark/models/esmm/save_results_NPU`。
 
+## Decision Transformer 模型
+
+### 精度模式
+
+Decision Transformer 默认关闭精度模式。进行精度比对时，可将 `DecisionTransformer.json` 中的 `P_TEST` 设置为 `1`。开启后会调用 msProbe 的 `seed_all` 接口，固定随机种子并关闭 dropout；同时会固定 Linear 和 Embedding 参数，关闭训练数据随机采样，并设置 NPU、HCCL 的确定性环境变量。
+
+使用精度模式前，需要在运行模型的 Python 环境中安装 msProbe：
+
+```shell
+pip install mindstudio-probe
+```
+
+安装完成后，可执行 `pip show mindstudio-probe` 检查是否安装成功。其他安装方式及版本配套信息请参考 [msProbe 工具安装指南](https://gitcode.com/Ascend/msprobe/blob/26.0.0/docs/zh/msprobe_install_guide.md)。
+
+### 准备数据集
+
+模型默认从 `benchmark/dataset/decision_transformer/training_data_all-rlData.csv` 读取离线强化学习轨迹。CSV 文件需要包含 `state`、`next_state`、`action`、`reward` 和 `done` 字段，其中 `state` 和 `next_state` 为长度为 16 的数组，`done=True` 表示当前轨迹结束。
+
+```shell
+|-- benchmark
+   |-- configs
+       |-- DecisionTransformer.json
+   |-- dataset
+       |-- decision_transformer
+           |-- training_data_all-rlData.csv
+```
+
 ## DLRM\_META 模型
 
 [DLRM\_META](https://github.com/facebookresearch/dlrm.git)模型运行需要下载[Kaggle Display Advertising dataset](https://ailab.criteo.com/ressources/)数据集,
@@ -208,7 +236,17 @@ DLRM_META启用Inductor模式时，需要在DLRM_META.json的`run_cmd`中添加`
 
 ## HSTU\_META 模型
 
-### HSTU 模型说明
+### 运行依赖
+
+HSTU NPU 适配补丁通过 Python `import` 导入依赖库并注册自定义算子，不需要在模型代码中手动加载算子 `.so` 文件。运行前请确保当前 Python 环境已安装与 PyTorch、CANN 版本配套的以下依赖，且可以正常导入：
+
+| 依赖库 | 导入方式 | 用途 |
+|--|--|--|
+| `fbgemm_ascend` | `import fbgemm_ascend` | 注册 `torch.ops.fbgemm` 下的 Jagged Tensor 等算子 |
+| `rec_cust_ops` | `import rec_cust_ops` | 注册 `torch.ops.mxrec` 下的 RecSDK 自定义算子 |
+| `ops_rec` | `import ops_rec` | 提供 `ops_rec.ascendc.attention.hstu_jagged` 等 HSTU 融合算子 |
+
+`fbgemm_ascend` 安装说明请参考 [fbgemm-ascend README](https://gitcode.com/Ascend/fbgemm-ascend/blob/v1.5.0/README.md)，`rec_cust_ops` 编译安装说明请参考 [RecSDK 自定义算子 README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)。
 
 #### 精度模式依赖
 
@@ -222,7 +260,22 @@ pip install mindstudio-probe
 
 安装完成后，可执行 `pip show mindstudio-probe` 检查是否安装成功。其他安装方式及版本配套信息请参考 [msProbe 工具安装指南](https://gitcode.com/Ascend/msprobe/blob/26.0.0/docs/zh/msprobe_install_guide.md)。
 
-#### 设备配置
+### 准备数据集
+
+运行 [HSTU\_META](https://github.com/meta-recsys/generative-recommenders) 时，配置会优先检查 `benchmark/dataset/hstu_meta` 目录。如果该目录中已有数据，则将其复制到开源仓的 `tmp/` 目录；如果该目录为空，则执行 `preprocess_public_data.py` 自动下载并预处理数据。
+
+在无网络环境中，请提前将准备好的数据放入 `benchmark/dataset/hstu_meta` 目录，目录结构如下：
+
+```shell
+|-- benchmark
+   |-- dataset
+       |-- hstu_meta
+           |-- ml-20m
+           |-- ml-1m
+           |-- processed
+```
+
+### 设备配置
 
 运行 HSTU 模型前，应根据实际设备类型修改对应配置文件 `run_cmd` 中的设备可见性环境变量：
 
@@ -231,42 +284,28 @@ pip install mindstudio-probe
 
 例如，单卡运行时将对应变量设置为 `0`，8 卡运行时设置为 `0,1,2,3,4,5,6,7`。HSTU 配置文件同时保留了这两个变量，实际运行时只需修改与当前设备对应的变量；不要使用 `CUDA_VISIBLE_DEVICES` 配置 NPU，也不要使用 `ASCEND_RT_VISIBLE_DEVICES` 配置 GPU。
 
-#### 训练控制参数
+### 训练控制参数
 
 - `--eval_every_n N`：每隔 `N` 个 epoch 执行一次 epoch 评估，`N` 必须为正整数；当前 HSTU 配置默认设为 `50`，并且训练的最后一个 epoch 仍会执行评估。
 - `STOP_STEP=N`：训练达到 `N` 个 step 后提前停止，设置为 `0` 时关闭；当前 `HSTU_META_7B.json` 默认设为 `200`。提前停止时不执行 epoch 评估，也不输出 `metrics` 字段。
 
-### 运行依赖
-
-- RecSDK自定义算子安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md), 包含下列自定义算子:
-  - asynchronous\_complete\_cumsum
-  - dense\_to\_jagged
-  - hstu\_dense\_backward
-  - hstu\_dense\_forward
-  - jagged\_to\_padded\_dense
-  - invert\_permute
-  - permute2d\_sparse\_data
-
-### 准备数据集
-
-[HSTU\_META](https://github.com/meta-recsys/generative-recommenders)数据集自动下载，如果下载失败可以参考开源代码处理。
-
 ## NV Recsys-examples 模型
 
-- 包含开源gr_ranking、gr_retrival
+- 包含开源gr_ranking、gr_retrieval
 - 包含增加MoE结构的GR RANKING 7B
 - 包含增加GroupedMatmul优化的GR RANKING 2B
 
 ### 运行依赖
 
-- RecSDK自定义算子安装: 参考[README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md), 包含下列自定义算子:
-  - asynchronous\_complete\_cumsum
-  - dense\_to\_jagged
-  - hstu\_dense\_backward
-  - hstu\_dense\_forward
-  - jagged\_to\_padded\_dense
-  - invert\_permute
-  - permute2d\_sparse\_data
+NV Recsys-examples 的 NPU 适配补丁通过 Python `import` 导入依赖库并注册自定义算子，不需要在模型代码中手动加载算子 `.so` 文件。请根据所运行的模型，安装与 PyTorch、CANN 版本配套的依赖库：
+
+| 模型 | 依赖库 |
+|--|--|
+| GR Ranking、GR Ranking 2B、GR Ranking 7B | `fbgemm_ascend`、`rec_cust_ops`、`ops_rec` |
+| GR Retrieval | `fbgemm_ascend`、`ops_rec` |
+
+各依赖库的导入方式和用途与上文 HSTU_META 模型的运行依赖说明相同。
+
 - [DynamicEmbedding for NPU](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/dynamic_emb/README.md): 使用源码方式安装
 - [Torchrec NPU for Recsys-example](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v2/torchrec_npu/README.md)
 
@@ -298,7 +337,7 @@ git checkout core_r0.14.0
 
 ### 准备数据集
 
-[NV Recsys-examples](https://github.com/NVIDIA/recsys-examples)模型运行前需要按[步骤](https://github.com/NVIDIA/recsys-examples/blob/v25.09/examples/hstu/README.md#dataset-preprocessing)准备movielen-20m数据集
+[NV Recsys-examples](https://github.com/NVIDIA/recsys-examples)模型运行前需要按[步骤](https://github.com/NVIDIA/recsys-examples/blob/v25.09/examples/hstu/README.md#dataset-preprocessing)准备MovieLens 20M数据集
 
 在benchmark/datasets目录新建recsys\-examples目录存放处理好的ml-20m数据集目录。
 
@@ -316,10 +355,7 @@ git checkout core_r0.14.0
 
 ### 运行依赖
 
-- 本模型依赖以下fbgemm算子。若需在昇腾NPU环境部署运行，请先安装适配包fbgemm_ascend，安装及使用说明请参考官方[README](https://gitcode.com/Ascend/fbgemm-ascend/blob/v1.5.0/README.md)。
-  - asynchronous\_complete\_cumsum
-  - dense\_to\_jagged
-  - jagged\_to\_padded\_dense
+SASRec 在昇腾 NPU 环境中通过 `import fbgemm_ascend` 注册 `torch.ops.fbgemm` 下的自定义算子，不需要手动加载算子 `.so` 文件。运行前请安装与 PyTorch、CANN 版本配套的 `fbgemm_ascend` 依赖库，安装及使用说明请参考 [fbgemm-ascend README](https://gitcode.com/Ascend/fbgemm-ascend/blob/v1.5.0/README.md)。
 
 ### 准备数据集
 
@@ -332,6 +368,18 @@ git checkout core_r0.14.0
 [GRU4Rec](https://github.com/hidasib/GRU4Rec_PyTorch_Official)数据集自动下载解析，如下载失败可以参考开源代码下载RetailRocket数据集，然后在模型目录下使用`python retailrocket_preproc.py -p ./data`命令预处理
 
 ## RANKMIXER 模型
+
+### 精度模式
+
+RANKMIXER 默认关闭精度模式。进行 GPU 与 NPU 精度比对时，可将 `RANKMIXER.json` 中的 `ENABLE_PRECISION_MODE` 设置为 `1`。开启后，会使用 msProbe 的 `seed_all` 接口，使用 `seed_conf.global_seed` 固定随机数（默认值为 `1234`），并关闭 dropout。同时，开启精度模式也会固定模型的初始化权重。
+
+使用精度模式前，需要在运行模型的 Python 环境中安装 msProbe：
+
+```shell
+pip install mindstudio-probe
+```
+
+安装完成后，可执行 `pip show mindstudio-probe` 检查是否安装成功。其他安装方式及版本配套信息请参考 [msProbe 工具安装指南](https://gitcode.com/Ascend/msprobe/blob/26.0.0/docs/zh/msprobe_install_guide.md)。
 
 ### 准备数据集
 
