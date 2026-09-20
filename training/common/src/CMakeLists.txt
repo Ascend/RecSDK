@@ -49,6 +49,11 @@ endif ()
 
 message("== ASCEND_PATH: ${ASCEND_PATH}")
 
+if (DEFINED OMPI_PATH)
+    list(APPEND CMAKE_PREFIX_PATH ${OMPI_PATH} ${HDF5_PATH})
+endif ()
+find_package(MPI REQUIRED)
+
 include_directories(SYSTEM ${MPI_INCLUDE_PATH})
 include_directories(${ASCEND_PATH}/fwkacllib/include)
 include_directories(${ASCEND_PATH}/runtime/include)

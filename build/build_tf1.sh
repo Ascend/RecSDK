@@ -16,7 +16,7 @@
 
 ##################################################################
 #   build_tf1.sh 编译Rec SDK
-# 编译环境：Python3.7.5 GCC 7.3.0 CMake 3.20.6
+# 编译环境：Python3.7.5 GCC 7.3.0/11.2.0 CMake 3.20.6
 # 代码主要分为两部分：
 # 1、准备编译Rec SDK所需依赖：pybind11(>= 2.10.3) securec
 # 2、编译securec、AccCTR以及Rec SDK

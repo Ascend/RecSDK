@@ -22,7 +22,16 @@ TOP_PATH="${CUR_PATH}"/../../../../
 
 ARCH="$(uname -m)"
 if [ $ARCH == "aarch64" ]; then
-  export LD_PRELOAD=/usr/local/gcc7.3.0/lib64/libgomp.so.1
+  gomp_lib="$(gcc -print-file-name=libgomp.so.1)"
+  if [ ! -f "$gomp_lib" ]; then
+    for candidate in /usr/local/gcc11.2.0/lib64/libgomp.so.1 /usr/local/gcc7.3.0/lib64/libgomp.so.1; do
+      if [ -f "$candidate" ]; then
+        gomp_lib="$candidate"
+        break
+      fi
+    done
+  fi
+  [ -f "$gomp_lib" ] && export LD_PRELOAD="$gomp_lib"
 fi
 
 # build Rec SDK and get output directory
@@ -70,7 +79,9 @@ echo "*************************************  End  Rec SDK LLT Test *************
 echo "LLT running take: $(expr "${end}" - "${start}") seconds"
 
 rm -rf "$TOP_PATH"/training/tf_rec_v1/src/libasc
-rm -f "$TOP_PATH"/training/tf_rec_v1/mx_rec
-rm -f "$TOP_PATH"/training/common/rec_sdk_common
+# mx_rec / rec_sdk_common may be a symlink (ln above) or a real directory
+# left by setup.py copytree, so use rm -rf to handle both cases
+rm -rf "$TOP_PATH"/training/tf_rec_v1/mx_rec
+rm -rf "$TOP_PATH"/training/common/rec_sdk_common
 
 exit "${ret}"

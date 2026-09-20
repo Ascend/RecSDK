@@ -22,7 +22,16 @@ TOP_PATH="${CUR_PATH}"/../../../../
 
 ARCH="$(uname -m)"
 if [ $ARCH == "aarch64" ]; then
-  export LD_PRELOAD=/usr/local/gcc7.3.0/lib64/libgomp.so.1
+  gomp_lib="$(gcc -print-file-name=libgomp.so.1)"
+  if [ ! -f "$gomp_lib" ]; then
+    for candidate in /usr/local/gcc11.2.0/lib64/libgomp.so.1 /usr/local/gcc7.3.0/lib64/libgomp.so.1; do
+      if [ -f "$candidate" ]; then
+        gomp_lib="$candidate"
+        break
+      fi
+    done
+  fi
+  [ -f "$gomp_lib" ] && export LD_PRELOAD="$gomp_lib"
 fi
 
 cd "$TOP_PATH"/training/common/src
