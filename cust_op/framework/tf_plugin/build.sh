@@ -28,13 +28,38 @@ else
     exit 1
 fi
 
+# locate openmpi prefix: prefer OpenMPI's own query, then mpicc-derived path,
+# then common install dirs (source build /usr/local/openmpi, yum /usr/lib64/openmpi)
+ompi_path=""
+if command -v mpirun >/dev/null 2>&1; then
+    ompi_path="$(mpirun --showme:prefix 2>/dev/null || true)"
+fi
+if [ -z "$ompi_path" ] && command -v mpicc >/dev/null 2>&1; then
+    ompi_path="$(dirname "$(dirname "$(readlink -f "$(command -v mpicc)")")")"
+fi
+if [ -n "$ompi_path" ] && [ ! -f "$ompi_path/include/mpi.h" ] && [ ! -x "$ompi_path/bin/mpicc" ]; then
+    ompi_path=""
+fi
+if [ -z "$ompi_path" ]; then
+    for candidate in /usr/local/openmpi /usr/lib64/openmpi; do
+        if [ -f "$candidate/include/mpi.h" ] || [ -x "$candidate/bin/mpicc" ]; then
+            ompi_path="$candidate"
+            break
+        fi
+    done
+fi
+if [ -z "$ompi_path" ]; then
+    echo "ERROR: openmpi not found"
+    exit 1
+fi
+
 [ -d build ] && rm -rf build;
 mkdir build && cd build || exit 1
 
 cmake -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
     -DTF_PATH="$1" \
-    -DOMPI_PATH="$(whereis openmpi)" \
+    -DOMPI_PATH="$ompi_path" \
     -DPYTHON_PATH="$python_path" \
     -DASCEND_PATH="$ascend_path" \
     -DSECUREC_PATH="$2"/../opensource/securec \

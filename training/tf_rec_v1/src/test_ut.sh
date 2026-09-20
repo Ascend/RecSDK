@@ -30,10 +30,11 @@ fi
 export OMPI_ALLOW_RUN_AS_ROOT=1
 export OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
 
-# Remove CC env, and subsequent compilation uses CC in devtoolset.
+# Remove CC env, and subsequent compilation uses the gcc in the image.
 unset CC
 source /etc/profile
-source /opt/rh/devtoolset-7/enable
+# devtoolset-7 only exists in legacy CentOS images
+[ -f /opt/rh/devtoolset-7/enable ] && source /opt/rh/devtoolset-7/enable
 
 CUR_DIR=$(dirname "$(readlink -f "$0")")
 ROOT_DIR=$(dirname "$(dirname "$(dirname "${CUR_DIR}")")")
@@ -49,8 +50,11 @@ COVERAGE_COMMON_FILE=coverage_common.info
 COVERAGE_TF1_FILE=coverage_tf1.info
 
 export LD_LIBRARY_PATH="${acc_ctr_path}"/output/ock_ctr_common/lib:"${tf_path}/python":$LD_LIBRARY_PATH
-# add asan lib path
-export LIBRARY_PATH=${LIBRARY_PATH}:/usr/local/gcc7.3.0/lib64/
+# add asan lib path (derived from the active gcc, works for gcc 7.3.0/11.2.0 images)
+gcc_lib_dir="$(dirname "$(gcc -print-file-name=libgomp.so.1)")"
+if [ -d "$gcc_lib_dir" ]; then
+    export LIBRARY_PATH=${LIBRARY_PATH}:${gcc_lib_dir}
+fi
 
 # Detect available CPUs once and reuse everywhere.
 NUM_CPUS=$(nproc) || NUM_CPUS=32
@@ -177,9 +181,34 @@ cd build
 export ASAN_OPTIONS=halt_on_error=1:detect_leaks=1:fast_unwind_on_malloc=0
 export LSAN_OPTIONS=suppressions=../tests/leaks.supp
 
+# locate openmpi prefix: prefer OpenMPI's own query, then mpicc-derived path,
+# then common install dirs (source build /usr/local/openmpi, yum /usr/lib64/openmpi)
+ompi_path=""
+if command -v mpirun >/dev/null 2>&1; then
+    ompi_path="$(mpirun --showme:prefix 2>/dev/null || true)"
+fi
+if [ -z "$ompi_path" ] && command -v mpicc >/dev/null 2>&1; then
+    ompi_path="$(dirname "$(dirname "$(readlink -f "$(command -v mpicc)")")")"
+fi
+if [ -n "$ompi_path" ] && [ ! -f "$ompi_path/include/mpi.h" ] && [ ! -x "$ompi_path/bin/mpicc" ]; then
+    ompi_path=""
+fi
+if [ -z "$ompi_path" ]; then
+    for candidate in /usr/local/openmpi /usr/lib64/openmpi; do
+        if [ -f "$candidate/include/mpi.h" ] || [ -x "$candidate/bin/mpicc" ]; then
+            ompi_path="$candidate"
+            break
+        fi
+    done
+fi
+if [ -z "$ompi_path" ]; then
+    echo "ERROR: openmpi not found"
+    exit 1
+fi
+
 cmake -DCMAKE_BUILD_TYPE=Debug \
     -DTF_PATH=${tf_path} \
-    -DOMPI_PATH=/usr/local/openmpi/ \
+    -DOMPI_PATH="$ompi_path" \
     -DPYTHON_PATH="${python_path}" \
     -DASCEND_PATH=/usr/local/Ascend/ascend-toolkit/latest \
     -DABSEIL_PATH=${tf_path} \

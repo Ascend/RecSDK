@@ -41,6 +41,31 @@ else
     echo "ERROR: can not find toolkit and tfplugin"
     exit 1
 fi
+# locate openmpi prefix: prefer OpenMPI's own query, then mpicc-derived path,
+# then common install dirs (source build /usr/local/openmpi, yum /usr/lib64/openmpi)
+ompi_path=""
+if command -v mpirun >/dev/null 2>&1; then
+    ompi_path="$(mpirun --showme:prefix 2>/dev/null || true)"
+fi
+if [ -z "$ompi_path" ] && command -v mpicc >/dev/null 2>&1; then
+    ompi_path="$(dirname "$(dirname "$(readlink -f "$(command -v mpicc)")")")"
+fi
+if [ -n "$ompi_path" ] && [ ! -f "$ompi_path/include/mpi.h" ] && [ ! -x "$ompi_path/bin/mpicc" ]; then
+    ompi_path=""
+fi
+if [ -z "$ompi_path" ]; then
+    for candidate in /usr/local/openmpi /usr/lib64/openmpi; do
+        if [ -f "$candidate/include/mpi.h" ] || [ -x "$candidate/bin/mpicc" ]; then
+            ompi_path="$candidate"
+            break
+        fi
+    done
+fi
+if [ -z "$ompi_path" ]; then
+    echo "ERROR: openmpi not found"
+    exit 1
+fi
+
 echo "SCRIPT_DIR = " ${SCRIPT_DIR}
 pwd
 MxRec_DIR=$(dirname "${SCRIPT_DIR}")/../../../../..
@@ -54,7 +79,7 @@ cmake -DCMAKE_BUILD_TYPE=Release \
       -DASCEND_PATH="$ascend_path" \
       -DTF_PATH="$tf1_path" \
       -DABSEIL_PATH="$tf1_path" \
-      -DOMPI_PATH="$(whereis openmpi)" \
+      -DOMPI_PATH="$ompi_path" \
       -DPYTHON_PATH="$python_path" \
       -DSECUREC_PATH="$opensource_path"/securec \
       -DOPENSOURCE_DIR="$opensource_path"  ..
