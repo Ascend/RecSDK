@@ -7,11 +7,12 @@ pip3 install *$(uname -m)*.whl --no-deps --force-reinstall
 
 echo "----------------        build aclnn ops (v220)        ----------------"
 # torchrec 依赖的 custom OPP 算子（含 WORLD_SIZE>1 分布式路径用到的 alltoall 算子）。
-# 不再依赖 fbgemm_ascend，因此需自行编译安装，否则运行时报 "aclnnXxx not in libopapi.so"。
+# fbgemm 相关算子已迁移至 fbgemm-ascend 仓库，此处仅编译 RecSDK 保留的 embedding 算子，
+# 否则运行时报 "aclnnXxx not in libopapi.so"。
 unset ASCEND_CUSTOM_OPP_PATH
 
-# 算子列表默认覆盖 torchrec 前向/反向与分布式路径；外部可通过 OPS 环境变量覆盖。
-OPS="${OPS:-split_embedding_codegen_forward_unweighted backward_codegen_adagrad_unweighted_exact dense_embedding_codegen_lookup_function dense_embedding_codegen_lookup_function_grad asynchronous_complete_cumsum permute2d_sparse_data}"
+# 算子列表默认覆盖 RecSDK 保留的 embedding 前向/反向算子；外部可通过 OPS 环境变量覆盖。
+OPS="${OPS:-recops_split_embedding_codegen_forward_unweighted recops_backward_codegen_adagrad_unweighted_exact}"
 
 # CI 环境通常已 source CANN set_env.sh；若未设置 ASCEND_OPP_PATH，则从 ASCEND_HOME_PATH 兜底 source。
 if [ -z "$ASCEND_OPP_PATH" ]; then
