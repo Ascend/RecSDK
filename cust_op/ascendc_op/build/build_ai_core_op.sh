@@ -228,16 +228,10 @@ TIMING_FILE="${OPS_BUILD_LOG_DIR}/_timing.tsv"
 source /etc/profile
 
 declare -A OP_PLUGIN_MAP=(
-  ["asynchronous_complete_cumsum"]="asynchronous_complete_cumsum"
   ["recops_backward_codegen_adagrad_unweighted_exact"]="split_embedding_codegen_forward_unweighted"
-  ["block_bucketize_sparse_features"]="block_bucketize_sparse_features"
   ["concat_jagged_tensor"]="concat_2d_jagged"
   ["concat_jagged_tensor_grad"]="concat_2d_jagged"
-  ["dense_embedding_codegen_lookup_function"]="dense_embedding_codegen_lookup_function"
-  ["dense_embedding_codegen_lookup_function_grad"]="dense_embedding_codegen_lookup_function"
-  ["dense_to_jagged"]="dense_to_jagged"
   ["disentangle_attention"]="disentangle_attention"
-  ["expand_into_jagged_permute"]="expand_into_jagged_permute"
   ["gather_for_rank1"]="gather_for_rank1"
   ["hstu_dense_backward"]="hstu"
   ["hstu_dense_backward_fuxi"]="hstu_dense_backward_fuxi"
@@ -247,23 +241,15 @@ declare -A OP_PLUGIN_MAP=(
   ["in_linear_silu"]="in_linear_silu"
   ["in_linear_silu_backward"]="in_linear_silu"
   ["index_select_for_rank1_backward"]="gather_for_rank1"
-  ["int_nbit_split_embedding_codegen_lookup_function"]="int_nbit_split_embedding_codegen_lookup_function"
-  ["invert_permute"]="invert_permute"
-  ["jagged_to_padded_dense"]="jagged_to_padded_dense"
   ["ln_mul"]="ln_mul"
   ["multislice_concat"]="multislice_concat"
   ["norm_multiply_dropout"]="norm_multiply_dropout"
-  ["offsets_range"]="offsets_range"
-  ["permute_pooled_embs"]="permute_pooled_embs"
-  ["permute2d_sparse_data"]="permute1d_sparse_data permute2d_sparse_data"
   ["relative_attn_bias_backward"]="relative_attn_bias"
   ["relative_attn_bias_pos"]="relative_attn_bias"
   ["relative_attn_bias_time"]="relative_attn_bias"
   ["reverse_sequence"]="reverse_sequence"
-  ["segment_sum_csr"]="segment_sum_csr"
   ["recops_split_embedding_codegen_forward_unweighted"]="split_embedding_codegen_forward_unweighted"
   ["token_mixing"]="token_mixing"
-  ["select_dim1_to_permute"]="keyed_jagged_index_select_dim1"
 )
 
 
@@ -273,20 +259,13 @@ fused_sgd
 lccl
 pcie_through
 "
-support_A3_list="asynchronous_complete_cumsum
-gather_for_rank1
+support_A3_list="gather_for_rank1
 index_select_for_rank1_backward
-dense_to_jagged
-jagged_to_padded_dense
-permute_pooled_embs
-permute2d_sparse_data
 recops_split_embedding_codegen_forward_unweighted
 recops_backward_codegen_adagrad_unweighted_exact
 hstu_dense_forward_fuxi
 hstu_dense_backward_fuxi
 disentangle_attention
-dense_embedding_codegen_lookup_function
-dense_embedding_codegen_lookup_function_grad
 hstu_dense_forward
 hstu_dense_backward
 in_linear_silu
