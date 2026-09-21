@@ -16,10 +16,11 @@
 
 ## 安装依赖项
 
-安装 gin-config
+安装gin-config和torchvision。torchvision需安装和PyTorch配套版本，PyTorch 2.7.1对应的torchvision版本为0.22.1。
 
 ```shell
 pip3 install gin-config
+pip3 install torchvision==0.22.1
 ```
 
 ### 安装NPU算子包
@@ -47,10 +48,7 @@ cp -f ../gr_nv2npu.patch ./ && git apply gr_nv2npu.patch && cd -
 ```shell
 -- gr_nv
    |-- Mindspeed
-   |-- Mindspeed
    |-- Megatron-LM
-   |-- Megatron-LM
-   |-- recsys-examples
    |-- recsys-examples
    |-- gr_nv2npu.patch
    |-- README.md
@@ -84,7 +82,6 @@ cd recsys-examples/examples/hstu/
 
 若前面步骤中安装的MindSpeed和Megatron-LM不在gr_nv/目录下，则需将run.sh中的MINDSPEED_DIR/MEGATRON_DIR的值替换为实际MindSpeed/Megatron-LM所在路径。
 
-修改后，执行如下命令运行模型：
 run.sh中的WORLD_SIZE和ASCEND_RT_VISIBLE_DEVICE为实际使用卡数和卡号，可根据实际情况修改。
 
 执行如下命令运行模型：
