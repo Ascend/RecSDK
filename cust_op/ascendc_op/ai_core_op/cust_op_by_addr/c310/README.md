@@ -111,7 +111,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
    参考[host侧算子实现](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0064.html)完成host侧实现相关准备。
 2. 参考[算子编译部署](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/opdevg/Ascendcopdevg/atlas_ascendc_10_0068.html)完成算子的编译部署，编译部署时需要开启算子的二进制编译功能：修改算子工程中的编译配置项文件CMakePresets.json，将
    ENABLE_BINARY_PACKAGE设置为True。编译部署时可将算子的二进制部署到当前环境，便于后续算子的调用。
-3. 检查API执行需要的头文件和库文件是否自动生成，针对Rec SDK，检查cust_op/ascendc_op/ai_core_op/cust_op_by_addr/c310/cust_op_by_addr/build_out/autogen（Ascend 950PR&950DT系列产品环境是这个目录，A2环境下需要将这个目录中的c310替换成v220）目录下，是否有
+3. 检查API执行需要的头文件和库文件是否自动生成，针对Rec SDK，检查cust_op/ascendc_op/ai_core_op/cust_op_by_addr/c310/cust_op_by_addr/build_out/autogen（Ascend 950PR&950DT系列产品环境是这个目录，Atlas A2训练系列产品环境下需要将这个目录中的c310替换成v220）目录下，是否有
    aclnn_embedding_lookup_by_address.cpp和aclnn_embedding_lookup_by_address.h等。
 
 Ascend 950PR&950DT系列产品环境下：
@@ -120,7 +120,7 @@ Ascend 950PR&950DT系列产品环境下：
 bash run.sh --aicore c310
 ```
 
-A2环境下：
+Atlas A2训练系列产品环境下：
 
 ```shell
 bash run.sh

@@ -8,12 +8,16 @@ build_ai_core_op.sh 脚本用于统一编译Ascend平台的RecSDK定制算子，
 cd RecSDK/cust_op/ascendc_op/build
 bash build_ai_core_op.sh [ver] [rebuild_all] [error_mode]
 
-e.g. 'bash build_ai_core_op.sh A2 false continue' 表示编译A2版本算子，跳过已编译成功的算子，并在编译过程中遇到错误时记录失败的算子但继续编译剩余算子
+e.g. 'bash build_ai_core_op.sh A2 false continue' 表示编译支持Atlas A2训练系列产品的对应算子，跳过已编译成功的算子，并在编译过程中遇到错误时记录失败的算子但继续编译剩余算子
 ```
 
 参数说明：
 
-- ver：编译版本，支持A2、A2-TF、A3、A5、310P，必填项
+- ver：编译版本，支持A2、A2-TF、A3、A5、310P，必填项。带`TF`字样表示支持TensorFlow框架调用，否则为支持PyTorch框架调用。不同参数对应的硬件产品如下：
+    - A2/A2-TF：Atlas A2训练系列产品
+    - A3：Atlas A3训练系列产品
+    - A5：Atlas A5训练系列产品
+    - 310P：Ascend 推理系列产品
 - rebuild_all：是否重新编译已编译成功的算子，默认为true，设置为false后会跳过已编译成功的算子，减少编译时间，选填项
 - error_mode：编译错误处理模式，默认为exit，设置为exit表示在编译过程中遇到错误时立即退出脚本，设置为continue表示在编译过程中遇到错误时记录失败的算子但继续编译剩余算子，选填项
 

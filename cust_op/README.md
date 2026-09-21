@@ -31,20 +31,20 @@ cust_op
 
 更多详情可以参考CANN官方的Ascend C算子开发手册[Ascend C算子开发](https://www.hiascend.com/document/detail/zh/canncommercial/80RC2/developmentguide/opdevg/Ascendcopdevg/atlas_ascendc_10_0001.html)。
 
-## 版本配套说明
-
-当前支持两种软件版本配套：PyTorch 2.7.1和PyTorch2.10.0。调用算子前需完成配套软件的安装和所需算子的安装。详细配套关系如下：
-
-| 配套版本  | PyTorch | TorchNPU | torchrec  | fbgemm_gpu | hybrid_torchrec |
-|-------|---------|-----------|-----------|------------|-----------------|
-| 配套版本1 | 2.7.1+cpu   | 2.7.1    | 1.2.0+npu | 1.2.0+cpu | 1.2.0         |
-| 配套版本2 | 2.10.0+cpu  | 2.10.0   | 1.5.0+npu | 1.5.0+cpu | 1.5.0         |
-
 ## 编译自定义算子
 
 在26.1.0及之前版本，torch_rec_v1框架中采用编译算子 + 算子适配层（libfbgemm_npu_api.so）的方式使用自定义算子。
 
 在26.2.0及之后版本，torch_rec_v1框架中采用导入rec_cust_ops + [fbgemm_ascend](https://gitcode.com/Ascend/fbgemm-ascend)的方式使用自定义算子。
+
+算子包和torch_rec_v1框架的配套关系如下：
+
+| 配套版本  | PyTorch    | TorchNPU | torchrec  | fbgemm_gpu | fbgemm_ascend | rec_cust_ops | hybrid_torchrec |
+| --------- | ---------- | -------- | --------- | ---------- | ------------- | ------------ | --------------- |
+| 配套版本1 | 2.7.1+cpu  | 2.7.1    | 1.2.0+npu | 1.2.0+cpu  | 1.2.0         | 2.7.1        | 1.2.0           |
+| 配套版本2 | 2.10.0+cpu | 2.10.0   | 1.5.0+npu | 1.5.0+cpu  | 1.5.0         | 2.10.0       | 1.5.0           |
+
+在对应PyTorch版本环境下编译出来的算子包即为适配对应配套版本。例如在PyTorch 2.7.1环境下编译出来的rec_cust_ops算子包即适配配套版本1。
 
 ### 26.2.0及之后版本算子编译<a id="build_recsdk_cust_ops"></a>
 
