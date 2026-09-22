@@ -1593,7 +1593,7 @@
 +            dcp.save(
 +                checkpoint,
 +                checkpoint_id=os.path.join(self.save_path, "decision_transformer_dcp"),
-+                no_dist=True,
++                no_dist=False,
 +            )
 +            return
 +
