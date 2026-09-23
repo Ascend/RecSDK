@@ -89,6 +89,7 @@ python run.py xxx.json --eager
 |NCF|[NCF.json](configs/NCF.json)|
 |NFM|[NFM.json](configs/NFM.json)|
 |ONN|[ONN.json](configs/ONN.json)|
+|OpenP5|[OpenP5.json](configs/OpenP5.json)|
 |PLE|[PLE.json](configs/PLE.json)|
 |PNN|[PNN.json](configs/PNN.json)|
 |RANKMIXER|[RANKMIXER.json](configs/RANKMIXER.json)|
@@ -394,4 +395,159 @@ amazon books数据集处理参考开源代码[HSTU\_META](https://github.com/met
    |-- datasets
        |-- rankmixer
            |-- sasrec_format.csv
+```
+
+## OpenP5 模型
+
+### 适配范围
+
+- 上游仓库：<https://github.com/agiresearch/OpenP5>
+- 固定 commit：`7f110389cd5ab51820e29e94a44b6db83df243fb`
+- 适配 patch：`patches/openp5_npu.patch`
+- 配置文件：`configs/OpenP5.json`
+- 模型：`t5-small` revision
+  `df1b051c49625cf57a3d0d8d3863ed4d13564fe4`
+- 数据集：OpenP5 官方 ML-1M
+- 任务：`sequential,straightforward`
+
+Patch 新增 CUDA/torch_npu benchmark 入口、单卡与 HCCL/DDP 多卡执行、固定
+checksum 的资产准备、逐 optimizer-step loss 和同步时延统计。
+
+### 环境与依赖
+
+已验证环境为 Atlas 800T A3（`Ascend910_9382`）、CANN 9.0、Python 3.11.15、
+PyTorch 2.7.1 和 torch_npu 2.7.1。请先安装与 CANN 匹配的 PyTorch/torch_npu；
+以下命令不会安装或替换 PyTorch、torch_npu、CANN 和驱动：
+
+```shell
+python -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple \
+  transformers==4.26.0 safetensors==0.8.0 sentencepiece==0.2.2 \
+  scikit-learn==1.7.2 scipy==1.15.3
+```
+
+### RecSDK 默认启动
+
+在 `benchmark/` 目录执行：
+
+```shell
+python run.py OpenP5.json --eager
+```
+
+`OpenP5.json` 会完成以下操作：
+
+1. clone OpenP5 并 checkout 固定 commit；
+2. 应用 `patches/openp5_npu.patch`；
+3. 执行 `python adaptation/prepare_assets.py` 准备固定版本的 T5-small 和 ML-1M；
+4. 在逻辑设备 `0..7` 启动 T5 BF16 8P 性能 workload。
+
+默认 workload 的 global batch 为 128，每 rank microbatch 为 16，gradient
+accumulation 为 1，共运行 220 个 optimizer steps；排除 steps 1..20 后统计
+steps 21..220。运行前须通过 `npu-smi info` 确认八张卡空闲。如物理设备编号不是
+`0..7`，先设置可见设备，将选中的八张物理卡映射为逻辑设备 `0..7`：
+
+```shell
+export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+```
+
+受限网络可在运行 `run.py` 前设置任务环境允许的 HTTP/HTTPS proxy，并使用：
+
+```shell
+export HF_ENDPOINT=https://hf-mirror.com
+```
+
+离线环境可准备以下目录，并在模型目录中导入：
+
+```text
+<asset-root>/
+|-- t5-small/
+`-- data/ML1M/
+```
+
+```shell
+python adaptation/prepare_assets.py --source-root <asset-root>
+```
+
+### T5 三精度单卡复现
+
+在 `benchmark/models/OpenP5/` 目录中，选择一张空闲物理 NPU 并映射为逻辑
+`npu:0`：
+
+```shell
+export ASCEND_RT_VISIBLE_DEVICES=0
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+
+run_t5_accuracy() {
+  precision=$1
+  learning_rate=$2
+  output=$3
+  python src/src_t5/benchmark_npu.py \
+    --device npu --device_ids 0 --precision "$precision" \
+    --backbone adaptation/assets/t5-small \
+    --datasets ML1M --tasks sequential,straightforward \
+    --item_indexing sequential --data_path adaptation/assets/data \
+    --prompt_file prompt.txt --sample_prompt 1 --sample_num 1,1 --max_his 20 \
+    --global_batch_size 8 --gradient_accumulation_steps 1 \
+    --max_optimizer_steps 1000 --scheduler_steps 1000 --warmup_prop 0.05 \
+    --measurement_warmup_steps 20 --grad_scaler_init_scale 1.0 \
+    --optimizer sgd --sgd_momentum 0 --lr "$learning_rate" --weight_decay 0.01 \
+    --clip 1 --dropout 0.0 --random_initialize 1 --logging_step 200 \
+    --output_dir "$output" --run_name "a3_t5_accuracy_${precision}"
+}
+
+run_t5_accuracy float32 0.0001 adaptation/evidence/t5_accuracy_npu_float32
+run_t5_accuracy float16 0.00001 adaptation/evidence/t5_accuracy_npu_float16
+run_t5_accuracy bfloat16 0.0001 adaptation/evidence/t5_accuracy_npu_bfloat16
+```
+
+H100 对照使用相同参数，仅把 `--device npu` 改为 `--device cuda` 并设置
+`CUDA_VISIBLE_DEVICES`。两端固定源码、checkpoint/init、seed、样本顺序、global
+batch、SGD、scheduler 和 gradient accumulation；每行 `steps.jsonl` 对应一次完整
+optimizer update，不是 microstep。精度验收采用无动量 SGD，避免 AdamW 二阶矩归一化
+放大设备间的梯度舍入差异；默认性能 workload 仍使用 AdamW。正常的 50-step warmup
+后进入衰减段，不使用大 epsilon 或全程 warmup 抑制参数更新。FP16 如发生 overflow
+会立即终止，避免把跳过更新的 microstep 计作 optimizer step；本次两端均完成 1000 步。
+
+|精度|1000-step loss MAE|严格门槛|最大绝对误差|结果|
+|--|--:|--:|--:|--|
+|FP32|`2.8099537e-5`|`<1e-4`|`2.1076202e-4`（step 864）|PASS|
+|FP16|`7.9107475e-4`|`<1e-3`|`2.7289391e-2`（step 45）|PASS|
+|BF16|`6.2802196e-3`|`<1e-2`|`1.2673664e-1`（step 11）|PASS|
+
+### T5 性能结果
+
+性能为 BF16、global batch 128；每个 optimizer step 前后同步设备。计时包含
+H2D、forward、backward、gradient clipping、AdamW 和 scheduler，不包含 CPU
+dataset lookup/tokenization；8P 取所有 rank 的最大时间。
+
+|模式|World size|每 rank microbatch|Mean ms/step|Median ms/step|Stddev ms|P99 ms|P999 ms|
+|--|--:|--:|--:|--:|--:|--:|--:|
+|H100 1P|1|128|59.471|61.551|2.992|65.637|67.448|
+|A3 1P|1|128|78.967|85.755|18.803|99.304|99.305|
+|A3 8P|8|16|100.206|99.367|14.125|123.851|138.268|
+
+固定 global batch 下，A3 8P 比 A3 1P 慢约 26.9%。T5 每 rank microbatch 降为
+16 后，计算量不足以覆盖 HCCL all-reduce、同步和最慢 rank 尾延迟，因此不宣称
+当前 workload 具有 8P 加速。
+
+### 输出说明
+
+每个 benchmark 输出目录包含：
+
+- `manifest.json`：设备、精度、batch 和测量窗口；
+- `steps.jsonl`：逐 optimizer-step loss、同步时延和输入 hash；
+- `summary.json`：排除 warmup 后的 mean、median、stddev、P90、P95、P99 和
+  P999。
+
+同时会将标准性能指标追加到
+`benchmark/models/save_results_<device>/performance_result.txt`。如需采集
+profiling，将 `configs/OpenP5.json` 中的 `profiling_flag` 改为 `true` 后单独运行；
+结果保存在 `benchmark/models/profiling/OpenP5/<device>/`，该次运行不用于正式
+性能对比。
+
+数值验收前必须先核对 GPU/NPU manifest 和每步 input hash，再按显式
+`optimizer_step` 计算前 1000 步：
+
+```text
+MAE = mean(abs(npu_loss[i] - gpu_loss[i]))
 ```
