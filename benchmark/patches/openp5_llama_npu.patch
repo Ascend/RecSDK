@@ -1,0 +1,854 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..1b2b1ad
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,5 @@
++adaptation/assets/
++adaptation/deps/
++adaptation/evidence/
++__pycache__/
++*.pyc
+diff --git a/adaptation/prepare_llama_assets.py b/adaptation/prepare_llama_assets.py
+new file mode 100644
+index 0000000..0e4d637
+--- /dev/null
++++ b/adaptation/prepare_llama_assets.py
+@@ -0,0 +1,112 @@
++"""Prepare checksum-pinned OpenLLaMA 3B v2 and OpenP5 ML-1M assets."""
++
++import argparse
++import hashlib
++import os
++import shutil
++import urllib.error
++import urllib.request
++from pathlib import Path
++
++
++MODEL_REVISION = "438acbcd9f8227aaddf615fca50b95c2f5b506d3"
++MODEL_BASE_URL = f"https://www.modelscope.cn/models/openlm-research/open_llama_3b_v2/resolve/{MODEL_REVISION}"
++MODEL_SHA256 = {
++    "config.json": "c92b16f305e2a41c27bcc8ff882499f3c9fe7253ca1eeda2573850d7998ee2af",
++    "generation_config.json": "1178f82937d00cf2b805a74c57d9eaad593ba4ec34c45b2538cbb1ddf9d4e98a",
++    "pytorch_model.bin": "32268cfa47263b8abef86c9238e3ec7d64faabde504413b8e0a4d56002d76ec0",
++    "special_tokens_map.json": "3833453daeb8222e7a04fc85758cfe429dab30f5fc901d18d389105c501784ad",
++    "tokenizer.model": "91b289e85fa20fd375d8b33dc12f77616f18abc6359804471d1fafcb425fecb8",
++    "tokenizer_config.json": "5a979515b1e98186bdceb56439d17f24bfa68baa669e50e150cc3933c07da3a2",
++}
++DATA_URL = (
++    "https://drive.usercontent.google.com/download?id=1beb14fh-lPxd-yKLU1KVCIP2HuKvKNF3&export=download&confirm=t"
++)
++DATA_SHA256 = "48173f671aad6240aa765f4a5e0e97fb1a0bd9688001be6b7bca59a67dcaf46c"
++
++
++def parse_args():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--asset-root", default="adaptation/assets")
++    parser.add_argument("--source-root", default=os.getenv("OPENP5_ASSET_SOURCE"))
++    return parser.parse_args()
++
++
++def sha256_file(path):
++    digest = hashlib.sha256()
++    with Path(path).open("rb") as stream:
++        for block in iter(lambda: stream.read(1024 * 1024), b""):
++            digest.update(block)
++    return digest.hexdigest()
++
++
++def copy_prepared(source_root, asset_root):
++    for relative in (Path("open_llama_3b_v2"), Path("data/ML1M")):
++        source = Path(source_root) / relative
++        if not source.is_dir():
++            raise FileNotFoundError(f"Prepared asset directory not found: {source}")
++        destination = asset_root / relative
++        destination.mkdir(parents=True, exist_ok=True)
++        for path in source.iterdir():
++            if path.is_file():
++                shutil.copy2(path, destination / path.name)
++
++
++def download(url, destination, expected):
++    temporary = destination.with_suffix(destination.suffix + ".download")
++    if temporary.exists() and sha256_file(temporary) == expected:
++        temporary.replace(destination)
++        return
++    offset = temporary.stat().st_size if temporary.exists() else 0
++    request = urllib.request.Request(url)
++    if offset:
++        request.add_header("Range", f"bytes={offset}-")
++    try:
++        response = urllib.request.urlopen(request, timeout=300)
++    except urllib.error.HTTPError as exc:
++        if exc.code != 416 or not offset:
++            raise
++        temporary.unlink()
++        return download(url, destination, expected)
++    with response:
++        if offset and response.status != 206:
++            temporary.unlink()
++            return download(url, destination, expected)
++        content_type = response.headers.get_content_type()
++        if content_type in {"text/html", "application/xhtml+xml"}:
++            raise ValueError(f"Unexpected download content type {content_type}: {url}")
++        if offset and not response.headers.get("Content-Range", "").startswith(f"bytes {offset}-"):
++            raise ValueError(f"Invalid Content-Range for resumed download: {url}")
++        with temporary.open("ab" if offset else "wb") as output:
++            shutil.copyfileobj(response, output)
++    temporary.replace(destination)
++
++
++def main():
++    args = parse_args()
++    asset_root = Path(args.asset_root)
++    if args.source_root:
++        copy_prepared(args.source_root, asset_root)
++    model_root = asset_root / "open_llama_3b_v2"
++    data_root = asset_root / "data/ML1M"
++    model_root.mkdir(parents=True, exist_ok=True)
++    data_root.mkdir(parents=True, exist_ok=True)
++    for filename, expected in MODEL_SHA256.items():
++        path = model_root / filename
++        if not path.exists():
++            download(f"{MODEL_BASE_URL}/{filename}", path, expected)
++        actual = sha256_file(path)
++        if actual != expected:
++            raise ValueError(f"Checksum mismatch for {path}: {actual}")
++    sequence = data_root / "user_sequence.txt"
++    if not sequence.exists():
++        download(DATA_URL, sequence, DATA_SHA256)
++    actual = sha256_file(sequence)
++    if actual != DATA_SHA256:
++        raise ValueError(f"Checksum mismatch for {sequence}: {actual}")
++    print(f"Validated OpenLLaMA assets in {model_root}")
++    print(f"Validated ML-1M assets in {data_root}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/src_llama/benchmark_llama_npu.py b/src/src_llama/benchmark_llama_npu.py
+new file mode 100644
+index 0000000..4140d7a
+--- /dev/null
++++ b/src/src_llama/benchmark_llama_npu.py
+@@ -0,0 +1,719 @@
++"""Native CUDA/torch_npu OpenP5 OpenLLaMA LoRA benchmark."""
++
++import argparse
++import bisect
++import hashlib
++import json
++import logging
++import math
++import os
++import random
++import time
++from contextlib import nullcontext
++from pathlib import Path
++
++os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
++os.environ.setdefault("HCCL_DETERMINISTIC", "True")
++
++import numpy as np
++import torch
++import torch.distributed as dist
++import torch.multiprocessing as mp
++from peft import LoraConfig, get_peft_model
++from torch.nn.parallel import DistributedDataParallel as DDP
++from transformers import AutoModelForCausalLM, AutoTokenizer
++from transformers.optimization import get_linear_schedule_with_warmup
++
++
++LOGGER = logging.getLogger("openp5_llama_benchmark")
++MODEL_NAME = "OpenP5_LLaMA"
++BASE_COMMIT = "7f110389cd5ab51820e29e94a44b6db83df243fb"
++MODEL_REVISION = "bce5d60d3b0c68318862270ec4e794d83308d80a"
++MODEL_SHA256 = "32268cfa47263b8abef86c9238e3ec7d64faabde504413b8e0a4d56002d76ec0"
++
++
++def parse_args():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--device", choices=("cpu", "cuda", "npu"), required=True)
++    parser.add_argument("--device_ids", default="0")
++    parser.add_argument("--master_addr", default="127.0.0.1")
++    parser.add_argument("--master_port", default="29820")
++    parser.add_argument("--precision", choices=("float32", "float16", "bfloat16"), default="bfloat16")
++    parser.add_argument("--model_path", required=True)
++    parser.add_argument("--data_path", required=True)
++    parser.add_argument("--dataset", default="ML1M")
++    parser.add_argument("--tasks", default="sequential,straightforward")
++    parser.add_argument("--prompt_file", default="prompt.txt")
++    parser.add_argument("--max_his", type=int, default=10)
++    parser.add_argument("--cutoff", type=int, default=512)
++    parser.add_argument("--seed", type=int, default=2023)
++    parser.add_argument("--global_batch_size", type=int, default=1)
++    parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
++    parser.add_argument("--max_optimizer_steps", type=int, default=1000)
++    parser.add_argument("--scheduler_steps", type=int, default=1000)
++    parser.add_argument("--scheduler_warmup_steps", type=int, default=50)
++    parser.add_argument("--measurement_warmup_steps", type=int, default=20)
++    parser.add_argument("--learning_rate", type=float, default=1e-3)
++    parser.add_argument("--optimizer", choices=("adamw", "sgd"), default="adamw")
++    parser.add_argument("--sgd_momentum", type=float, default=0.0)
++    parser.add_argument("--adam_epsilon", type=float, default=1e-6)
++    parser.add_argument("--weight_decay", type=float, default=0.01)
++    parser.add_argument("--clip", type=float, default=1.0)
++    parser.add_argument("--grad_scaler_init_scale", type=float, default=1.0)
++    parser.add_argument("--lora_r", type=int, default=8)
++    parser.add_argument("--lora_alpha", type=int, default=16)
++    parser.add_argument("--lora_targets", default="q_proj,v_proj,embed_tokens")
++    parser.add_argument("--logging_step", type=int, default=50)
++    parser.add_argument(
++        "--profiling",
++        action="store_true",
++        default=os.getenv("MODEL_PROFILING_FLAG", "False").lower() == "true",
++    )
++    parser.add_argument("--output_dir", required=True)
++    parser.add_argument("--run_name", required=True)
++    parser.add_argument("--source_base_commit", default=BASE_COMMIT)
++    return parser.parse_args()
++
++
++def sha256_file(path):
++    digest = hashlib.sha256()
++    with Path(path).open("rb") as stream:
++        for block in iter(lambda: stream.read(1024 * 1024), b""):
++            digest.update(block)
++    return digest.hexdigest()
++
++
++def tensor_sha256(tensor):
++    value = tensor.detach().cpu().contiguous()
++    digest = hashlib.sha256()
++    digest.update(str(value.dtype).encode("ascii"))
++    digest.update(json.dumps(list(value.shape)).encode("ascii"))
++    digest.update(value.numpy().tobytes())
++    return digest.hexdigest()
++
++
++def set_determinism(seed, device_type):
++    random.seed(seed)
++    np.random.seed(seed)
++    torch.manual_seed(seed)
++    if device_type == "cuda":
++        torch.cuda.manual_seed_all(seed)
++        torch.backends.cuda.matmul.allow_tf32 = False
++        torch.backends.cudnn.allow_tf32 = False
++        torch.backends.cudnn.benchmark = False
++        torch.backends.cudnn.deterministic = True
++        torch.use_deterministic_algorithms(True)
++    elif device_type == "npu":
++        torch.npu.manual_seed_all(seed)
++        if hasattr(torch.npu, "set_deterministic_level"):
++            torch.npu.set_deterministic_level(1)
++        if hasattr(torch.npu, "matmul"):
++            torch.npu.matmul.allow_hf32 = False
++        if hasattr(torch.npu, "conv"):
++            torch.npu.conv.allow_hf32 = False
++    else:
++        torch.use_deterministic_algorithms(True)
++
++
++def select_device(device_type, device_id):
++    if device_type == "cuda":
++        torch.cuda.set_device(device_id)
++        return torch.device("cuda", device_id)
++    if device_type == "npu":
++        import torch_npu
++
++        torch_npu.npu.set_device(device_id)
++        return torch.device("npu", device_id)
++    return torch.device("cpu")
++
++
++def synchronize(device_type):
++    if device_type == "cuda":
++        torch.cuda.synchronize()
++    elif device_type == "npu":
++        torch.npu.synchronize()
++
++
++def initialize_distributed(args, rank, world_size):
++    if world_size == 1:
++        return
++    os.environ.setdefault("MASTER_ADDR", args.master_addr)
++    os.environ.setdefault("MASTER_PORT", args.master_port)
++    backend = "hccl" if args.device == "npu" else "nccl"
++    dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
++
++
++def read_lines(path):
++    with Path(path).open("r", encoding="utf-8") as stream:
++        return [line.rstrip("\n") for line in stream]
++
++
++def load_prompt_templates(path, tasks):
++    result = {task: [] for task in tasks}
++    for line in read_lines(path):
++        fields = [field.strip() for field in line.split(";")]
++        if len(fields) != 4:
++            continue
++        task, split, prompt_input, prompt_output = fields
++        if task in result and split == "seen":
++            result[task].append((prompt_input, prompt_output))
++    missing = [task for task, templates in result.items() if not templates]
++    if missing:
++        raise ValueError(f"Missing seen prompt templates: {missing}")
++    return {task: templates[0] for task, templates in result.items()}
++
++
++def portable_random_reindex(user_sequence_path, seed):
++    raw_users = []
++    all_items = set()
++    for line in read_lines(user_sequence_path):
++        fields = line.split()
++        if len(fields) < 2:
++            continue
++        raw_users.append((fields[0], fields[1:]))
++        all_items.update(fields[1:])
++    ordered_items = sorted(all_items, key=lambda value: int(value))
++    random.Random(seed).shuffle(ordered_items)
++    item_map = {item: str(index + 1001) for index, item in enumerate(ordered_items)}
++    users = []
++    for user_index, (_, items) in enumerate(raw_users, start=1):
++        users.append((str(user_index), [item_map[item] for item in items]))
++    return users
++
++
++class LlamaSampleDataset:
++    def __init__(self, users, tasks, templates, max_his):
++        self.users = users
++        self.tasks = tasks
++        self.templates = templates
++        self.max_his = max_his
++        self.cumulative = []
++        total = 0
++        for _, sequence in users:
++            total += max(len(sequence[:-2]) - 1, 0)
++            self.cumulative.append(total)
++        self.base_samples = total
++
++    def __len__(self):
++        return self.base_samples * len(self.tasks)
++
++    def render(self, index):
++        task_index, sample_index = divmod(index, self.base_samples)
++        user_position = bisect.bisect_right(self.cumulative, sample_index)
++        previous = self.cumulative[user_position - 1] if user_position else 0
++        target_position = sample_index - previous + 1
++        user_id, full_sequence = self.users[user_position]
++        train_items = full_sequence[:-2]
++        target = f"item_{train_items[target_position]}"
++        history_items = train_items[:target_position]
++        if self.max_his > 0:
++            history_items = history_items[-self.max_his :]
++        values = {
++            "dataset": "ML1M",
++            "user_id": user_id,
++            "target": target,
++            "history": " , ".join(f"item_{item}" for item in history_items),
++        }
++        task = self.tasks[task_index]
++        input_template, output_template = self.templates[task]
++        return {
++            "task": task,
++            "input": input_template.format(**values),
++            "output": output_template.format(**values),
++        }
++
++
++def permutation_parameters(seed, pool_index, cycle, length):
++    if length <= 1:
++        return 0, 1
++    generator = random.Random(f"{seed}:{pool_index}:{cycle}")
++    start = generator.randrange(length)
++    stride = generator.randrange(1, length)
++    while math.gcd(stride, length) != 1:
++        stride = 1 if stride + 1 == length else stride + 1
++    return start, stride
++
++
++def build_global_schedule(dataset, optimizer_steps, accumulation_steps, global_microbatch, seed):
++    task_count = len(dataset.tasks)
++    positions = [0] * task_count
++    cycles = [0] * task_count
++    parameters = [permutation_parameters(seed, task, 0, dataset.base_samples) for task in range(task_count)]
++    schedule = []
++    for optimizer_step in range(optimizer_steps):
++        task = optimizer_step % task_count
++        for _ in range(accumulation_steps):
++            batch = []
++            for _ in range(global_microbatch):
++                if positions[task] == dataset.base_samples:
++                    cycles[task] += 1
++                    positions[task] = 0
++                    parameters[task] = permutation_parameters(seed, task, cycles[task], dataset.base_samples)
++                start, stride = parameters[task]
++                sample = (start + positions[task] * stride) % dataset.base_samples
++                positions[task] += 1
++                index = task * dataset.base_samples + sample
++                batch.append(index)
++            schedule.append(batch)
++    return schedule
++
++
++def initialize_number_tokens(model, tokenizer, seed):
++    token_ids = set()
++    for number in range(30000):
++        token_ids.update(token for token in tokenizer.encode(str(number)) if token not in (1, 3))
++    embedding = model.model.embed_tokens.weight
++    generator = np.random.RandomState(seed)
++    with torch.no_grad():
++        for token_id in sorted(token_ids):
++            row = generator.normal(0.0, 1.0, size=embedding.shape[1]).astype(np.float32)
++            embedding[token_id].copy_(torch.from_numpy(row))
++
++
++def initialize_lora_portably(model, seed):
++    generator = np.random.RandomState(seed + 1)
++    with torch.no_grad():
++        for name, parameter in sorted(model.named_parameters()):
++            if not parameter.requires_grad:
++                continue
++            if "lora_embedding_B" in name or ".lora_B." in name:
++                parameter.zero_()
++            elif "lora_embedding_A" in name or ".lora_A." in name:
++                fan_in = parameter.shape[1]
++                bound = 1.0 / math.sqrt(fan_in)
++                value = generator.uniform(-bound, bound, size=tuple(parameter.shape)).astype(np.float32)
++                parameter.copy_(torch.from_numpy(value))
++            else:
++                raise ValueError(f"Unexpected trainable parameter: {name}")
++
++
++def build_model(args, tokenizer):
++    model_root = Path(args.model_path)
++    weight_path = model_root / "pytorch_model.bin"
++    actual_weight_sha = sha256_file(weight_path)
++    if actual_weight_sha != MODEL_SHA256:
++        raise ValueError(f"OpenLLaMA weight checksum mismatch: {actual_weight_sha}")
++    model = AutoModelForCausalLM.from_pretrained(
++        model_root,
++        local_files_only=True,
++        torch_dtype=torch.float32,
++        low_cpu_mem_usage=True,
++    )
++    model.config.use_cache = False
++    initialize_number_tokens(model, tokenizer, args.seed)
++    model = get_peft_model(
++        model,
++        LoraConfig(
++            r=args.lora_r,
++            lora_alpha=args.lora_alpha,
++            target_modules=args.lora_targets.split(","),
++            lora_dropout=0.0,
++            bias="none",
++            task_type="CAUSAL_LM",
++        ),
++    )
++    initialize_lora_portably(model, args.seed)
++    model.enable_input_require_grads()
++    model.gradient_checkpointing_enable()
++    return model
++
++
++def tokenize_batch(tokenizer, rendered, cutoff):
++    rows = []
++    for sample in rendered:
++        prompt = f"{sample['input']} Response: "
++        full_text = f"{prompt}{sample['output']}"
++        prompt_ids = tokenizer(prompt, truncation=True, max_length=cutoff, add_special_tokens=True)["input_ids"]
++        input_ids = tokenizer(full_text, truncation=True, max_length=cutoff, add_special_tokens=True)["input_ids"]
++        if len(input_ids) < cutoff and input_ids[-1] != tokenizer.eos_token_id:
++            input_ids.append(tokenizer.eos_token_id)
++        labels = list(input_ids)
++        labels[: min(len(prompt_ids), len(labels))] = [-100] * min(len(prompt_ids), len(labels))
++        rows.append((input_ids, labels))
++    padded_length = math.ceil(max(len(input_ids) for input_ids, _ in rows) / 8) * 8
++    input_batch = []
++    label_batch = []
++    attention_batch = []
++    for input_ids, labels in rows:
++        padding = padded_length - len(input_ids)
++        input_batch.append([tokenizer.pad_token_id] * padding + input_ids)
++        label_batch.append([-100] * padding + labels)
++        attention_batch.append([0] * padding + [1] * len(input_ids))
++    return (
++        torch.tensor(input_batch, dtype=torch.long),
++        torch.tensor(attention_batch, dtype=torch.long),
++        torch.tensor(label_batch, dtype=torch.long),
++    )
++
++
++def batch_sha256(batches):
++    digest = hashlib.sha256()
++    for batch in batches:
++        for tensor in batch:
++            digest.update(tensor_sha256(tensor).encode("ascii"))
++    return digest.hexdigest()
++
++
++def index_sha256(indices):
++    digest = hashlib.sha256()
++    for index in indices:
++        digest.update(index.to_bytes(8, "little", signed=False))
++    return digest.hexdigest()
++
++
++def autocast_context(device_type, precision):
++    if precision == "float32":
++        return nullcontext()
++    dtype = torch.float16 if precision == "float16" else torch.bfloat16
++    return torch.autocast(device_type=device_type, dtype=dtype)
++
++
++def write_json(path, value):
++    path = Path(path)
++    path.parent.mkdir(parents=True, exist_ok=True)
++    temporary = path.with_suffix(path.suffix + ".tmp")
++    temporary.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
++    temporary.replace(path)
++
++
++def recsdk_models_root():
++    root = os.getenv("RECSDK_BENCHMARK_MODELS_ROOT")
++    if not root:
++        raise RuntimeError("RECSDK_BENCHMARK_MODELS_ROOT must point to benchmark/models")
++    return Path(root).expanduser().resolve()
++
++
++def init_profiler(args, rank):
++    if not args.profiling or rank != 0:
++        return None
++    profiler_dir = (recsdk_models_root() / "profiling" / MODEL_NAME / args.device).resolve()
++    profiler_dir.mkdir(parents=True, exist_ok=True)
++    remaining_steps = args.max_optimizer_steps - args.measurement_warmup_steps
++    warmup_steps = int(remaining_steps > 1)
++    active_steps = min(10, remaining_steps - warmup_steps)
++    if args.device == "npu":
++        import torch_npu
++
++        schedule = torch_npu.profiler.schedule(
++            wait=args.measurement_warmup_steps,
++            warmup=warmup_steps,
++            active=active_steps,
++            repeat=1,
++        )
++        experimental_config = torch_npu.profiler._ExperimentalConfig(
++            export_type=[torch_npu.profiler.ExportType.Text],
++            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++            data_simplification=False,
++        )
++        profiler = torch_npu.profiler.profile(
++            activities=[
++                torch_npu.profiler.ProfilerActivity.CPU,
++                torch_npu.profiler.ProfilerActivity.NPU,
++            ],
++            schedule=schedule,
++            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(str(profiler_dir)),
++            experimental_config=experimental_config,
++        )
++    else:
++        schedule = torch.profiler.schedule(
++            wait=args.measurement_warmup_steps,
++            warmup=warmup_steps,
++            active=active_steps,
++            repeat=1,
++        )
++        activities = [torch.profiler.ProfilerActivity.CPU]
++        if args.device == "cuda":
++            activities.append(torch.profiler.ProfilerActivity.CUDA)
++        profiler = torch.profiler.profile(
++            activities=activities,
++            schedule=schedule,
++            on_trace_ready=torch.profiler.tensorboard_trace_handler(str(profiler_dir)),
++        )
++    LOGGER.info("Profiler traces will be written to %s", profiler_dir)
++    return profiler
++
++
++def latency_summary(measured, args):
++    values = np.asarray(measured, dtype=np.float64)
++    result = {
++        "samples": len(measured),
++        "mean_ms": float(values.mean()),
++        "median_ms": float(np.median(values)),
++        "stddev_ms": float(values.std(ddof=1)) if len(values) > 1 else 0.0,
++        **{
++            name: float(np.percentile(values, percentile, method="lower"))
++            for name, percentile in (
++                ("p90_ms", 90),
++                ("p95_ms", 95),
++                ("p99_ms", 99),
++                ("p999_ms", 99.9),
++            )
++        },
++        "min_ms": float(values.min()),
++        "max_ms": float(values.max()),
++    }
++    result["training_samples_per_second"] = args.global_batch_size * 1000.0 / result["mean_ms"]
++    output_dir = recsdk_models_root() / f"save_results_{args.device}"
++    output_dir.mkdir(parents=True, exist_ok=True)
++    benchmark_result = {
++        "Batch_size": args.global_batch_size,
++        "model_name": MODEL_NAME,
++        "QPS": result["training_samples_per_second"],
++        "AVG Latency": result["mean_ms"],
++        "P999 Latency": result["p999_ms"],
++        "P99 Latency": result["p99_ms"],
++        "P95 Latency": result["p95_ms"],
++        "P90 Latency": result["p90_ms"],
++    }
++    with (output_dir / "performance_result.txt").open("a", encoding="utf-8") as stream:
++        stream.write(f"{args.device}_{MODEL_NAME}_eager_{benchmark_result}\n")
++    return result
++
++
++def validate_args(args, world_size):
++    denominator = world_size * args.gradient_accumulation_steps
++    if args.global_batch_size % denominator:
++        raise ValueError("global_batch_size must be divisible by world_size * accumulation")
++    if args.scheduler_steps < args.max_optimizer_steps:
++        raise ValueError("scheduler_steps must cover every optimizer step")
++    if args.scheduler_warmup_steps > args.scheduler_steps:
++        raise ValueError("scheduler warmup exceeds scheduler length")
++    if args.max_optimizer_steps <= args.measurement_warmup_steps:
++        raise ValueError("optimizer steps must exceed timing warmup")
++    if args.grad_scaler_init_scale <= 0:
++        raise ValueError("GradScaler initial scale must be positive")
++    if not 0.0 <= args.sgd_momentum < 1.0:
++        raise ValueError("sgd_momentum must be in [0, 1)")
++    if args.source_base_commit != BASE_COMMIT:
++        raise ValueError(f"Expected OpenP5 base commit {BASE_COMMIT}")
++
++
++def run_training(rank, world_size, device_ids, args):
++    validate_args(args, world_size)
++    device_id = device_ids[rank]
++    device = select_device(args.device, device_id)
++    initialize_distributed(args, rank, world_size)
++    set_determinism(args.seed, args.device)
++
++    tokenizer = AutoTokenizer.from_pretrained(args.model_path, local_files_only=True, legacy=True)
++    tokenizer.pad_token_id = 0
++    tokenizer.padding_side = "left"
++    tasks = args.tasks.split(",")
++    templates = load_prompt_templates(args.prompt_file, tasks)
++    sequence_path = Path(args.data_path) / args.dataset / "user_sequence.txt"
++    users = portable_random_reindex(sequence_path, args.seed)
++    dataset = LlamaSampleDataset(users, tasks, templates, args.max_his)
++    microbatch_per_rank = args.global_batch_size // (world_size * args.gradient_accumulation_steps)
++    global_microbatch = microbatch_per_rank * world_size
++    schedule = build_global_schedule(
++        dataset,
++        args.max_optimizer_steps,
++        args.gradient_accumulation_steps,
++        global_microbatch,
++        args.seed,
++    )
++
++    model = build_model(args, tokenizer)
++    model.to(device)
++    if world_size > 1:
++        model = DDP(model, device_ids=[device_id], broadcast_buffers=False, find_unused_parameters=False)
++
++    trainable_parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
++    if args.optimizer == "adamw":
++        optimizer = torch.optim.AdamW(
++            trainable_parameters,
++            lr=args.learning_rate,
++            eps=args.adam_epsilon,
++            weight_decay=args.weight_decay,
++            foreach=False,
++        )
++    else:
++        optimizer = torch.optim.SGD(
++            trainable_parameters,
++            lr=args.learning_rate,
++            momentum=args.sgd_momentum,
++            weight_decay=args.weight_decay,
++            foreach=False,
++        )
++    scheduler = get_linear_schedule_with_warmup(optimizer, args.scheduler_warmup_steps, args.scheduler_steps)
++    scaler_args = {"init_scale": args.grad_scaler_init_scale, "enabled": args.precision == "float16"}
++    if args.device == "npu":
++        import torch_npu
++
++        scaler = torch_npu.npu.amp.GradScaler(**scaler_args)
++    else:
++        scaler = torch.amp.GradScaler(args.device, **scaler_args)
++
++    output_dir = Path(args.output_dir)
++    if rank == 0:
++        output_dir.mkdir(parents=True, exist_ok=True)
++        write_json(
++            output_dir / "manifest.json",
++            {
++                "run_name": args.run_name,
++                "source_base_commit": args.source_base_commit,
++                "model_revision": MODEL_REVISION,
++                "device": args.device,
++                "device_ids": device_ids,
++                "precision": args.precision,
++                "seed": args.seed,
++                "world_size": world_size,
++                "microbatch_per_rank": microbatch_per_rank,
++                "gradient_accumulation_steps": args.gradient_accumulation_steps,
++                "global_batch_size": args.global_batch_size,
++                "optimizer_steps": args.max_optimizer_steps,
++                "optimizer": args.optimizer,
++                "learning_rate": args.learning_rate,
++                "weight_decay": args.weight_decay,
++                "scheduler_steps": args.scheduler_steps,
++                "scheduler_warmup_steps": args.scheduler_warmup_steps,
++                "measurement_warmup_steps": args.measurement_warmup_steps,
++                "adam_epsilon": args.adam_epsilon if args.optimizer == "adamw" else None,
++                "sgd_momentum": args.sgd_momentum if args.optimizer == "sgd" else None,
++                "profiling": args.profiling,
++            },
++        )
++
++    model.train()
++    optimizer.zero_grad(set_to_none=True)
++    records = []
++    profiler = init_profiler(args, rank)
++    if profiler:
++        profiler.start()
++    for optimizer_step in range(1, args.max_optimizer_steps + 1):
++        prepared_batches = []
++        global_batches = []
++        for accumulation_index in range(args.gradient_accumulation_steps):
++            schedule_index = (optimizer_step - 1) * args.gradient_accumulation_steps + accumulation_index
++            global_indices = schedule[schedule_index]
++            local_start = rank * microbatch_per_rank
++            local_indices = global_indices[local_start : local_start + microbatch_per_rank]
++            rendered = [dataset.render(index) for index in local_indices]
++            prepared_batches.append(tokenize_batch(tokenizer, rendered, args.cutoff))
++            global_batches.append(global_indices)
++
++        synchronize(args.device)
++        start_time = time.perf_counter()
++        local_loss = torch.zeros((), dtype=torch.float32, device=device)
++        learning_rate = optimizer.param_groups[0]["lr"]
++        for accumulation_index, cpu_batch in enumerate(prepared_batches):
++            input_ids, attention_mask, labels = (tensor.to(device, non_blocking=True) for tensor in cpu_batch)
++            should_sync = accumulation_index + 1 == args.gradient_accumulation_steps
++            sync_context = nullcontext() if should_sync or world_size == 1 else model.no_sync()
++            with sync_context:
++                with autocast_context(args.device, args.precision):
++                    loss = model(
++                        input_ids=input_ids,
++                        attention_mask=attention_mask,
++                        labels=labels,
++                        use_cache=False,
++                    ).loss
++                local_loss += loss.detach().float() / args.gradient_accumulation_steps
++                scaler.scale(loss / args.gradient_accumulation_steps).backward()
++
++        scaler.unscale_(optimizer)
++        if args.clip > 0:
++            torch.nn.utils.clip_grad_norm_(
++                [parameter for parameter in model.parameters() if parameter.requires_grad],
++                args.clip,
++                foreach=False,
++            )
++        if scaler.is_enabled():
++            scale_before = scaler.get_scale()
++            scaler.step(optimizer)
++            scaler.update()
++            if scaler.get_scale() < scale_before:
++                raise RuntimeError("Gradient overflow skipped an optimizer update")
++        else:
++            optimizer.step()
++        scheduler.step()
++        optimizer.zero_grad(set_to_none=True)
++        synchronize(args.device)
++        latency_ms = (time.perf_counter() - start_time) * 1000.0
++
++        reduced_loss = local_loss.clone()
++        reduced_latency = torch.tensor(latency_ms, dtype=torch.float32, device=device)
++        if world_size > 1:
++            dist.all_reduce(reduced_loss, op=dist.ReduceOp.SUM)
++            reduced_loss /= world_size
++            dist.all_reduce(reduced_latency, op=dist.ReduceOp.MAX)
++        if rank == 0:
++            flat_indices = [index for batch in global_batches for index in batch]
++            record = {
++                "optimizer_step": optimizer_step,
++                "loss": float(reduced_loss.cpu()),
++                "latency_ms": float(reduced_latency.cpu()),
++                "learning_rate": learning_rate,
++                "global_batch_sha256": index_sha256(flat_indices),
++                "rank0_input_batch_sha256": batch_sha256(prepared_batches),
++                "warmup": optimizer_step <= args.measurement_warmup_steps,
++            }
++            records.append(record)
++            if optimizer_step == 1 or optimizer_step % args.logging_step == 0:
++                LOGGER.info(
++                    "optimizer_step=%d loss=%.8f latency_ms=%.3f",
++                    optimizer_step,
++                    record["loss"],
++                    record["latency_ms"],
++                )
++        if profiler:
++            profiler.step()
++
++    if profiler:
++        profiler.stop()
++
++    if rank == 0:
++        with (output_dir / "steps.jsonl").open("w", encoding="utf-8") as stream:
++            for record in records:
++                stream.write(json.dumps(record, sort_keys=True) + "\n")
++        measured = [record["latency_ms"] for record in records if not record["warmup"]]
++        measurement = latency_summary(measured, args)
++        measurement.update(
++            {
++                "unit": "ms/optimizer-step",
++                "timed_region": (
++                    "H2D + forward + backward + gradient clipping + "
++                    f"{args.optimizer.upper()} + scheduler"
++                ),
++                "distributed_reduction": "rank-max" if world_size > 1 else "local",
++                "warmup_steps": args.measurement_warmup_steps,
++                "first_measured_optimizer_step": args.measurement_warmup_steps + 1,
++                "last_measured_optimizer_step": args.max_optimizer_steps,
++            }
++        )
++        summary = {
++            "run_name": args.run_name,
++            "status": "complete",
++            "optimizer_steps": len(records),
++            "measurement": measurement,
++        }
++        write_json(output_dir / "summary.json", summary)
++        print(json.dumps(summary, indent=2, sort_keys=True))
++
++    if world_size > 1:
++        dist.barrier()
++        dist.destroy_process_group()
++
++
++def main():
++    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
++    args = parse_args()
++    device_ids = [int(value) for value in args.device_ids.split(",") if value.strip()]
++    if args.device == "cpu":
++        device_ids = [0]
++    if len(device_ids) == 1:
++        run_training(0, 1, device_ids, args)
++        return
++    os.environ["HF_HUB_OFFLINE"] = "1"
++    os.environ["TRANSFORMERS_OFFLINE"] = "1"
++    mp.spawn(
++        run_training,
++        args=(len(device_ids), device_ids, args),
++        nprocs=len(device_ids),
++        join=True,
++    )
++
++
++if __name__ == "__main__":
++    main()
