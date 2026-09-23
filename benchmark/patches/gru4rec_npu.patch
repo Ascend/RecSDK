@@ -305,10 +305,10 @@ index 7058de8..2003baf 100644
          self.device = device
 diff --git a/retailrocket_preproc.py b/retailrocket_preproc.py
 new file mode 100644
-index 0000000..4386404
+index 0000000..06c31ba
 --- /dev/null
 +++ b/retailrocket_preproc.py
-@@ -0,0 +1,234 @@
+@@ -0,0 +1,238 @@
 +import numpy as np
 +import pandas as pd
 +import gc
@@ -328,6 +328,10 @@ index 0000000..4386404
 +
 +def download_retailrocket_to(path: str) -> None:
 +    """使用 kagglehub 下载 retailrocket/ecommerce-dataset，将 events.csv 放入 path。"""
++    events_csv = os.path.join(path, "events.csv")
++    if os.path.exists(events_csv):
++        print(f"{events_csv} already exists, skip download")
++        return
 +    try:
 +        import kagglehub
 +    except ImportError as e:
@@ -1053,4 +1057,4 @@ index fb6d043..fe01f02 100644
 -            print('PRIMARY METRIC: {}'.format([x for x in res[pm_index].values()][0]))
 +    args = parser.parse_args()
 +    main(args)
-
+ 
