@@ -13,17 +13,17 @@ Rec SDK TensorFlow为用户提供了稀疏表创建、稀疏表查询、保存�
 
 - 稀疏表创建
 
-    Rec SDK Tensorflow训练框架支持稀疏表创建功能，可通过[稀疏表创建](../05_api/03_model_apis.md#get_embedding_table)接口查看功能和使用实例。
+    Rec SDK TensorFlow训练框架支持稀疏表创建功能，可通过[稀疏表创建](../05_api/03_model_apis.md#get_embedding_table)接口查看功能和使用实例。
 
 - 稀疏表查询
 
-    Rec SDK Tensorflow训练框架支持稀疏表查询功能，可通过[稀疏表查询](../05_api/03_model_apis.md#embedding_lookup)接口查看功能和使用实例。
+    Rec SDK TensorFlow训练框架支持稀疏表查询功能，可通过[稀疏表查询](../05_api/03_model_apis.md#embedding_lookup)接口查看功能和使用实例。
 
 - 保存与加载
 
     深度学习中的保存与加载是将训练好的模型参数持久化存储，并在需要时恢复使用的过程。保存通常包含模型架构、权重和优化器状态，加载则恢复模型到可用状态，实现训练中断续训或部署推理。
 
-    Rec SDK Tensorflow训练框架支持稀疏表保存与加载功能，可通过[保存与加载](../05_api/03_model_apis.md#embeddingtablesaver)接口查看功能和使用实例。
+    Rec SDK TensorFlow训练框架支持稀疏表保存与加载功能，可通过[保存与加载](../05_api/03_model_apis.md#embeddingtablesaver)接口查看功能和使用实例。
 
 - 特征准入与淘汰
 

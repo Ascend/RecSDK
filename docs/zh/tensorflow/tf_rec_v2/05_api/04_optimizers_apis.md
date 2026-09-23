@@ -77,4 +77,4 @@ with tf.compat.v1.Session() as sess:
 
 >[!NOTE] 说明
 >
->- `apply_gradients`方法可参考开源Tensorflow优化器的用法。
+>- `apply_gradients`方法可参考开源TensorFlow优化器的用法。

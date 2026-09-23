@@ -797,13 +797,13 @@ CMD_ROOT_PATH = '/usr/local/Ascend'
 1. 启动PrecisionTool交互命令行：
 
     ```bash
-    python3 ./precision\_tool/cli.py
+    python3 ./precision_tool/cli.py
     ```
 
 2. 进入交互命令行界面（如需退出，可执行Ctrl + c）。
 
     ```bash
-    PrecisionTool \>
+    PrecisionTool >
     ```
 
 3. 执行<b>ac -l \[limit\_num\] \(-c\)</b>命令进行整网精度比对，具体可参考《TensorFlow 1.15模型迁移指南》的“precision\_tool命令参考”章节。

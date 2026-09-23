@@ -465,7 +465,7 @@ def bind_memory_to_numa0():
 
 ###### 5. 其他调优方向
 
-- 业务框架层数据并行策略优化，如采用流水并行等。
+- 业务框架层数据并行策略优化，如采用流水线并行等。
 - 编译优化，详见：[编译优化技术介绍](https://www.hiascend.com/document/detail/zh/Pytorch/730/ptmoddevg/trainingmigrguide/performance_tuning_0062.html)
 - BIOS参数调优，如开启超频、高性能模式等。
 
