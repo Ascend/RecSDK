@@ -29,7 +29,7 @@ def get_embedding_table(
 | name                   | str               | 必选   | 稀疏表名，只能包含[0-9A-Za-z_.]，表名长度范围：[1, 128]。                                                              |
 | dimension              | int               | 必选   | 稀疏表的embedding维度，取值范围：[1, 512]。                                                                       |
 | device_vocabulary_size | int               | 必选   | Device侧稀疏表容量，取值范围：[1, 10**9]。请保证内存和磁盘空间足够，根据服务器的实际配置进行设置。                                            |
-| initializer            | Tensorflow的初始化器类型 | 可选   | 稀疏表初始值生成器，默认值为随机正态分布初始化器。                                                                            |
+| initializer            | TensorFlow的初始化器类型 | 可选   | 稀疏表初始值生成器，默认值为随机正态分布初始化器。                                                                            |
 | key_dtype              | tf.int64          | 可选   | 稀疏特征key数据类型，默认值为tf.int64，可选类型仅限于tf.int64。                                                            |
 | value_dtype            | tf.float32        | 可选   | 稀疏特征value数据类型，默认值为tf.float32，可选类型仅限于tf.float32。                                                      |
 | distribution_strategy  | str               | 可选   | 稀疏表分布式并行模式，默认值为"MP"（模型并行），当前仅支持"MP"。                                                                 |
@@ -247,7 +247,7 @@ emb_tables = mxrec.get_existing_tables()
 
 **类型描述<a name="section634582619155"></a>**
 
-`EmbeddingTableSaver`类被设计用于在基于`Tensorflow`框架的模型中管理稀疏表（NPU设备实现）的保存和恢复。它提供了一个方便的接口来保存和恢复稀疏表的数据。
+`EmbeddingTableSaver`类被设计用于在基于`TensorFlow`框架的模型中管理稀疏表（NPU设备实现）的保存和恢复。它提供了一个方便的接口来保存和恢复稀疏表的数据。
 
 ### \_\_init\_\_<a name="ZH-CN_TOPIC_0000001630246521"></a>
 
@@ -317,7 +317,7 @@ def save(self, sess: tf.compat.v1.Session, save_path: str, global_step: int):
 
 | 参数名         | 类型         | 可选/必选 | 说明                       |
 |-------------|------------|-------|--------------------------|
-| sess        | tf.Session | 必选    | Tensorflow当前执行中的session。 |
+| sess        | tf.Session | 必选    | TensorFlow当前执行中的session。 |
 | save_path   | str        | 必选    | 保存路径                     |
 | global_step | int        | 必选    | 保存步数，取值范围[0, 2^32-1]     |
 
@@ -370,7 +370,7 @@ def load(self, sess: tf.compat.v1.Session, save_path: str, global_step: int):
 
 | 参数名         | 类型         | 可选/必选 | 说明                       |
 |-------------|------------|-------|--------------------------|
-| sess        | tf.Session | 必选    | Tensorflow当前执行中的session。 |
+| sess        | tf.Session | 必选    | TensorFlow当前执行中的session。 |
 | save_path   | str        | 必选    | 加载路径                     |
 | global_step | int        | 必选    | 加载步数，取值范围[0, 2^32-1]     |
 

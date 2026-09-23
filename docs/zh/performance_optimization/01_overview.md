@@ -96,9 +96,9 @@ compare_tools支持比较GPU与NPU之间、NPU与NPU之间的性能差异，通�
 
 #### 吞吐优化
 
-为充分利用硬件空闲资源部署多个推理实例时，易出现的硬件资源竞争问题，通过控制核心资源分配可避免实例间资源抢占冲突，保障各实例稳定运行，有效提升吞吐量并降低时延。
+充分利用硬件空闲资源部署多个推理实例时，易出现硬件资源竞争问题，通过控制核心资源分配可避免实例间资源抢占冲突，保障各实例稳定运行，有效提升吞吐量并降低时延。
 
-* [限制算子执行核心数](https://www.hiascend.com/document/detail/zh/Pytorch/2600/apiref/torchnpuCustomsapi/docs/zh/custom_APIs/torch_npu/torch_npu-set_device_limit.md)：通过限制单个推理实例可使用的AICore数量，避免多实例间资源抢占，保障各实例稳定运行。
+* [限制算子执行核心数](https://www.hiascend.com/document/detail/zh/Pytorch/2600/apiref/torchnpuCustomsapi/docs/zh/custom_APIs/torch_npu/torch_npu-set_device_limit.md)：通过限制单个推理实例可使用的AI Core数量，避免多实例间资源抢占，保障各实例稳定运行。
 * [限制device资源](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/runtimeapi/aclcppdevg_03_1879.html)：通过ACL接口限制device可用计算资源，适用于多实例推理场景的资源隔离。
 * [调优案例](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/programug/graphdevg/atlasag_25_0101.html)：多实例推理场景下的吞吐优化案例，展示如何通过控核实现资源分配和性能提升。
 

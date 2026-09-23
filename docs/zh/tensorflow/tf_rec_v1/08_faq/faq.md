@@ -103,7 +103,7 @@ export LD_LIBRARY_PATH=${so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 
 **可能原因<a name="section7693101619818"></a>**
 
-在Estimator的train\_and\_evaluate模式下，从train切换到eval时会重新创建表（若未启用动态扩容时），如果表特别大可能导致显存不足。
+在Estimator的train\_and\_evaluate模式下，从train切换到eval时会重新创建表（未启用动态扩容时），如果表特别大可能导致显存不足。
 
 **解决方案<a name="section1033624316810"></a>**
 

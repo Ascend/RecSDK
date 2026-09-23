@@ -65,7 +65,7 @@ fbgemm_gpu软件包为TorchRec框架依赖，需安装CPU版本，且需和PyTor
 
 **可能原因**
 
-直接原因是embedding_bag反向算子没有NPU后端实现。根因为使用Rec SDK Torch的Collection创建稀疏表后，训练时直接调用`model.forward(xx)`，未使用pipeline进行流水线查表，导致直接使用的TorchRec原生实现，而不是Rec SDK Torch的融合算子。
+直接原因是embedding_bag反向算子没有NPU后端实现。根因为使用Rec SDK Torch的Collection创建稀疏表后，训练时直接调用`model.forward(xx)`，未使用pipeline进行流水线查表，导致直接使用TorchRec原生实现，而不是Rec SDK Torch的融合算子。
 
 **解决方案**
 

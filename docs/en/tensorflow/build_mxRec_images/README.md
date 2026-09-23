@@ -73,7 +73,7 @@ Depending on the base image, the dependencies to be downloaded vary.
 
     <https://www.hiascend.com/developer/download/community/result?module=tf+cann>
 
-    * Tensorflow (1.15.0/2.6.5)
+    * TensorFlow (1.15.0/2.6.5)
 
     The current Rec SDK is developed based on TensorFlow, so TensorFlow needs to be installed in the environment. In x86 environments, it can be installed directly using `pip` or `pip3` commands.
     However, in Arm environments, TensorFlow does not have a corresponding .whl package and cannot be installed directly using `pip` or `pip3` commands. You can download the TensorFlow of the Arm architecture from the following link:

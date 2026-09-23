@@ -4,7 +4,7 @@
 
 ### 片上内存侧动态扩容模式<a name="ZH-CN_TOPIC_0000001630127049"></a>
 
-TensorFlow对Embedding的支持是通过变量实现的，用户需要预估每个表的大小，再通过[create\_table](../05_api/04_model_apis.md#create_table)接口创建变量。Embedding表的大小在一开始就确认，后期无法扩大或者减小，这可能会导致显存的浪费或者空间不足。在推荐场景下，多个稀疏表的大小无法预估，为更好的适配用户场景及需求，增加片上内存稀疏表自动扩容功能，即显存随着模型训练增长。
+TensorFlow对Embedding的支持是通过变量实现的，用户需要预估每个表的大小，再通过[create\_table](../05_api/04_model_apis.md#create_table)接口创建变量。Embedding表的大小在一开始就确定，后期无法扩大或者减小，这可能会导致显存的浪费或者空间不足。在推荐场景下，多个稀疏表的大小无法预估，为更好地适配用户场景及需求，增加片上内存稀疏表自动扩容功能，即显存随着模型训练增长。
 
 片上内存侧动态扩容模式下，不支持特征淘汰。
 
@@ -99,7 +99,7 @@ TensorFlow对Embedding的支持是通过变量实现的，用户需要预估每�
 
     >[!NOTE]
     >- 调用sparse\_optimizer.apply\_gradients\(grads\_and\_vars\)更新梯度时，若使用的vars（如address）是tensor而非variable，需要保证vars的维度和grads的第一个维度相等。
-    >- train\_address\_list地址列表需要是有效合法的，需通过[3. 获取映射地址](#li16991598571)获取。若使用非法地址，运行时会抛出AICore Error等错误。
+    >- train\_address\_list地址列表需要是有效合法的，需通过[3. 获取映射地址](#li16991598571)获取。若使用非法地址，运行时会抛出AI Core Error等错误。
 
 ### 动态shape<a name="ZH-CN_TOPIC_0000001630046445"></a>
 

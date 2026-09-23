@@ -21,7 +21,7 @@ def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1
 |name|str|必选|稀疏表的表名，只能包含数字、字母、下划线和特殊符号“.”。表名长度范围：[1, 100]。<br>稀疏表的表名需要保持唯一，不能重复。|
 |emb_initializer|TensorFlow的初始化器类型|必选|嵌入层初始值生成器。|
 |device_vocabulary_size|int|可选|Device侧嵌入层数量，默认值为1。取值范围：1~10亿。当设置超过25600000时，请保证内存和磁盘空间足够，或者开启片上内存侧动态扩容功能，或者减小稀疏表dim的大小。请根据服务器的实际配置进行设置。<br>如果启用DDR/SSD存储，即host_vocabulary_size不为0，则需要device_vocabulary_size≥连续2个batch去重后的key个数，要求片上内存能存放至少2个batch数据，此时片上内存仅作为cache。|
-|host_vocabulary_size|int|可选|Host侧DDR存储的嵌入层数量，默认值为0。取值范围为：0~10亿。<li>取值为0时表示不开启Host侧DDR功能，如果不启用SSD存储，需要确保DDR能存储全量数据；</li><li>不为0时表示开启，此时需要关闭片上内存侧的动态扩容，即use_dynamic_expansion=False，默认使用DDR内存侧的动态扩容模式。如果host_vocabulary_size设置为大于1亿的值，请保证内存和磁盘空间足够，或者减小稀疏表dim的大小。</li>在动态扩容模式下（即use_dynamic_expansion=True时），默认使用片上内存作为唯一存储，此变量会被置0。超过单机内存时会出现OMM。请根据服务器的实际配置进行设置。|
+|host_vocabulary_size|int|可选|Host侧DDR存储的嵌入层数量，默认值为0。取值范围为：0~10亿。<li>取值为0时表示不开启Host侧DDR功能，如果不启用SSD存储，需要确保DDR能存储全量数据；</li><li>不为0时表示开启，此时需要关闭片上内存侧的动态扩容，即use_dynamic_expansion=False，默认使用DDR内存侧的动态扩容模式。如果host_vocabulary_size设置为大于1亿的值，请保证内存和磁盘空间足够，或者减小稀疏表dim的大小。</li>在动态扩容模式下（即use_dynamic_expansion=True时），默认使用片上内存作为唯一存储，此变量会被置0。超过单机内存时会出现OOM。请根据服务器的实际配置进行设置。|
 |ssd_vocabulary_size|int|可选|开启SSD存储Embedding数据功能。默认值为“0”表示不开启。当值大于“0”时，要求host_vocabulary_size也大于“0”才能开启该功能。取值范围：0~10亿。<br>在动态扩容模式下（即use_dynamic_expansion=True时），默认使用片上内存作为唯一存储，此变量会被置0。请根据服务器的实际配置进行设置。|
 |ssd_data_path|<li>list[str]</li><li>Tuple[str]</li>|可选|默认为当前运行脚本所在路径。<li>当参数为空列表时，默认SSD存储路径为当前运行脚本所在路径。</li><li>当列表非空且路径有效时，将按顺序存储到相应路径中。</li><li>当路径对应磁盘空间不足时，会尝试下一个路径，直到所有磁盘空间不足时抛出异常。</li>|
 |is_save|bool|可选|是否保存Embedding数据，默认值为True。<br>取值范围：<li>True：保存Embedding数据。</li><li>False：不保存Embedding数据。</li>|

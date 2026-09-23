@@ -33,7 +33,7 @@ Rec SDK Torch为Wheel包格式，安装、卸载日志记录在系统history中�
 HISTTIMEFORMAT='%F %T '
 ```
 
-添加完成之后需要执行**source /etc/profile**命令使环境变量生效。添加时间戳之后，history命令结果如图所示：
+添加完成之后需要执行**source /etc/profile**命令使环境变量生效。添加时间戳之后，history命令结果如下所示：
 
 ```bash
 2025-08-18 10:01:57 pip3 install XXX-none-linux_x86_64.whl --force-reinstall

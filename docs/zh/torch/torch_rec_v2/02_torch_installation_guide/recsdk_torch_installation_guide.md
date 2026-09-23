@@ -130,7 +130,7 @@
 
 ### 使用容器部署开发环境<a name="ZH-CN_TOPIC_0000002302229684"></a>
 
-基于容器部署Rec SDK Torch开发环境，可参考如[图1](#fig1345216415476)完成配置。
+基于容器部署Rec SDK Torch开发环境，可参考[图1](#fig1345216415476)完成配置。
 
 **图 1**  配置容器内的开发环境及训练镜像构建<a id="fig1345216415476"></a>
 ![](../../../figures/torch_rec_v1/配置容器内的开发环境及训练镜像构建.png "配置容器内的开发环境及训练镜像构建")
@@ -195,7 +195,7 @@ ${image_name} \
 
         其中，host\_file\_path为宿主机文件路径，container\_name为待拷入的docker容器名称，container\_file\_path为待拷入的docker容器内的文件路径。
 
-3. 按照如下步骤进行编译和安装包。
+3. 按照如下步骤进行编译和安装。
 
     1. 安装torch_rec_v2-{version}-{arch}.tar.gz
 

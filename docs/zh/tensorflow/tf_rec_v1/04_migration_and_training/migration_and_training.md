@@ -335,7 +335,7 @@ Estimator封装了对机器学习不同阶段的控制，用户无需不断地�
 请参考[Estimator迁移](#estimator迁移)章节中的“执行训练”。
 
 > [!NOTE]
-> Estimator场景下执行train\_and\_evaluate时，若未启用片上内存侧动态扩容时会两次建表，当表特别大时可能会导致显存不足，此时可以改成片上内存侧扩容模式进行规避，扩容模式只会建一次表。
+> Estimator场景下执行train\_and\_evaluate时，若未启用片上内存侧动态扩容则会两次建表，当表特别大时可能会导致显存不足，此时可以改成片上内存侧扩容模式进行规避，扩容模式只会建一次表。
 
 #### 完成训练并查看结果<a name="ZH-CN_TOPIC_0000001629887041"></a>
 
@@ -727,7 +727,7 @@ Allreduce架构是为了解决PS-workers架构无法线性扩展问题而提出�
 
 **使用的接口<a name="section291012110287"></a>**
 
-在TensorFlow中，一般使用tf.distribute.Strategy进行分布式训练，具体请参考[Tensorflow分布式训练指南](https://www.tensorflow.org/guide/distributed_training)。而昇腾AI处理器暂不支持上述分布式策略，TF Adapter提供了分布式接口npu\_distributed\_optimizer\_wrapper，对传入的optimizer梯度函数添加NPU的Allreduce操作，最终返回输入的优化器，从而支持单机多卡、多机多卡等组网形式下，各个Device之间计算梯度后执行梯度聚合操作。用户调用该函数后，在生成的训练图中，梯度计算和更新算子之间插入了Allreduce算子节点。
+在TensorFlow中，一般使用tf.distribute.Strategy进行分布式训练，具体请参考[TensorFlow分布式训练指南](https://www.tensorflow.org/guide/distributed_training)。而昇腾AI处理器暂不支持上述分布式策略，TF Adapter提供了分布式接口npu\_distributed\_optimizer\_wrapper，对传入的optimizer梯度函数添加NPU的Allreduce操作，最终返回输入的优化器，从而支持单机多卡、多机多卡等组网形式下，各个Device之间计算梯度后执行梯度聚合操作。用户调用该函数后，在生成的训练图中，梯度计算和更新算子之间插入了Allreduce算子节点。
 
 **图 3**  使用的接口<a name="fig1792101713010"></a>
 ![](../../../figures/tf_rec_v1/使用的接口.png "使用的接口")
