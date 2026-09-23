@@ -1,0 +1,954 @@
+diff --git a/benchmark_easyrec.py b/benchmark_easyrec.py
+new file mode 100644
+index 0000000..2bc1b87
+--- /dev/null
++++ b/benchmark_easyrec.py
+@@ -0,0 +1,474 @@
++import argparse
++import json
++import os
++import random
++import time
++from contextlib import nullcontext
++from pathlib import Path
++from types import SimpleNamespace
++
++import numpy as np
++import torch
++import torch.distributed as dist
++
++from device_utils import (
++    enable_fp32_ffn_output,
++    enable_fp32_gelu,
++    initialize_accelerator,
++    synchronize,
++)
++
++
++def parse_args():
++    parser = argparse.ArgumentParser(description="Deterministic EasyRec training benchmark")
++    parser.add_argument("--model", default="./baseline_embedders/easyrec-roberta-small")
++    parser.add_argument("--device", choices=["cuda", "npu", "cpu"], required=True)
++    parser.add_argument("--precision", choices=["float32", "float16", "bfloat16"], required=True)
++    parser.add_argument("--steps", type=int, default=1000)
++    parser.add_argument("--warmup-steps", type=int, default=20)
++    parser.add_argument("--batch-size", type=int, default=32)
++    parser.add_argument("--seq-length", type=int, default=64)
++    parser.add_argument("--learning-rate", type=float, default=5e-5)
++    parser.add_argument("--weight-decay", type=float, default=0.0)
++    parser.add_argument("--fp16-init-scale", type=float, default=1024.0)
++    parser.add_argument("--fp16-growth-interval", type=int, default=10000)
++    parser.add_argument("--seed", type=int, default=2024)
++    parser.add_argument("--output", required=True)
++    parser.add_argument("--data-path")
++    parser.add_argument("--datasets", default="arts-games-movies-home-electronics-tools")
++    parser.add_argument("--used-diverse-profile-num", type=int, default=3)
++    parser.add_argument("--add-item-raw-meta", action=argparse.BooleanOptionalAction, default=True)
++    parser.add_argument("--mlm-probability", type=float, default=0.15)
++    parser.add_argument("--mlm", action=argparse.BooleanOptionalAction, default=True)
++    parser.add_argument("--deterministic", action=argparse.BooleanOptionalAction, default=True)
++    parser.add_argument("--gelu-python", action=argparse.BooleanOptionalAction, default=None)
++    parser.add_argument("--fp32-gelu", action=argparse.BooleanOptionalAction, default=None)
++    parser.add_argument("--fp32-ffn-output", action=argparse.BooleanOptionalAction, default=None)
++    parser.add_argument("--update", action=argparse.BooleanOptionalAction, default=True)
++    return parser.parse_args()
++
++
++def setup_distributed(device_type):
++    local_rank = int(os.getenv("LOCAL_RANK", "0"))
++    world_size = int(os.getenv("WORLD_SIZE", "1"))
++    if device_type == "npu":
++        torch.npu.set_device(local_rank)
++        device = torch.device("npu", local_rank)
++        backend = "hccl"
++    elif device_type == "cuda":
++        torch.cuda.set_device(local_rank)
++        device = torch.device("cuda", local_rank)
++        backend = "nccl"
++    else:
++        device = torch.device("cpu")
++        backend = "gloo"
++    if world_size > 1:
++        dist.init_process_group(backend=backend)
++    return device, local_rank, world_size
++
++
++def tokenizer_metadata(tokenizer, mlm):
++    vocab_size = tokenizer.vocab_size
++    if not isinstance(vocab_size, int) or vocab_size < 1:
++        raise ValueError("Tokenizer vocab_size must be a positive integer")
++
++    def required_token_id(name):
++        token_id = getattr(tokenizer, name, None)
++        if not isinstance(token_id, int) or not 0 <= token_id < vocab_size:
++            raise ValueError(f"Tokenizer {name} must be in [0, {vocab_size})")
++        return token_id
++
++    bos_token_id = required_token_id("bos_token_id")
++    eos_token_id = required_token_id("eos_token_id")
++    mask_token_id = required_token_id("mask_token_id") if mlm else None
++    special_ids = {
++        token_id
++        for token_id in tokenizer.all_special_ids
++        if isinstance(token_id, int) and 0 <= token_id < vocab_size
++    }
++    normal_token_ids = [
++        token_id for token_id in range(vocab_size) if token_id not in special_ids
++    ]
++    if not normal_token_ids:
++        raise ValueError("Tokenizer vocabulary contains no normal token IDs")
++    return bos_token_id, eos_token_id, mask_token_id, torch.tensor(normal_token_ids)
++
++
++def make_synthetic_batch(token_metadata, args, step, rank, device):
++    generator = torch.Generator(device="cpu")
++    generator.manual_seed(args.seed + step * 1009 + rank)
++    shape = (args.batch_size, args.seq_length)
++    bos_token_id, eos_token_id, mask_token_id, normal_token_ids = token_metadata
++
++    def tokens():
++        indexes = torch.randint(len(normal_token_ids), shape, generator=generator)
++        values = normal_token_ids[indexes]
++        values[:, 0] = bos_token_id
++        values[:, -1] = eos_token_id
++        return values
++
++    user_ids = tokens()
++    positive_ids = tokens()
++    negative_ids = tokens()
++    batch = {
++        "user_input_ids": user_ids,
++        "user_attention_mask": torch.ones_like(user_ids, dtype=torch.bool),
++        "pos_item_input_ids": positive_ids,
++        "pos_item_attention_mask": torch.ones_like(positive_ids, dtype=torch.bool),
++        "neg_item_input_ids": negative_ids,
++        "neg_item_attention_mask": torch.ones_like(negative_ids, dtype=torch.bool),
++    }
++    if args.mlm:
++        mlm_ids = torch.cat((user_ids, positive_ids, negative_ids), dim=0).clone()
++        mlm_labels = mlm_ids.clone()
++        positions = torch.arange(args.seq_length).unsqueeze(0)
++        masked = (positions % 7 == step % 7).expand_as(mlm_labels).clone()
++        # Keep sequence boundary tokens out of the MLM objective.
++        masked[:, 0] = False
++        masked[:, -1] = False
++        mlm_labels[~masked] = -100
++        mlm_ids[masked] = mask_token_id
++        batch.update({
++            "mlm_input_ids": mlm_ids,
++            "mlm_attention_mask": torch.ones_like(mlm_ids, dtype=torch.bool),
++            "mlm_labels": mlm_labels,
++        })
++    return {key: value.to(device) for key, value in batch.items()}
++
++
++class OfficialDataBatchFactory:
++    def __init__(self, args, tokenizer):
++        from utility.load_data import (
++            DataCollatorForPretrainEmbedderDataset,
++            LazyPretrainEmbedderDataset,
++        )
++
++        self.dataset = LazyPretrainEmbedderDataset(
++            tokenizer=tokenizer,
++            data_path=args.data_path,
++            dataset=args.datasets,
++            max_seq_length=args.seq_length,
++            used_diverse_profile_num=args.used_diverse_profile_num,
++            add_item_raw_meta=args.add_item_raw_meta,
++        )
++        self.collator = DataCollatorForPretrainEmbedderDataset(
++            mlm_probability=args.mlm_probability,
++            tokenizer=tokenizer,
++        )
++        self.args = args
++
++    def __call__(self, step, rank, world_size, device):
++        sample_seed = self.args.seed + step * 1009 + rank
++        random.seed(sample_seed)
++        np.random.seed(sample_seed)
++        torch.random.default_generator.manual_seed(sample_seed)
++
++        global_offset = (step - 1) * self.args.batch_size * world_size
++        rank_offset = global_offset + rank * self.args.batch_size
++        instances = [
++            self.dataset[(rank_offset + index) % len(self.dataset)]
++            for index in range(self.args.batch_size)
++        ]
++        batch = self.collator(instances)
++        if not self.args.mlm:
++            for key in ("mlm_input_ids", "mlm_attention_mask", "mlm_labels"):
++                batch.pop(key)
++        return {key: value.to(device) for key, value in batch.items()}
++
++
++def autocast_context(device_type, precision):
++    if precision == "float32":
++        return nullcontext()
++    dtype = torch.float16 if precision == "float16" else torch.bfloat16
++    return torch.autocast(device_type=device_type, dtype=dtype)
++
++
++def env_enabled(name, default=False):
++    value = os.getenv(name, str(default))
++    return value.strip().lower() in {"1", "true", "yes", "on"}
++
++
++def percentile(values, quantile):
++    if not values:
++        return 0.0
++    return float(np.percentile(values, quantile, method="lower"))
++
++
++def init_profiler(device_type, output_dir, steps):
++    output_dir.mkdir(parents=True, exist_ok=True)
++    warmup = 1 if steps > 1 else 0
++    active = max(1, min(3, steps - warmup))
++    schedule_args = {"wait": 0, "warmup": warmup, "active": active, "repeat": 1}
++    if device_type == "npu":
++        import torch_npu
++
++        experimental_config = torch_npu.profiler._ExperimentalConfig(
++            export_type=[torch_npu.profiler.ExportType.Text],
++            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++            aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++            l2_cache=False,
++        )
++        return torch_npu.profiler.profile(
++            activities=[
++                torch_npu.profiler.ProfilerActivity.CPU,
++                torch_npu.profiler.ProfilerActivity.NPU,
++            ],
++            schedule=torch_npu.profiler.schedule(**schedule_args),
++            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(str(output_dir)),
++            record_shapes=False,
++            profile_memory=False,
++            with_stack=False,
++            with_modules=False,
++            with_flops=False,
++            experimental_config=experimental_config,
++        )
++
++    activities = [torch.profiler.ProfilerActivity.CPU]
++    if device_type == "cuda":
++        activities.append(torch.profiler.ProfilerActivity.CUDA)
++    return torch.profiler.profile(
++        activities=activities,
++        schedule=torch.profiler.schedule(**schedule_args),
++        on_trace_ready=torch.profiler.tensorboard_trace_handler(str(output_dir)),
++        record_shapes=False,
++        profile_memory=False,
++        with_stack=False,
++        with_modules=False,
++        with_flops=False,
++    )
++
++
++def main():
++    args = parse_args()
++    if args.steps < 1:
++        raise ValueError("--steps must be at least 1")
++    if args.warmup_steps < 0:
++        raise ValueError("--warmup-steps must not be negative")
++    if args.batch_size < 1:
++        raise ValueError("--batch-size must be at least 1")
++    if args.seq_length < 2:
++        raise ValueError("--seq-length must be at least 2")
++    initialize_accelerator(args.device)
++    from transformers import AutoConfig, AutoTokenizer
++    from model import Easyrec
++
++    device, rank, world_size = setup_distributed(args.device)
++    random.seed(args.seed)
++    np.random.seed(args.seed)
++    torch.manual_seed(args.seed)
++    hf32_enabled = env_enabled("MODEL_HF32_FLAG", default=True)
++    if args.device == "cuda":
++        torch.cuda.manual_seed_all(args.seed)
++        torch.backends.cuda.matmul.allow_tf32 = hf32_enabled
++        torch.backends.cudnn.allow_tf32 = hf32_enabled
++    elif args.device == "npu":
++        torch.npu.manual_seed_all(args.seed)
++        torch.npu.matmul.allow_hf32 = hf32_enabled
++        torch.npu.conv.allow_hf32 = hf32_enabled
++        if args.precision == "float32" and not hf32_enabled:
++            torch.npu.set_option({"ACL_PRECISION_MODE": "must_keep_origin_dtype"})
++
++    config = AutoConfig.from_pretrained(args.model)
++    tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=False)
++    use_python_gelu = args.gelu_python if args.gelu_python is not None else args.device == "npu"
++    if use_python_gelu:
++        config.hidden_act = "gelu_python"
++    if args.deterministic:
++        config.hidden_dropout_prob = 0.0
++        config.attention_probs_dropout_prob = 0.0
++    model_args = SimpleNamespace(
++        pooler_type="cls", temp=0.05, do_mlm=args.mlm, mlm_weight=0.1
++    )
++    model = Easyrec.from_pretrained(args.model, config=config, model_args=model_args).to(device)
++    use_fp32_gelu = args.fp32_gelu if args.fp32_gelu is not None else args.precision == "float16"
++    if use_fp32_gelu:
++        enable_fp32_gelu(model)
++    use_fp32_ffn_output = (
++        args.fp32_ffn_output
++        if args.fp32_ffn_output is not None
++        else args.precision == "float16"
++    )
++    if use_fp32_ffn_output:
++        enable_fp32_ffn_output(model)
++    compile_enabled = env_enabled("MODEL_COMPILE_FLAG")
++    if compile_enabled:
++        compile_backends = {"npu": "npu", "cuda": "inductor", "cpu": "aot_eager"}
++        compile_backend = compile_backends[args.device]
++        model = torch.compile(model, backend=compile_backend)
++    model.train()
++    if world_size > 1:
++        device_ids = None if args.device == "cpu" else [rank]
++        model = torch.nn.parallel.DistributedDataParallel(
++            model, device_ids=device_ids, broadcast_buffers=False, find_unused_parameters=False
++        )
++
++    official_batch_factory = (
++        OfficialDataBatchFactory(args, tokenizer) if args.data_path else None
++    )
++    synthetic_token_metadata = (
++        None if official_batch_factory else tokenizer_metadata(tokenizer, args.mlm)
++    )
++    data_source = "official" if official_batch_factory else "synthetic"
++
++    optimizer = torch.optim.AdamW(
++        model.parameters(),
++        lr=args.learning_rate,
++        weight_decay=args.weight_decay,
++        foreach=False,
++    )
++    scheduler = torch.optim.lr_scheduler.LinearLR(
++        optimizer, start_factor=1.0, end_factor=0.0, total_iters=args.steps
++    )
++    scaler = None
++    if args.precision == "float16":
++        scaler = torch.amp.GradScaler(
++            args.device,
++            init_scale=args.fp16_init_scale,
++            growth_interval=args.fp16_growth_interval,
++        )
++
++    stream = None
++    profiler = None
++    try:
++        output = Path(args.output)
++        if rank == 0:
++            output.parent.mkdir(parents=True, exist_ok=True)
++            stream = output.open("w", encoding="utf-8")
++
++        if env_enabled("MODEL_PROFILING_FLAG"):
++            profiling_root = Path(
++                os.getenv("EASYREC_PROFILING_ROOT", "../profiling/EasyRec")
++            )
++            profiler = init_profiler(
++                args.device, profiling_root / args.device / f"rank_{rank}", args.steps
++            )
++            profiler.start()
++
++        measured_times = []
++        measured_compute_times = []
++        optimizer_steps = 0
++        for step in range(1, args.steps + 1):
++            synchronize(args.device)
++            step_started = time.perf_counter()
++            if official_batch_factory:
++                batch = official_batch_factory(step, rank, world_size, device)
++            else:
++                batch = make_synthetic_batch(
++                    synthetic_token_metadata, args, step, rank, device
++                )
++            optimizer.zero_grad(set_to_none=True)
++            synchronize(args.device)
++            compute_started = time.perf_counter()
++            with autocast_context(args.device, args.precision):
++                loss = model(**batch).loss
++            if scaler is None:
++                loss.backward()
++                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0, foreach=False)
++                if args.update:
++                    optimizer.step()
++                    scheduler.step()
++                    optimizer_steps += 1
++                optimizer_step_skipped = False
++            else:
++                scaler.scale(loss).backward()
++                scaler.unscale_(optimizer)
++                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0, foreach=False)
++                if args.update:
++                    previous_scale = scaler.get_scale()
++                    scaler.step(optimizer)
++                    scaler.update()
++                    optimizer_step_skipped = scaler.get_scale() < previous_scale
++                    if not optimizer_step_skipped:
++                        scheduler.step()
++                        optimizer_steps += 1
++                else:
++                    scaler.update()
++                    optimizer_step_skipped = False
++            synchronize(args.device)
++            compute_elapsed_ms = (time.perf_counter() - compute_started) * 1000.0
++            elapsed_ms = (time.perf_counter() - step_started) * 1000.0
++            if step > args.warmup_steps:
++                measured_times.append(elapsed_ms)
++                measured_compute_times.append(compute_elapsed_ms)
++            if rank == 0:
++                record = {
++                    "step": step,
++                    "loss": float(loss.detach().float().cpu()),
++                    "step_time_ms": elapsed_ms,
++                    "compute_time_ms": compute_elapsed_ms,
++                    "device": args.device,
++                    "precision": args.precision,
++                    "world_size": world_size,
++                    "data_source": data_source,
++                    "update": args.update,
++                    "optimizer_step_skipped": optimizer_step_skipped,
++                }
++                stream.write(json.dumps(record, sort_keys=True) + "\n")
++                stream.flush()
++                if step == 1 or step % 10 == 0:
++                    print(json.dumps(record, sort_keys=True), flush=True)
++            if profiler is not None:
++                profiler.step()
++
++        if rank == 0:
++            mean_step_time = (
++                sum(measured_times) / len(measured_times) if measured_times else 0.0
++            )
++            mean_compute_time = (
++                sum(measured_compute_times) / len(measured_compute_times)
++                if measured_compute_times
++                else 0.0
++            )
++            summary = {
++                "steps": args.steps,
++                "warmup_steps": args.warmup_steps,
++                "mean_step_time_ms": mean_step_time,
++                "mean_compute_time_ms": mean_compute_time,
++                "p90_step_time_ms": percentile(measured_times, 90),
++                "p95_step_time_ms": percentile(measured_times, 95),
++                "p99_step_time_ms": percentile(measured_times, 99),
++                "p999_step_time_ms": percentile(measured_times, 99.9),
++                "device": args.device,
++                "precision": args.precision,
++                "world_size": world_size,
++                "data_source": data_source,
++                "update": args.update,
++                "optimizer_steps": optimizer_steps,
++            }
++            print(json.dumps(summary, sort_keys=True), flush=True)
++            result_root = os.getenv("EASYREC_BENCHMARK_RESULT_ROOT")
++            if result_root:
++                result_dir = Path(result_root)
++                result_dir.mkdir(parents=True, exist_ok=True)
++                performance = {
++                    "Batch_size": args.batch_size,
++                    "model_name": "EasyRec",
++                    "world_size": world_size,
++                    "precision": args.precision,
++                    "AVG Latency": summary["mean_step_time_ms"],
++                    "P999 Latency": summary["p999_step_time_ms"],
++                    "P99 Latency": summary["p99_step_time_ms"],
++                    "P95 Latency": summary["p95_step_time_ms"],
++                    "P90 Latency": summary["p90_step_time_ms"],
++                    "compute_time_ms": summary["mean_compute_time_ms"],
++                    "unit": "ms/step",
++                }
++                mode = "compile" if compile_enabled else "eager"
++                detail = f"{args.device}_EasyRec_{mode}_{performance}"
++                with (result_dir / "performance_result.txt").open(
++                    "a", encoding="utf-8"
++                ) as result_stream:
++                    result_stream.write(f"performance: {detail}\n")
++    finally:
++        try:
++            if profiler is not None:
++                profiler.stop()
++        finally:
++            if stream is not None:
++                stream.close()
++            if dist.is_initialized():
++                dist.destroy_process_group()
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/benchmark_entry.sh b/benchmark_entry.sh
+new file mode 100755
+index 0000000..b6eb9e9
+--- /dev/null
++++ b/benchmark_entry.sh
+@@ -0,0 +1,44 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++if [[ "${MODEL_CPU_ONLY:-false}" =~ ^([Tt][Rr][Uu][Ee]|1)$ ]]; then
++    DEVICE_TYPE=cpu
++else
++    DEVICE_TYPE=${DEVICE_TYPE:-npu}
++fi
++PRECISION=${EASYREC_PRECISION:-${MODEL_DATA_TYPE:-bfloat16}}
++NPROC_PER_NODE=${NPROC_PER_NODE:-8}
++STEPS=${EASYREC_STEPS:-${MODEL_EPOCH:-100}}
++WARMUP_STEPS=${EASYREC_WARMUP_STEPS:-20}
++BATCH_SIZE=${EASYREC_BATCH_SIZE:-32}
++SEQ_LENGTH=${EASYREC_SEQ_LENGTH:-64}
++LEARNING_RATE=${EASYREC_LEARNING_RATE:-5e-5}
++MODEL_PATH=${MODEL_PATH:-baseline_embedders/easyrec-roberta-small}
++DATA_PATH=${DATA_PATH:-data}
++
++if [[ "${DEVICE_TYPE}" == "cpu" ]]; then
++    PRECISION=float32
++    NPROC_PER_NODE=1
++fi
++
++RESULT_ROOT=${EASYREC_BENCHMARK_RESULT_ROOT:-../save_results_${DEVICE_TYPE}}
++OUTPUT=${OUTPUT:-${RESULT_ROOT}/EasyRec/${DEVICE_TYPE}_${PRECISION}_${NPROC_PER_NODE}p.jsonl}
++
++export DEVICE_TYPE PRECISION NPROC_PER_NODE OUTPUT
++export EASYREC_BENCHMARK_RESULT_ROOT=${RESULT_ROOT}
++
++benchmark_args=(
++    --model "${MODEL_PATH}"
++    --data-path "${DATA_PATH}"
++    --steps "${STEPS}"
++    --warmup-steps "${WARMUP_STEPS}"
++    --batch-size "${BATCH_SIZE}"
++    --seq-length "${SEQ_LENGTH}"
++    --learning-rate "${LEARNING_RATE}"
++)
++# Performance runs keep upstream dropout; accuracy comparisons opt in to determinism.
++if [[ "${EASYREC_DETERMINISTIC:-0}" != "1" ]]; then
++    benchmark_args+=(--no-deterministic)
++fi
++
++bash run_benchmark.sh "${benchmark_args[@]}"
+diff --git a/compare_losses.py b/compare_losses.py
+new file mode 100644
+index 0000000..685080c
+--- /dev/null
++++ b/compare_losses.py
+@@ -0,0 +1,69 @@
++import argparse
++import json
++
++
++THRESHOLDS = {"float32": 1e-4, "float16": 1e-3, "bfloat16": 1e-2}
++
++
++def read_records(path):
++    with open(path, encoding="utf-8") as stream:
++        return [json.loads(line) for line in stream if line.strip()]
++
++
++def validate_records(records, path, steps, require_update):
++    records = records[:steps]
++    if len(records) != steps:
++        raise SystemExit(f"Expected {steps} records in {path}, got {len(records)}")
++    for expected_step, record in enumerate(records, start=1):
++        if record.get("step") != expected_step:
++            raise SystemExit(
++                f"Expected step {expected_step} in {path}, got {record.get('step')}"
++            )
++        if require_update and record.get("update") is not True:
++            raise SystemExit(f"Step {expected_step} in {path} did not enable update")
++        if require_update and record.get("optimizer_step_skipped", False):
++            raise SystemExit(f"Step {expected_step} in {path} skipped the optimizer update")
++    return records
++
++
++def main():
++    parser = argparse.ArgumentParser(description="Compare GPU and NPU EasyRec losses")
++    parser.add_argument("--gpu", required=True)
++    parser.add_argument("--npu", required=True)
++    parser.add_argument("--precision", choices=THRESHOLDS, required=True)
++    parser.add_argument("--steps", type=int, default=1000)
++    parser.add_argument(
++        "--require-update", action=argparse.BooleanOptionalAction, default=True
++    )
++    args = parser.parse_args()
++    if args.steps < 1:
++        parser.error("--steps must be at least 1")
++
++    gpu = validate_records(read_records(args.gpu), args.gpu, args.steps, args.require_update)
++    npu = validate_records(read_records(args.npu), args.npu, args.steps, args.require_update)
++    errors = [abs(left["loss"] - right["loss"]) for left, right in zip(gpu, npu)]
++    mean_error = sum(errors) / len(errors)
++    result = {
++        "precision": args.precision,
++        "steps": args.steps,
++        "mean_absolute_error": mean_error,
++        "max_absolute_error": max(errors),
++        "threshold": THRESHOLDS[args.precision],
++        "passed": mean_error < THRESHOLDS[args.precision],
++        "gpu_optimizer_steps": sum(
++            record.get("update") is True
++            and not record.get("optimizer_step_skipped", False)
++            for record in gpu
++        ),
++        "npu_optimizer_steps": sum(
++            record.get("update") is True
++            and not record.get("optimizer_step_skipped", False)
++            for record in npu
++        ),
++    }
++    print(json.dumps(result, indent=2, sort_keys=True))
++    raise SystemExit(0 if result["passed"] else 1)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/create_roberta_small.py b/create_roberta_small.py
+index e5311b4..6af2a6c 100644
+--- a/create_roberta_small.py
++++ b/create_roberta_small.py
+@@ -8,2 +8,6 @@ from transformers import RobertaConfig, RobertaModel, RobertaTokenizer, AutoMode
+ 
++from device_utils import current_device, initialize_accelerator
++
++device = current_device(initialize_accelerator())
++
+ # Initializing a RoBERTa configuration
+@@ -11,3 +15,3 @@ configuration = RobertaConfig(num_hidden_layers=6, layer_norm_eps=1e-5, max_posi
+ # Initializing a model (with random weights) from the configuration
+-small_model = RobertaModel(configuration).cuda()
++small_model = RobertaModel(configuration).to(device)
+ # Accessing the model configuration
+@@ -17,3 +21,3 @@ tokenizer = RobertaTokenizer.from_pretrained('./baseline_embedders/roberta-base'
+ # Load the Base model
+-base_model = AutoModel.from_pretrained("./baseline_embedders/roberta-base").cuda()
++base_model = AutoModel.from_pretrained("./baseline_embedders/roberta-base").to(device)
+ # Copy the weight of Base model
+@@ -55,3 +59,3 @@ if test_work:
+             for tem in inputs:
+-                inputs[tem] = inputs[tem].cuda()
++                inputs[tem] = inputs[tem].to(device)
+             with torch.no_grad():
+@@ -92,3 +96,3 @@ if test_work:
+                 for tem in inputs:
+-                    inputs[tem] = inputs[tem].cuda()
++                    inputs[tem] = inputs[tem].to(device)
+                 with torch.no_grad():
+@@ -123,3 +127,3 @@ if test_work:
+                 for tem in inputs:
+-                    inputs[tem] = inputs[tem].cuda()
++                    inputs[tem] = inputs[tem].to(device)
+                 with torch.no_grad():
+@@ -136,2 +140,2 @@ configuration.save_pretrained('./baseline_embedders/roberta-small')
+ # Save the tokenizer
+-tokenizer.save_pretrained('./baseline_embedders/roberta-small')
+\ No newline at end of file
++tokenizer.save_pretrained('./baseline_embedders/roberta-small')
+diff --git a/device_utils.py b/device_utils.py
+new file mode 100644
+index 0000000..215ba6e
+--- /dev/null
++++ b/device_utils.py
+@@ -0,0 +1,66 @@
++import math
++import os
++from types import MethodType
++
++import torch
++import torch.nn.functional as F
++
++
++class FP32GELU(torch.nn.Module):
++    def forward(self, value):
++        work = value.float()
++        result = work * 0.5 * (1.0 + torch.erf(work / math.sqrt(2.0)))
++        return result.to(value.dtype)
++
++
++def enable_fp32_gelu(model):
++    for layer in model.roberta.encoder.layer:
++        layer.intermediate.intermediate_act_fn = FP32GELU()
++
++
++def enable_fp32_ffn_output(model):
++    def fp32_forward(module, value):
++        with torch.autocast(device_type=value.device.type, enabled=False):
++            bias = module.bias.float() if module.bias is not None else None
++            return F.linear(value.float(), module.weight.float(), bias)
++
++    for layer in model.roberta.encoder.layer:
++        layer.output.dense.forward = MethodType(fp32_forward, layer.output.dense)
++
++
++def initialize_accelerator(device_type=None):
++    device_type = (device_type or os.getenv("EASYREC_DEVICE", "auto")).lower()
++    if device_type not in {"auto", "cuda", "npu", "cpu"}:
++        raise ValueError(f"Unsupported device type: {device_type}")
++
++    if device_type in {"auto", "npu"}:
++        try:
++            import torch_npu  # noqa: F401
++        except ImportError:
++            if device_type == "npu":
++                raise
++
++    if device_type == "auto":
++        if hasattr(torch, "npu") and torch.npu.is_available():
++            device_type = "npu"
++        elif torch.cuda.is_available():
++            device_type = "cuda"
++        else:
++            device_type = "cpu"
++    return device_type
++
++
++def current_device(device_type=None):
++    device_type = initialize_accelerator(device_type)
++    if device_type == "npu":
++        return torch.device("npu", torch.npu.current_device())
++    if device_type == "cuda":
++        return torch.device("cuda", torch.cuda.current_device())
++    return torch.device("cpu")
++
++
++def synchronize(device_type):
++    if device_type == "npu":
++        torch.npu.synchronize()
++    elif device_type == "cuda":
++        torch.cuda.synchronize()
+diff --git a/encode_easyrec.py b/encode_easyrec.py
+index 75d0795..724cffc 100644
+--- a/encode_easyrec.py
++++ b/encode_easyrec.py
+@@ -10,2 +10,4 @@ from scipy.spatial.distance import cosine
+ 
++from device_utils import current_device, initialize_accelerator
++
+ from model import *
+@@ -24,4 +26,8 @@ parser.add_argument('--model', type=str, default='hkuds/easyrec-roberta-large',
+ parser.add_argument('--cuda', type=str, default='0')
++parser.add_argument('--device', choices=['auto', 'cuda', 'npu', 'cpu'], default='auto')
+ args = parser.parse_args()
+-os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda
++if args.device in {'auto', 'cuda'}:
++    os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda
++device_type = initialize_accelerator(args.device)
++device = current_device(device_type)
+ 
+@@ -34,3 +40,3 @@ model = Easyrec.from_pretrained(
+     config=config,             
+-).cuda()
++).to(device)
+ tokenizer = transformers.AutoTokenizer.from_pretrained(
+@@ -74,3 +80,3 @@ for _dataset in eval_datas:
+         for tem in inputs:
+-            inputs[tem] = inputs[tem].cuda()
++            inputs[tem] = inputs[tem].to(device)
+         with torch.inference_mode():
+@@ -118,3 +124,3 @@ for _dataset in eval_datas:
+             for tem in inputs:
+-                inputs[tem] = inputs[tem].cuda()
++                inputs[tem] = inputs[tem].to(device)
+             with torch.inference_mode():
+@@ -131,2 +137,2 @@ for _dataset in eval_datas:
+             with open(f'{save_path}/diverse_profile/item_{model_name_or_path.split("/")[-1]}_{diverse_no}.pkl', 'wb') as f:
+-                pickle.dump(item_emb, f)
+\ No newline at end of file
++                pickle.dump(item_emb, f)
+diff --git a/model.py b/model.py
+index 6be1c1e..8512421 100644
+--- a/model.py
++++ b/model.py
+@@ -151,2 +151,3 @@ class Easyrec(RobertaPreTrainedModel):
+         batch_size = user_input_ids.size(0)
++        mlm_outputs = None
+         
+@@ -321,3 +322,3 @@ class Easyrec(RobertaPreTrainedModel):
+             text_embeds.append(embeds.pooler_output.detach().cpu())
+-        text_embeds = torch.concat(text_embeds, dim=0).cuda()
++        text_embeds = torch.concat(text_embeds, dim=0).to(self.device)
+         user_embeds = F.normalize(text_embeds[: n_user], dim=-1)
+diff --git a/run_benchmark.sh b/run_benchmark.sh
+new file mode 100755
+index 0000000..e601cc4
+--- /dev/null
++++ b/run_benchmark.sh
+@@ -0,0 +1,32 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++DEVICE_TYPE=${DEVICE_TYPE:-npu}
++PRECISION=${PRECISION:-bfloat16}
++NPROC_PER_NODE=${NPROC_PER_NODE:-1}
++OUTPUT=${OUTPUT:-results/${DEVICE_TYPE}_${PRECISION}_${NPROC_PER_NODE}p.jsonl}
++MASTER_PORT=${MASTER_PORT:-40001}
++PYTHON=${PYTHON:-python}
++
++if [[ "${DEVICE_TYPE}" == "npu" ]]; then
++    export EASYREC_DEVICE=npu
++    export ASCEND_RT_VISIBLE_DEVICES=${ASCEND_RT_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}
++elif [[ "${DEVICE_TYPE}" == "cuda" ]]; then
++    export EASYREC_DEVICE=cuda
++    export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}
++elif [[ "${DEVICE_TYPE}" == "cpu" ]]; then
++    export EASYREC_DEVICE=cpu
++    NPROC_PER_NODE=1
++else
++    echo "DEVICE_TYPE must be cuda, npu, or cpu" >&2
++    exit 2
++fi
++
++"${PYTHON}" -m torch.distributed.run \
++    --nnodes=1 --node-rank=0 --nproc-per-node="${NPROC_PER_NODE}" \
++    --master-addr=127.0.0.1 \
++    --master-port="${MASTER_PORT}" benchmark_easyrec.py \
++    --device "${DEVICE_TYPE}" \
++    --precision "${PRECISION}" \
++    --output "${OUTPUT}" \
++    "$@"
+diff --git a/train_easyrec.py b/train_easyrec.py
+index 7d317de..3472d88 100644
+--- a/train_easyrec.py
++++ b/train_easyrec.py
+@@ -5,2 +5,7 @@ import logging
+ import numpy as np
++
++from device_utils import enable_fp32_ffn_output, enable_fp32_gelu, initialize_accelerator
++
++DEVICE_TYPE = initialize_accelerator()
++
+ import transformers
+@@ -11,4 +16,6 @@ np.random.seed(seed)
+ torch.manual_seed(seed)
+-torch.cuda.manual_seed(seed)
+-torch.cuda.manual_seed_all(seed)
++if DEVICE_TYPE == 'cuda':
++    torch.cuda.manual_seed_all(seed)
++elif DEVICE_TYPE == 'npu':
++    torch.npu.manual_seed_all(seed)
+ 
+@@ -136,2 +143,4 @@ def main():
+         config = AutoConfig.from_pretrained(model_args.model_name_or_path, **config_kwargs)
++        if DEVICE_TYPE == 'npu':
++            config.hidden_act = 'gelu_python'
+         model = Easyrec.from_pretrained(
+@@ -144,4 +153,6 @@ def main():
+             model_args=model_args,
+-            torch_dtype=torch.bfloat16,              
+         )
++        if training_args.fp16:
++            enable_fp32_gelu(model)
++            enable_fp32_ffn_output(model)
+     else:
+@@ -171,2 +182,6 @@ def main():
+                                       **data_module)
++    if training_args.fp16:
++        trainer.accelerator.scaler = torch.amp.GradScaler(
++            DEVICE_TYPE, init_scale=1024.0, growth_interval=10000
++        )
+     metric = Metric(metrics=['recall'], k=[20])
+@@ -178,2 +193,2 @@ def main():
+ if __name__ == "__main__":
+-    main()
+\ No newline at end of file
++    main()
+diff --git a/train_npu.sh b/train_npu.sh
+new file mode 100755
+index 0000000..1c1755b
+--- /dev/null
++++ b/train_npu.sh
+@@ -0,0 +1,52 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++MODEL_PATH=${MODEL_PATH:-./baseline_embedders/roberta-small}
++DATA_PATH=${DATA_PATH:-./data}
++OUTPUT_DIR=${OUTPUT_DIR:-./checkpoints/easyrec-roberta-small-npu}
++PRECISION=${PRECISION:-bfloat16}
++NPROC_PER_NODE=${NPROC_PER_NODE:-8}
++MASTER_PORT=${MASTER_PORT:-40001}
++PYTHON=${PYTHON:-python}
++
++case "${PRECISION}" in
++    float32) PRECISION_ARGS=() ;;
++    float16) PRECISION_ARGS=(--fp16 True) ;;
++    bfloat16) PRECISION_ARGS=(--bf16 True) ;;
++    *) echo "PRECISION must be float32, float16, or bfloat16" >&2; exit 2 ;;
++esac
++
++export EASYREC_DEVICE=npu
++export ASCEND_RT_VISIBLE_DEVICES=${ASCEND_RT_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}
++export OMP_NUM_THREADS=${OMP_NUM_THREADS:-8}
++
++"${PYTHON}" -m torch.distributed.run \
++    --nnodes=1 --node-rank=0 --nproc-per-node="${NPROC_PER_NODE}" \
++    --master-addr=127.0.0.1 --master-port="${MASTER_PORT}" \
++    train_easyrec.py \
++    --model_name_or_path "${MODEL_PATH}" \
++    --data_path "${DATA_PATH}" \
++    --trn_dataset arts-games-movies-home-electronics-tools \
++    --val_dataset arts-games-movies-home-electronics-tools \
++    --output_dir "${OUTPUT_DIR}" \
++    --num_train_epochs 25 \
++    --per_device_train_batch_size 32 \
++    --learning_rate 5e-5 \
++    --max_seq_length 64 \
++    --evaluation_strategy steps \
++    --metric_for_best_model recall@20 \
++    --load_best_model_at_end \
++    --eval_steps 1000 \
++    --save_steps 1000 \
++    --pooler_type cls \
++    --overwrite_output_dir \
++    --temp 0.05 \
++    --do_train \
++    --do_eval \
++    --do_mlm \
++    --ddp_find_unused_parameters False \
++    --save_safetensors False \
++    --add_item_raw_meta True \
++    --used_diverse_profile_num 3 \
++    "${PRECISION_ARGS[@]}" \
++    "$@"
+diff --git a/utility/logger.py b/utility/logger.py
+index cd23c07..c4a39dd 100644
+--- a/utility/logger.py
++++ b/utility/logger.py
+@@ -24,3 +24,3 @@ class EasyrecEmbedderTrainingLogger(object):
+     def log(self, message, save_to_log=True, print_to_console=True):
+-        if int(os.environ['LOCAL_RANK']) == 0:
++        if int(os.environ.get('LOCAL_RANK', 0)) == 0:
+             self.logger.info(message)
+@@ -29,3 +29,3 @@ class EasyrecEmbedderTrainingLogger(object):
+     def log_eval(self, eval_result, save_to_log=True, print_to_console=True):
+-        if int(os.environ['LOCAL_RANK']) == 0:
++        if int(os.environ.get('LOCAL_RANK', 0)) == 0:
+             self.cnt += 1
+@@ -39,2 +39,2 @@ class EasyrecEmbedderTrainingLogger(object):
+             if print_to_console:
+-                print(message)
+\ No newline at end of file
++                print(message)
+diff --git a/utility/metric.py b/utility/metric.py
+index debf31d..8601b37 100644
+--- a/utility/metric.py
++++ b/utility/metric.py
+@@ -77,3 +77,4 @@ class Metric(object):
+             test_user = tem[0].numpy().tolist()
+-            batch_data = list(map(lambda x: x.long().cuda(), tem))
++            device = next(rec_model.parameters()).device
++            batch_data = list(map(lambda x: x.long().to(device), tem))
+             # predict result
+@@ -107,4 +108,5 @@ class Metric(object):
+ 
+-        user_embeds = user_embeds.float().cuda()
+-        item_embeds = item_embeds.float().cuda()
++        device = user_embeds.device
++        user_embeds = user_embeds.float().to(device)
++        item_embeds = item_embeds.float().to(device)
+         
+@@ -118,3 +120,3 @@ class Metric(object):
+             test_user = tem[0].numpy().tolist()
+-            batch_data = list(map(lambda x: x.long().cuda(), tem))
++            batch_data = list(map(lambda x: x.long().to(device), tem))
+             # predict result

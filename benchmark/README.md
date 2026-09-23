@@ -67,6 +67,7 @@ python run.py xxx.json --eager
 |DMR|[DMR.json](configs/DMR.json)|
 |DSSM|[DSSM.json](configs/DSSM.json)|
 |EDCN|[EDCN.json](configs/EDCN.json)|
+|EasyRec|[EASYREC.json](configs/EASYREC.json)|
 |ESMM|[ESMM.json](configs/ESMM.json)|
 |ESMM_TRAIN|[ESMM_TRAIN.json](configs/ESMM_TRAIN.json)|
 |ETA|[ETA.json](configs/ETA.json)|
@@ -551,3 +552,24 @@ profiling，将 `configs/OpenP5.json` 中的 `profiling_flag` 改为 `true` 后�
 ```text
 MAE = mean(abs(npu_loss[i] - gpu_loss[i]))
 ```
+
+## EasyRec 模型
+
+运行前准备与 Atlas A2/A3、CANN 和 Python 匹配的 PyTorch/torch_npu，并安装 `uv`、`wget`、`unzip`；配置会自动准备其余依赖、官方 checkpoint 和数据。
+
+默认八卡 bf16 性能运行，单卡将 `NPROC_PER_NODE` 设为 `1`：
+
+```shell
+python run.py EASYREC.json --eager
+NPROC_PER_NODE=1 python run.py EASYREC.json --eager
+```
+
+精度对比使用以下确定性配置（batch size 1、学习率 `5e-6`、1000 次更新）：
+
+```shell
+NPROC_PER_NODE=1 EASYREC_PRECISION=float32 EASYREC_STEPS=1000 \
+EASYREC_BATCH_SIZE=1 EASYREC_LEARNING_RATE=5e-6 EASYREC_DETERMINISTIC=1 \
+python run.py EASYREC.json --eager --no_hf32
+```
+
+`EASYREC_PRECISION` 支持三种精度；默认性能运行使用 batch size 32、`5e-5` 学习率和非确定性 dropout。loss、性能摘要分别写入 `models/save_results_npu/EasyRec/` 和 `models/save_results_npu/performance_result.txt`；`--cpu`、`--eager`、`--no_hf32` 与 `profiling_flag` 均可按通用 benchmark 方式使用。

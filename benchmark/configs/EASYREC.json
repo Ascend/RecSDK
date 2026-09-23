@@ -1,0 +1,21 @@
+{
+    "name": "EasyRec",
+    "url": "https://github.com/HKUDS/EasyRec.git",
+    "commit_id": "81e818b767689046c89edf5669dfbf64598db221",
+    "patch_path": "patches/easyrec_npu.patch",
+    "mode": "train",
+    "epoch": 100,
+    "profiling_flag": false,
+    "e2e_flag": true,
+    "aclgraph_flag": false,
+    "data_type": "bfloat16",
+    "run_cmd": ["bash", "benchmark_entry.sh"],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": [
+        "uv pip install --python python transformers==4.40.0 accelerate==0.28.0 sentencepiece==0.2.0 scipy tqdm protobuf",
+        "mkdir -p baseline_embedders/easyrec-roberta-small",
+        "for f in config.json merges.txt pytorch_model.bin special_tokens_map.json tokenizer_config.json vocab.json; do wget -O baseline_embedders/easyrec-roberta-small/$f https://huggingface.co/hkuds/easyrec-roberta-small/resolve/main/$f; done",
+        "wget -O data.zip https://archive.org/download/easyrec_data/data.zip && unzip -o data.zip"
+    ]
+}
