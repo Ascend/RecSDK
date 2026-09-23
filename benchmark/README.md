@@ -91,6 +91,7 @@ python run.py xxx.json --eager
 |NFM|[NFM.json](configs/NFM.json)|
 |ONN|[ONN.json](configs/ONN.json)|
 |OpenP5|[OpenP5.json](configs/OpenP5.json)|
+|OpenP5_LLaMA|[OpenP5_LLaMA.json](configs/OpenP5_LLaMA.json)|
 |PLE|[PLE.json](configs/PLE.json)|
 |PNN|[PNN.json](configs/PNN.json)|
 |RANKMIXER|[RANKMIXER.json](configs/RANKMIXER.json)|
@@ -552,6 +553,92 @@ profiling，将 `configs/OpenP5.json` 中的 `profiling_flag` 改为 `true` 后�
 ```text
 MAE = mean(abs(npu_loss[i] - gpu_loss[i]))
 ```
+
+## OpenP5 OpenLLaMA 模型
+
+本配置适配 OpenP5 的 `openlm-research/open_llama_3b_v2` LoRA 训练路径，固定 OpenP5 commit `7f110389cd5ab51820e29e94a44b6db83df243fb`，
+使用 ML-1M 的 `sequential,straightforward` 任务。Patch 为 `patches/openp5_llama_npu.patch`，配置为 `configs/OpenP5_LLaMA.json`。
+
+### 环境与默认启动
+
+NPU 环境需预先安装匹配 CANN 的 PyTorch/torch_npu。OpenLLaMA 依赖安装在项目
+overlay 中，不替换系统 PyTorch：
+
+```shell
+mkdir -p adaptation/deps
+python -m pip install --target adaptation/deps --no-deps \
+  transformers==4.31.0 peft==0.5.0 accelerate==0.25.0
+```
+
+在 `benchmark/` 目录执行默认 BF16 A3 八卡、global batch 8、220 optimizer
+steps 性能 workload：
+
+```shell
+export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+python run.py OpenP5_LLaMA.json --eager
+```
+
+配置会自动应用 patch、准备固定模型/ML-1M，并限制每 rank CPU 线程数为 1。
+
+### 三精度单卡复现
+
+`OpenP5_LLaMA.json` 是使用 AdamW 的 BF16 八卡性能配置。精度复现两端改用无动量 SGD，避免二阶矩归一化放大梯度舍入差异；
+scheduler 为 1000 steps、warmup 为 50 steps，FP32 global batch 为 1，FP16/BF16 为 8。在模型目录将一张物理 NPU 映射为逻辑设备 0：
+
+```shell
+export PYTHONPATH=$PWD/adaptation/deps
+export RECSDK_BENCHMARK_MODELS_ROOT=..
+run_llama_accuracy() {
+  precision=$1
+  global_batch=$2
+  learning_rate=$3
+  python src/src_llama/benchmark_llama_npu.py \
+    --device npu --device_ids 0 --precision "$precision" \
+    --model_path adaptation/assets/open_llama_3b_v2 \
+    --data_path adaptation/assets/data --dataset ML1M \
+    --tasks sequential,straightforward --prompt_file prompt.txt \
+    --max_his 10 --cutoff 512 --seed 2023 \
+    --global_batch_size "$global_batch" --gradient_accumulation_steps 1 \
+    --max_optimizer_steps 1000 --scheduler_steps 1000 \
+    --scheduler_warmup_steps 50 --measurement_warmup_steps 20 \
+    --optimizer sgd --sgd_momentum 0 --learning_rate "$learning_rate" --weight_decay 0.01 \
+    --clip 1 --grad_scaler_init_scale 1.0 --lora_r 8 --lora_alpha 16 \
+    --lora_targets q_proj,v_proj,embed_tokens --logging_step 250 \
+    --output_dir "adaptation/evidence/llama_${precision}" \
+    --run_name "llama_${precision}"
+}
+run_llama_accuracy float32 1 0.0001
+run_llama_accuracy float16 8 0.00001
+run_llama_accuracy bfloat16 8 0.00001
+```
+
+H100 使用相同参数，仅将 `--device npu` 改为 `--device cuda`。两端均在 50-step
+warmup 后进入衰减段，未使用大 epsilon 或全程 warmup 抑制参数更新。前 1000 个
+optimizer steps 的验收结果：
+
+|精度|Global batch|Loss MAE|验收阈值|结果|
+|--|--:|--:|--:|--|
+|FP32|1|`4.2591095e-6`|`<1e-4`|PASS|
+|FP16|8|`7.7148390e-4`|`<1e-3`|PASS|
+|BF16|8|`6.4460926e-3`|`<1e-2`|PASS|
+
+### 性能与 profiling
+
+BF16 性能固定 global batch 8，排除前 20 个 optimizer steps，统计 steps
+21..220。延迟是包含 H2D、前向、反向、梯度裁剪、AdamW 和 scheduler 的完整
+optimizer step，8P 取各 rank 最大值；吞吐率为 global batch 除以 mean step 时间，
+单位为训练 samples/s。结果包含 mean、median、stddev、P90、P95、P99、P999，并
+写入 `benchmark/models/save_results_<device>/performance_result.txt`。
+
+|模式|Mean ms|Median ms|Stddev ms|P99 ms|P999 ms|
+|--|--:|--:|--:|--:|--:|
+|H100 1P|1441.840|1437.499|30.916|1588.061|1588.879|
+|A3 1P|1149.115|1146.479|18.267|1197.807|1218.439|
+|A3 8P|196.476|195.115|11.504|223.123|226.417|
+
+将 `OpenP5_LLaMA.json` 的 `profiling_flag` 改为 `true` 可独立采集 NPU profiler，
+结果保存到 `benchmark/models/profiling/OpenP5_LLaMA/npu/`；profiling 运行不用于
+正式性能对比。
 
 ## EasyRec 模型
 
