@@ -43,14 +43,14 @@ Rec SDK Torch基于NPU环境运行，如下为宿主机依赖软件说明。若�
 
 | 依赖名称/操作               | 推荐版本                     | 获取方式/安装说明                                                                                                                                                                                                                                                            |
 | --------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 昇腾硬件产品驱动          | Ascend HDK 26.1.0及补丁版本 | 请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾NPU驱动，并配置环境变量。         |
+| 昇腾硬件产品驱动          | Ascend HDK 26.2.0 | 请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾NPU驱动，并配置环境变量。         |
 | Ascend Docker Runtime | MindCluster 7.3.0        | 若宿主机未安装Docker，请参见[Docker社区或官网](https://docs.docker.com/engine/install/)先安装Docker。请参见《MindCluster 集群调度用户指南》的“安装 > [安装部署](https://www.hiascend.com/document/detail/zh/mindcluster/730/clustersched/dlug/dlug_installation_009.html)”章节下载和安装`Ascend Docker Runtime`软件包。 |
 
 #### 容器内训练框架依赖
 
 | 依赖名称/操作            | 推荐版本        | 获取方式/安装说明                                                                                                                                                                                                                                                                                                                                    |
 | ------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CANN软件包            | CANN 9.1.0  | 请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾CANN软件包（包含Toolkit和ops包），并配置环境变量。                                                                                                                                                                                                                                                                                      |
+| CANN软件包            | CANN 9.2.0  | 请参考[《CANN快速安装》](https://www.hiascend.com/cann/download)安装昇腾CANN软件包（包含Toolkit和ops包），并配置环境变量。                                                                                                                                                                                                                                                                                      |
 | PyTorch和TorchNPU | 2.7.1/2.10.0 | 容器内依赖，若容器内未安装，请在容器内安装。<br>2.7.1/2.10.0版本：请前往[TorchNPU2.7.1/2.10.0下载](https://www.hiascend.com/developer/software/ai-frameworks/pytorch/download?versionId=175&ids=89dda9ba9de741349efa03687a487678%2C96%2C108%2C1%2C6%2C177%2C)页面获取。<br>安装时请根据PyTorch版本、Python版本（建议使用Python 3.11）、CPU架构选择对应的安装指令。<br>如需卸载，可通过`pip3 uninstall -y torch_npu torch`指令进行卸载。 |
 
 > [!NOTE]
@@ -258,7 +258,8 @@ Rec SDK Torch软件包如下表：
    > \[!NOTE]
    > 1. 当前提供的Rec SDK一键安装部署软件包基于Python 3.11版本编译，**请在相同的Python版本环境下安装使用**。若需在其他Python版本环境下安装使用，请参见[源码编译 - 安装Rec SDK Torch一键安装部署软件包](#source_build_hybrid_torchrec)进行源码编译。
    > 2. Rec SDK Torch一键安装部署软件包内包装了TorchRec昇腾注册包（torchrec NPU适配版）和Rec SDK Torch推荐算法框架包（hybrid_torchrec、torchrec_embcache）。使用该包时，torchrec/hybrid_torchrec/torchrec_embcache三个子包无法直接使用pip3指令进行查看，但可直接在Python脚本中进行import使用。
-   > 3. Rec SDK Torch一键安装部署软件包同时支持PyTorch 2.7.1、2.10.0版本，安装时会根据当前环境中的PyTorch版本自动安装配套的软件包。
+   > 3. Rec SDK Torch一键安装部署软件包同时支持PyTorch 2.7.1、2.10.0配套版本，安装时会根据当前环境中的PyTorch版本自动安装配套的软件包。
+   > 4. 由于Rec SDK Torch一键安装部署软件包内同时打包了多种配套版本的软件包，因此软件包使用统一的Release版本号（即后续安装指令中的`{version}`），与[配套版本](#section146113514599)表格中“Rec SDK Torch”列的软件包版本号（如1.2.0、1.5.0）存在差异，属于正常现象。安装完成后，实际安装的Rec SDK Torch版本以[配套版本](#section146113514599)中当前环境PyTorch版本对应的版本为准。
 
    **软件包Hash值校验<a name="section10830205518487"></a>**
 
@@ -290,13 +291,19 @@ Rec SDK Torch软件包如下表：
 
      其中，host\_file\_path为宿主机文件路径，container\_name为待拷入的docker容器名称，container\_file\_path为待拷入的docker容器内的文件路径。
 
+   安装构建依赖：
+
+   ```bash
+   pip3 install wheel "setuptools<70.0.0"
+   ```
+
    执行如下指令进行安装：
 
    ```shell
    # 如已安装，请先卸载
    pip3 uninstall -y torch_rec_v1
-   # 安装软件包。-v 参数表示显示详细的安装信息。
-   pip3 install torch_rec_v1-{version}-{arch}.tar.gz -v
+   # 安装软件包。-v 参数表示显示详细的安装信息，--no-build-isolation 表示禁用构建隔离，直接在当前环境安装
+   pip3 install torch_rec_v1-{version}-{arch}.tar.gz -v --no-build-isolation
    ```
 
    安装指令中 `{version}` 代表版本号，`{arch}` 代表操作系统架构，请根据实际安装包名称进行替换。
