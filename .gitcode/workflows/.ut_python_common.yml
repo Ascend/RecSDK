@@ -1,0 +1,93 @@
+on:
+  workflow_call:
+    inputs:
+      REMOTE_URL:
+        required: false
+        type: string
+        default: ${{ atomgit.repositoryurl }}
+      pr_id:
+        required: false
+        type: string
+        default: ${{ atomgit.event.pull_request.number }}
+      IMAGE_FLAG:
+        required: true
+        type: string
+        description: "Full SWR image URL, e.g. swr.<region>.<org>/mindx_arm:tag"
+      TARGET_BRANCH:
+        required: false
+        type: string
+        default: ${{ atomgit.event.pull_request.base.ref }}
+      runs_on_arch:
+        required: true
+        type: string
+        description: "x86 or arm"
+      servicename:
+        required: false
+        type: string
+        default: $(echo "${{ atomgit.repository }}" | cut -d '/' -f 2)
+      DEFAULT_BRANCH:
+        required: false
+        type: string
+        default: "develop"
+
+jobs:
+  JOB_compile:
+    name: JOB_compile
+    select: selected_by_default
+    runs-on: [ self-hosted, "${{ inputs.runs_on_arch }}", cpu=32 ]
+    container:
+      image: ${{ inputs.IMAGE_FLAG }}
+      options: --user root
+    steps:
+      - name: clone repo and merge PR
+        run: |
+          set -x
+          servicename=$(echo "${{ atomgit.repository }}" | cut -d '/' -f 2)
+          git clone --single-branch -b ${{ inputs.TARGET_BRANCH }} ${{ inputs.REMOTE_URL }} ${{ inputs.servicename }}
+          cd ${{ inputs.servicename }}
+
+          git fetch origin +refs/merge-requests/${{ inputs.pr_id }}/head:pr_${{ inputs.pr_id }}
+          git reset --hard "origin/${{ inputs.TARGET_BRANCH }}"
+          git checkout -b new_${{ inputs.TARGET_BRANCH }}
+          git config --global user.name AtlasAccount
+          git config --global user.email AtlasAccount@noreply.gitcode.com
+          git merge --no-edit pr_${{ inputs.pr_id }}
+          git diff-tree -r --name-only --no-commit-id origin/${{ inputs.TARGET_BRANCH }} HEAD > ${ATOMGIT_WORKSPACE}/change.txt
+          cat ${ATOMGIT_WORKSPACE}/change.txt
+
+          if [ "${{ inputs.TARGET_BRANCH }}" != "${{ inputs.DEFAULT_BRANCH }}" ]; then
+              mkdir -p .gitcode/workflows
+              git clone --single-branch --depth 1 -b ${{ inputs.DEFAULT_BRANCH }} ${{ inputs.REMOTE_URL }} ${ATOMGIT_WORKSPACE}/tempdir
+              cp -fr ${ATOMGIT_WORKSPACE}/tempdir/.gitcode/workflows/scripts .gitcode/workflows/ 2>/dev/null || true
+              cp -fr ${ATOMGIT_WORKSPACE}/tempdir/.gitcode/workflows/config .gitcode/workflows/ 2>/dev/null || true
+              rm -fr ${ATOMGIT_WORKSPACE}/tempdir
+          fi
+
+      - name: prepare_dependency
+        run: |
+          set -e
+          echo "ATOMGIT_WORKSPACE=${ATOMGIT_WORKSPACE}"
+          echo "servicename=${{ inputs.servicename }}"
+          mkdir -p ${ATOMGIT_WORKSPACE}/opensource
+          cd ${ATOMGIT_WORKSPACE}/opensource
+          wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/test_mxrec/opensource/emock-0.9.0.zip
+          wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/test_mxrec/opensource/googletest-release-1.8.1.zip
+          wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/test_mxrec/opensource/huaweicloud-sdk-c-obs-3.23.9.zip
+          wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/test_mxrec/opensource/pybind11-2.10.3.zip
+          wget https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/test_mxrec/opensource/release-1.8.1.zip
+
+      - name: compile
+        run: |
+          set -e
+          echo "ATOMGIT_WORKSPACE=${ATOMGIT_WORKSPACE}"
+
+          file_path='change.txt'
+          if grep -q "training/common/" "${ATOMGIT_WORKSPACE}/$file_path"; then
+              source /usr/local/Ascend/ascend-toolkit/set_env.sh
+              source /usr/local/Ascend/tfplugin/set_env.sh
+              cd ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/ && python3.7 setup.py
+              cd ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/build/mindxsdk-mxrec/tf1_whl
+              pip3 install mx_rec-*-py3-none-linux_x86_64.whl
+              cd ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/training/common/python/tests && dos2unix *.sh && chmod +x * && bash run_python_dt.sh
+
+          fi

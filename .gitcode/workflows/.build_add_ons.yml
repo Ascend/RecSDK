@@ -1,0 +1,134 @@
+on:
+  workflow_call:
+    inputs:
+      REMOTE_URL:
+        required: false
+        type: string
+        default: ${{ atomgit.repositoryurl }}
+      pr_id:
+        required: false
+        type: string
+        default: ${{ atomgit.event.pull_request.number }}
+      IMAGE_FLAG:
+        required: true
+        type: string
+        description: "Full SWR image URL, e.g. swr.<region>.<org>/mindx_arm:tag"
+      TARGET_BRANCH:
+        required: false
+        type: string
+        default: ${{ atomgit.event.pull_request.base.ref }}
+      runs_on_arch:
+        required: true
+        type: string
+        description: "x86 or arm"
+      servicename:
+        required: false
+        type: string
+        default: $(echo "${{ atomgit.repository }}" | cut -d '/' -f 2)
+      DEFAULT_BRANCH:
+        required: false
+        type: string
+        default: "develop"
+
+jobs:
+  JOB_compile:
+    name: JOB_compile
+    select: selected_by_default
+    runs-on: [ self-hosted, "${{ inputs.runs_on_arch }}", cpu=32 ]
+    container:
+      image: ${{ inputs.IMAGE_FLAG }}
+      options: --user root
+    steps:
+      - name: clone repo and merge PR
+        run: |
+          set -x
+          servicename=$(echo "${{ atomgit.repository }}" | cut -d '/' -f 2)
+          git clone --single-branch -b ${{ inputs.TARGET_BRANCH }} ${{ inputs.REMOTE_URL }} ${{ inputs.servicename }}
+          cd ${{ inputs.servicename }}
+
+          git fetch origin +refs/merge-requests/${{ inputs.pr_id }}/head:pr_${{ inputs.pr_id }}
+          git reset --hard "origin/${{ inputs.TARGET_BRANCH }}"
+          git checkout -b new_${{ inputs.TARGET_BRANCH }}
+          git config --global user.name AtlasAccount
+          git config --global user.email AtlasAccount@noreply.gitcode.com
+          git merge --no-edit pr_${{ inputs.pr_id }}
+          (git diff ${{ inputs.TARGET_BRANCH }} --no-commit-id --name-status \
+          | awk '/^D/{next};/^R/{print $3;next};/^[AM]/{print $2}' \
+          | grep -F '/v220/' \
+          | awk -F'/' '{print $4}' \
+          | sort -u) > ${ATOMGIT_WORKSPACE}/change.txt
+          # git diff-tree -r --name-only --no-commit-id origin/${{ inputs.TARGET_BRANCH }} HEAD > ${ATOMGIT_WORKSPACE}/change.txt
+          cat ${ATOMGIT_WORKSPACE}/change.txt
+
+          if [ "${{ inputs.TARGET_BRANCH }}" != "${{ inputs.DEFAULT_BRANCH }}" ]; then
+              mkdir -p .gitcode/workflows
+              git clone --single-branch --depth 1 -b ${{ inputs.DEFAULT_BRANCH }} ${{ inputs.REMOTE_URL }} ${ATOMGIT_WORKSPACE}/tempdir
+              cp -fr ${ATOMGIT_WORKSPACE}/tempdir/.gitcode/workflows/scripts .gitcode/workflows/ 2>/dev/null || true
+              cp -fr ${ATOMGIT_WORKSPACE}/tempdir/.gitcode/workflows/config .gitcode/workflows/ 2>/dev/null || true
+              rm -fr ${ATOMGIT_WORKSPACE}/tempdir
+          fi
+
+      - name: prepare_dependency
+        run: |
+          set -e
+          echo "ATOMGIT_WORKSPACE=${ATOMGIT_WORKSPACE}"
+          echo "servicename=${{ inputs.servicename }}"
+          mkdir -p ${ATOMGIT_WORKSPACE}/opensource
+          cd ${ATOMGIT_WORKSPACE}/opensource
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/test_mxrec/opensource/huaweicloud-sdk-c-obs-3.23.9.zip
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/pybind11-2.10.3.zip
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/torchrec-release-v1.1.0.zip
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/torchrec-release-v1.2.0.zip
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/json-3.9.1.tar.gz
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/googletest-1.13.0.zip
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/spdlog-1.12.0.zip
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/emock-master.zip
+
+          cp ${ATOMGIT_WORKSPACE}/opensource/json-3.9.1.tar.gz ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/cust_op/ascendc_op/build/scripts/onnx_plugin/
+          cd ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/cust_op/ascendc_op/build/scripts/onnx_plugin/
+          ls -la ./
+          tar -xvf json-3.9.1.tar.gz
+          cp json-3.9.1/single_include/nlohmann/json.hpp ./
+          ls -la ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/cust_op/ascendc_op/build/scripts/onnx_plugin/
+
+      - name: compile
+        run: |
+          set -e
+          echo "ATOMGIT_WORKSPACE=${ATOMGIT_WORKSPACE}"
+          mkdir -p ${ATOMGIT_WORKSPACE}/artifacts
+          touch ${ATOMGIT_WORKSPACE}/artifacts/empty.run
+
+          sed -i '88d' /etc/profile
+          echo -e "UserName=HwHiAiUser\nUserGroup=HwHiAiUser\nDriver_Install_Type=full\nDriver_Install_Path_Param=/usr/local/Ascend\nDriver_Install_For_All=no\nDriver_Install_Mode=normal\nFirmware_Install_Type=full\nFirmware_Install_Path_Param=/usr/local/Ascend" > /etc/ascend_install.info
+          file_path='change.txt'
+          cd ${ATOMGIT_WORKSPACE}
+          git clone https://gitcode.com/cann/catlass.git catlass
+          export CATLASS_HOME=${ATOMGIT_WORKSPACE}/catlass
+          source /usr/local/Ascend/cann/set_env.sh
+          export PATH=/usr/local/python3.11.0/bin:$PATH
+          export LD_LIBRARY_PATH=/usr/local/python3.11.0/lib:/usr/local/Ascend/driver/driver/lib64:/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH
+          mapfile -t lines < "${ATOMGIT_WORKSPACE}/$file_path"
+          declare -p lines
+          echo "循环编译"
+          for dir in "${lines[@]}"; do
+              if [[ "$dir" == "cmake" || "$dir" == "common" || "$dir" == "select_dim1_to_permute" ]]; then
+                  continue
+              else
+                  cd ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/cust_op/ascendc_op/ai_core_op/"$dir"/v220
+                  bash run.sh
+                  cd "$dir"/build_out
+                  new_op_name=mxrec_opp_"${dir}_310p".run
+                  mv custom_opp*.run  "${new_op_name}"
+                  cd -
+                  ls -al ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/cust_op/ascendc_op/ai_core_op/"$dir"/v220/"$dir"/build_out
+                  cp -p -f -r ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/cust_op/ascendc_op/ai_core_op/"$dir"/v220/"$dir"/build_out/mxrec_opp_*.run ${ATOMGIT_WORKSPACE}/artifacts/
+              fi
+          done
+
+      - name: Upload artifact
+        uses: upload-artifact
+        with:
+          name: ${{ atomgit.repository }}-${{ inputs.runs_on_arch }}-add_ons
+          path: |
+            artifacts/*.run
+          overwrite: true

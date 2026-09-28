@@ -1,0 +1,118 @@
+on:
+  workflow_call:
+    inputs:
+      REMOTE_URL:
+        required: false
+        type: string
+        default: ${{ atomgit.repositoryurl }}
+      pr_id:
+        required: false
+        type: string
+        default: ${{ atomgit.event.pull_request.number }}
+      IMAGE_FLAG:
+        required: true
+        type: string
+        description: "Full SWR image URL, e.g. swr.<region>.<org>/mindx_arm:tag"
+      TARGET_BRANCH:
+        required: false
+        type: string
+        default: ${{ atomgit.event.pull_request.base.ref }}
+      runs_on_arch:
+        required: true
+        type: string
+        description: "x86 or arm"
+      servicename:
+        required: false
+        type: string
+        default: $(echo "${{ atomgit.repository }}" | cut -d '/' -f 2)
+      DEFAULT_BRANCH:
+        required: false
+        type: string
+        default: "develop"
+
+jobs:
+  JOB_compile:
+    name: JOB_compile
+    select: selected_by_default
+    runs-on: [ self-hosted, "${{ inputs.runs_on_arch }}", cpu=32 ]
+    container:
+      image: ${{ inputs.IMAGE_FLAG }}
+      options: --user root
+    steps:
+      - name: clone repo and merge PR
+        run: |
+          set -x
+          servicename=$(echo "${{ atomgit.repository }}" | cut -d '/' -f 2)
+          git clone --no-tags --single-branch -b ${{ inputs.TARGET_BRANCH }} ${{ inputs.REMOTE_URL }} ${{ inputs.servicename }}
+          cd ${{ inputs.servicename }}
+
+          git fetch --no-tags origin refs/merge-requests/${{ inputs.pr_id }}/head:pr_${{ inputs.pr_id }}
+          git reset --hard "origin/${{ inputs.TARGET_BRANCH }}"
+          git checkout -b new_${{ inputs.TARGET_BRANCH }}
+          git config --global user.name AtlasAccount
+          git config --global user.email AtlasAccount@noreply.gitcode.com
+          git merge --no-edit pr_${{ inputs.pr_id }}
+          git diff-tree -r --name-only --no-commit-id origin/${{ inputs.TARGET_BRANCH }} HEAD > ${ATOMGIT_WORKSPACE}/change.txt
+          cat ${ATOMGIT_WORKSPACE}/change.txt
+
+          if [ "${{ inputs.TARGET_BRANCH }}" != "${{ inputs.DEFAULT_BRANCH }}" ]; then
+              mkdir -p .gitcode/workflows
+              git clone --no-tags --single-branch --depth 1 -b ${{ inputs.DEFAULT_BRANCH }} ${{ inputs.REMOTE_URL }} ${ATOMGIT_WORKSPACE}/tempdir
+              cp -fr ${ATOMGIT_WORKSPACE}/tempdir/.gitcode/workflows/scripts .gitcode/workflows/ 2>/dev/null || true
+              cp -fr ${ATOMGIT_WORKSPACE}/tempdir/.gitcode/workflows/config .gitcode/workflows/ 2>/dev/null || true
+              rm -fr ${ATOMGIT_WORKSPACE}/tempdir
+          fi
+
+      - name: prepare_dependency
+        run: |
+          set -e
+          echo "ATOMGIT_WORKSPACE=${ATOMGIT_WORKSPACE}"
+          echo "servicename=${{ inputs.servicename }}"
+          mkdir -p ${ATOMGIT_WORKSPACE}/opensource
+          cd ${ATOMGIT_WORKSPACE}/opensource
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/test_mxrec/opensource/huaweicloud-sdk-c-obs-3.23.9.zip
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/pybind11-2.10.3.zip
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/torchrec-release-v1.1.0.zip
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/torchrec-release-v1.2.0.zip
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/json-3.9.1.tar.gz
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/googletest-1.13.0.zip
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/spdlog-1.12.0.zip
+          wget --no-check-certificate https://mindcluster.obs.cn-north-4.myhuaweicloud.com/blueImageDependency/emock-master.zip
+
+          cd ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/training/tf_rec_v2/third_party
+          cp ${ATOMGIT_WORKSPACE}/opensource/googletest-1.13.0.zip ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/training/tf_rec_v2/third_party/
+          unzip googletest-1.13.0.zip
+          mv googletest-1.13.0 googletest
+          cp ${ATOMGIT_WORKSPACE}/opensource/pybind11-2.10.3.zip ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/training/tf_rec_v2/third_party/
+          unzip pybind11-2.10.3.zip
+          mv pybind11-2.10.3 pybind11
+          cp ${ATOMGIT_WORKSPACE}/opensource/spdlog-1.12.0.zip ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/training/tf_rec_v2/third_party/
+          unzip spdlog-1.12.0.zip
+          mv spdlog-1.12.0 spdlog
+          cp ${ATOMGIT_WORKSPACE}/opensource/emock-master.zip ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/training/tf_rec_v2/third_party/
+          unzip emock-master.zip
+          mv emock-master emock
+          cd -
+
+      - name: compile
+        run: |
+          set -e
+          echo "ATOMGIT_WORKSPACE=${ATOMGIT_WORKSPACE}"
+          mkdir -p ${ATOMGIT_WORKSPACE}/artifacts
+          touch ${ATOMGIT_WORKSPACE}/artifacts/empty.tar.gz
+
+          file_path='change.txt'
+          . /usr/local/Ascend/ascend-toolkit/set_env.sh
+          . /etc/profile
+          export LD_LIBRARY_PATH=/usr/local/python3.11.0/lib:/usr/local/Ascend/driver/driver/lib64:/usr/local/Ascend/driver/lib64/driver:$LD_LIBRARY_PATH
+          cd ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/training/tf_rec_v2 && python3.7 setup.py
+          ls -la ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/training/tf_rec_v2/output/
+          cp -p -f -r  ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/training/tf_rec_v2/output/*.tar.gz ${ATOMGIT_WORKSPACE}/artifacts/
+
+      - name: Upload artifact
+        uses: upload-artifact
+        with:
+          name: ${{ atomgit.repository }}-${{ inputs.runs_on_arch }}-TF_v2
+          path: |
+            artifacts/*.tar.gz
+          overwrite: true

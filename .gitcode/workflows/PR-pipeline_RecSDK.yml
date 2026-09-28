@@ -1,0 +1,318 @@
+name: PR-pipeline_RecSDK
+
+on:
+  pr_comment:
+    types: [created]
+    keyword: '^compile$'
+  pull_request_comment:
+    types: [ created ]
+    branches: [ 'develop', 'release/v26.2.0', '26.1.0', '26.0.0' ]
+    comments: [ '^compile$' ]
+
+env:
+  REPO_NAME: ${{ atomgit.event.repository.name }}
+  REMOTE_URL: ${{ atomgit.repositoryurl }}
+  PR_ID: ${{ atomgit.event.pull_request.number }}
+  org_name: "Ascend"
+
+permissions:
+  project: read
+  repository: read
+  id-token: write
+  pr: write
+  note: write
+
+stages:
+  stage_0:
+    name: CodeCheck
+    select: selected_by_default
+    jobs:
+      Detect_file_changes:
+        name: Detect_file_changes
+        runs-on: [ self-hosted, x86, cpu=16 ]
+        container:
+          image: swr.cn-north-4.myhuaweicloud.com/pytorch_images_x86/pytorchx86:v_03
+        outputs:
+          need_build: ${{ steps.set-skip.outputs.need_build }}
+        steps:
+          - name: checkout
+            uses: checkout
+            with:
+              ref: refs/merge-requests/${{ env.PR_ID }}/merge
+              fetch-depth: 0
+          - name: Only_doc_commit
+            id: filter
+            uses: paths-changes-filter
+            with:
+              event-name: 'pull_request'
+              base: ${{ atomgit.event.pull_request.base.ref }}
+              repo: ${{ atomgit.repository }}
+              number: ${{ env.PR_ID }}
+              token: ${{ secrets.GIT_TOKEN }}
+              list-files: json
+              predicate-quantifier: every
+              filters: |
+                changed:
+                  - '**'
+                non-doc:
+                  - '!**/*.md'
+                  - '!**/*.rst'
+                  - '!**/*.log'
+                  - '!**/*.png'
+                  - '!**/*.jpg'
+                  - '!**/*.doc'
+                  - '!**/*.eddx'
+                  - '!**/*.svg'
+
+          - name: set build skip flag
+            id: set-skip
+            run: |
+              echo "changed: ${{ steps.filter.outputs.changed_files }}"
+              echo "non-doc: ${{ steps.filter.outputs.non-doc }}"
+              if [ "${{ steps.filter.outputs.non-doc }}" = "true" ]; then
+                echo "need_build=yes" >> "$ATOMGIT_OUTPUT"
+              else
+                echo "need_build=no" >> "$ATOMGIT_OUTPUT"
+              fi
+              echo "${{ steps.filter.outputs.changed_files }}" | tr -d '[]" ' | tr ',' '\n' > modify_files.txt
+              cat modify_files.txt
+
+      associate_pr_comment:
+        name: associate_pr_comment
+        select: selected_by_default
+        runs-on: [ self-hosted, x86, cpu=16 ]
+        container:
+          image: swr.cn-north-4.myhuaweicloud.com/atlas-ci/common:latest
+        steps:
+          - name: associate-pr-comment
+            uses: associate-pr-comment
+          - name: pre_pipeline
+            id: pre_pipeline
+            uses: cann/.gitcode/actions/pre-pipeline@689551d6b29a77d8c2a005b8f1b3883db24820ef
+            with:
+              owner: ${{ env.org_name }}
+              repo: ${{ env.repo_name }}
+              pr_number: ${{ atomgit.event.pull_request.number }}
+              token: ${{ secrets.GIT_TOKEN }}
+              apply_label: 'true'
+              run_url: https://gitcode.com/${{ env.org_name }}/${{ env.repo_name }}/actions/runs/${{ atomgit.workflow_run_id }}
+
+  stage_1:
+    name: CodeCheck_Build_Test
+    select: selected_by_default
+    jobs:
+      pre-commit:
+        name: pre-commit
+        runs-on: [ self-hosted, x86, cpu=16 ]
+        container:
+          image: swr.cn-north-4.myhuaweicloud.com/atlas-ci/common:latest
+          options: --user root
+        steps:
+          - name: checkout
+            uses: checkout
+            with:
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha || '' }}
+          - name: gitleaks install
+            run: |
+              wget -q --no-host-directories -c --no-check-certificate https://pytorch-package.obs.cn-north-4.myhuaweicloud.com/pta-codecheck/gitleaks
+              chmod +x gitleaks
+          - name: setup-python311
+            run: |
+              ln -sf /usr/local/bin/python3.11 /usr/bin/python
+              python --version
+          - name: run pre-commit
+            uses: openlibing/pre-commit-action@v1.0.0
+
+      SCA:
+        name: SCA
+        runs-on: [ self-hosted, x86, cpu=8 ]
+        container:
+          image: swr.cn-north-4.myhuaweicloud.com/atlas-ci/common:latest
+          options: --user root
+        steps:
+          - name: checkout
+            uses: checkout
+          - name: Run SCA PR scan
+            uses: openlibing/sca-action/sca-pr-action@v1.0.0
+            with:
+              project-name: MindCluster
+
+      malicious-scan:
+        name: antipoison
+        runs-on: [ self-hosted, x86, cpu=8 ]
+        container:
+          image: swr.cn-north-4.myhuaweicloud.com/atlas-ci/common:latest
+          options: --user root
+        steps:
+          - name: Checkout
+            uses: checkout
+          - name: Run malicious code scan
+            uses: openlibing/malicious-code-scan-action/malicious-code-pr-scan-action@v1.0.0
+            with:
+              project-name: MindCluster
+
+      SAST:
+        name: PR-SAST-check
+        runs-on: [ self-hosted, x86, cpu=8 ]
+        container:
+          image: swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindx_x86:mindxdl_go1207_20251203
+          options: --user root
+        steps:
+          - name: git upgrade
+            run: |
+              apt-get update
+              apt-get install -y software-properties-common
+              add-apt-repository ppa:git-core/ppa -y
+              apt-get update
+              apt-get install -y git
+              git --version
+          - name: checkout
+            uses: checkout
+            with:
+              ref: ${{ atomgit.event.pull_request.merge_commit_sha || '' }}
+          - name: checkout AI-Check
+            run: |
+              set -x
+              git clone -b main https://gitcode.com/TuBee/AI-Check.git AI-Check
+          - name: run check
+            run: |
+              set -x
+              export ACCESS_TOKEN="${{ secrets.ACCESS_QK }}"
+              export __repository__="${{ env.REMOTE_URL }}"
+              cd ${ATOMGIT_WORKSPACE}/AI-Check
+              bash check.sh
+
+      Build_torchrec:
+        name: Build_torchrec
+        if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        uses: .gitcode/workflows/.build_torchrec.yml
+        with:
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindx_arm:RecSDK_TorchRec_v1_20260818_02"
+          runs_on_arch: "arm"
+
+      Build_torchrec_v2:
+        name: Build_torchrec_v2
+        if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        uses: .gitcode/workflows/.build_torchrec_v2.yml
+        with:
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/recsdk_x86:ubuntu20_pt_v2_A5_20260314"
+          runs_on_arch: "x86"
+
+
+      Build_TF:
+        name: Build_TF
+        if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        uses: .gitcode/workflows/.build_TF.yml
+        with:
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindxrec_arm:recsdk_tf_v2"
+          runs_on_arch: "arm"
+
+      Build_TF_v2:
+        name: Build_TF_v2
+        if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        uses: .gitcode/workflows/.build_TF_v2.yml
+        with:
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/recsdk_arm:ubuntu20_tf_v2_A5_20260314"
+          runs_on_arch: "arm"
+
+      Build_add_ons:
+        name: Build_add_ons
+        if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        uses: .gitcode/workflows/.build_add_ons.yml
+        with:
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindxrec_x86:recsdk_torch_ci_x86_centos_change_chip_v1"
+          runs_on_arch: "x86"
+
+      Build_ops_A5:
+        name: Build_ops_A5
+        if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        uses: .gitcode/workflows/.build_ops_A5.yml
+        with:
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindxrec_x86:recsdk_torch_ci_x86_centos_v1_A5_20260310"
+          runs_on_arch: "x86"
+
+      Clangtidy_TF:
+        name: Clangtidy_TF
+        if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        uses: .gitcode/workflows/.clangtidy_TF.yml
+        with:
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/recsdk_arm:ubuntu20_tf_v2_A5_20260314"
+          runs_on_arch: "arm"
+
+      Clangtidy_TF_v2:
+        name: Clangtidy_TF_v2
+        if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        uses: .gitcode/workflows/.clangtidy_TF_v2.yml
+        with:
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/recsdk_arm:ubuntu20_tf_v2_A5_20260314"
+          runs_on_arch: "arm"
+
+      UT_Python_common:
+        name: UT_Python_common
+        if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        uses: .gitcode/workflows/.ut_python_common.yml
+        with:
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindxrec_x86:mxrec_device_7"
+          runs_on_arch: "x86"
+
+      UT_Python_tf1:
+        name: UT_Python_tf1
+        if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        uses: .gitcode/workflows/.ut_python_tf1.yml
+        with:
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindxrec_x86:mxrec_device_7"
+          runs_on_arch: "x86"
+
+      UT_AccCTR:
+        name: UT_AccCTR
+        if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        uses: .gitcode/workflows/.ut_AccCTR.yml
+        with:
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindxrec_x86:mxrec_device_9_dt"
+          runs_on_arch: "x86"
+
+      UT_Cpp_tf1:
+        name: UT_Cpp_tf1
+        if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        uses: .gitcode/workflows/.ut_cpp_tf1.yml
+        with:
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindxrec_x86:mxrec_device_9_dt_noproxy"
+          runs_on_arch: "x86"
+
+  stage_2:
+    name: PreSmoke
+    select: selected_by_default
+    jobs:
+      PreSmoke_torchrec:
+        name: PreSmoke_torchrec
+        if : ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        uses: .gitcode/workflows/.presmoke_torchrec.yml
+        with:
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindx_arm:RecSDK_Driver_PT_Ubuntu22_20260507"
+          runs_on_arch: "arm"
+
+      PreSmoke_TF:
+        name: PreSmoke_TF
+        if : ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+        uses: .gitcode/workflows/.presmoke_TF.yml
+        with:
+          IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindxrec_arm:recsdk_tf_v1_ci_arm_centos"
+          runs_on_arch: "arm"
+
+post:
+  jobs:
+    query_pipeline:
+      runs-on: [ self-hosted, x86, cpu=16 ]
+      container:
+        image: swr.cn-north-4.myhuaweicloud.com/atlas-ci/common:latest
+      steps:
+        - name: query_pipeline
+          id: query_pipeline
+          uses: cann/.gitcode/actions/query-pipeline@689551d6b29a77d8c2a005b8f1b3883db24820ef
+          with:
+            owner: ${{ env.org_name }}
+            repo: ${{ env.repo_name }}
+            run_id: ${{ atomgit.workflow_run_id }}
+            token: ${{ secrets.GIT_TOKEN }}
+            pr_number: ${{ atomgit.event.pull_request.number }}
+            apply_label: 'true'

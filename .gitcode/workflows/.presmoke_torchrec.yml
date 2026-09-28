@@ -1,0 +1,102 @@
+on:
+  workflow_call:
+    inputs:
+      REMOTE_URL:
+        required: false
+        type: string
+        default: ${{ atomgit.repositoryurl }}
+      pr_id:
+        required: false
+        type: string
+        default: ${{ atomgit.event.pull_request.number }}
+      IMAGE_FLAG:
+        required: true
+        type: string
+        description: "Full SWR image URL, e.g. swr.<region>.<org>/mindx_arm:tag"
+      TARGET_BRANCH:
+        required: false
+        type: string
+        default: ${{ atomgit.event.pull_request.base.ref }}
+      runs_on_arch:
+        required: true
+        type: string
+        description: "x86 or arm"
+      servicename:
+        required: false
+        type: string
+        default: $(echo "${{ atomgit.repository }}" | cut -d '/' -f 2)
+      DEFAULT_BRANCH:
+        required: false
+        type: string
+        default: "develop"
+
+jobs:
+  JOB_compile:
+    name: JOB_compile
+    select: selected_by_default
+    runs-on: [ self-hosted, default, npu=2 ]
+    container:
+      image: ${{ inputs.IMAGE_FLAG }}
+      options: --user root
+    steps:
+      - name: clone repo and merge PR
+        run: |
+          set -x
+          servicename=$(echo "${{ atomgit.repository }}" | cut -d '/' -f 2)
+          git clone --single-branch -b ${{ inputs.TARGET_BRANCH }} ${{ inputs.REMOTE_URL }} ${{ inputs.servicename }}
+          cd ${{ inputs.servicename }}
+
+          git fetch origin +refs/merge-requests/${{ inputs.pr_id }}/head:pr_${{ inputs.pr_id }}
+          git reset --hard "origin/${{ inputs.TARGET_BRANCH }}"
+          git checkout -b new_${{ inputs.TARGET_BRANCH }}
+          git config --global user.name AtlasAccount
+          git config --global user.email AtlasAccount@noreply.gitcode.com
+          git merge --no-edit pr_${{ inputs.pr_id }}
+          git diff-tree -r --name-only --no-commit-id origin/${{ inputs.TARGET_BRANCH }} HEAD > ${ATOMGIT_WORKSPACE}/change.txt
+          cat ${ATOMGIT_WORKSPACE}/change.txt
+
+          if [ "${{ inputs.TARGET_BRANCH }}" != "${{ inputs.DEFAULT_BRANCH }}" ]; then
+              mkdir -p .gitcode/workflows
+              git clone --single-branch --depth 1 -b ${{ inputs.DEFAULT_BRANCH }} ${{ inputs.REMOTE_URL }} ${ATOMGIT_WORKSPACE}/tempdir
+              cp -fr ${ATOMGIT_WORKSPACE}/tempdir/.gitcode/workflows/scripts .gitcode/workflows/ 2>/dev/null || true
+              cp -fr ${ATOMGIT_WORKSPACE}/tempdir/.gitcode/workflows/config .gitcode/workflows/ 2>/dev/null || true
+              rm -fr ${ATOMGIT_WORKSPACE}/tempdir
+          fi
+
+      - name: Download build artifact
+        uses: download-artifact
+        with:
+          name: ${{ atomgit.repository }}-${{ inputs.runs_on_arch }}-torchrec_v1
+          path: ./
+
+      - name: compile
+        run: |
+          set -e
+          echo "ATOMGIT_WORKSPACE=${ATOMGIT_WORKSPACE}"
+          echo "servicename=${{ inputs.servicename }}"
+
+          mkdir -p ${ATOMGIT_WORKSPACE}/opensource
+          cd ${ATOMGIT_WORKSPACE}/opensource
+          ARCH=$(uname -m)
+          if [[ "$ARCH" == "aarch64" ]]; then
+              wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260622.3/fbgemm_ascend-1.2.0-cp311-cp311-linux_aarch64.whl
+              wget -q https://pytorch-package.obs.cn-north-4.myhuaweicloud.com/pta/Daily/v2.7.1/20260327.4/pytorch_v2.7.1_py311.tar.gz && tar -zxvf pytorch_v2.7.1_py311.tar.gz
+              wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.2.0/20260824.8/rec_ops-2.7.1%2Baarch64-cp311-cp311-linux_aarch64.whl
+          elif [[ "$ARCH" == "x86_64" ]]; then
+              wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260622.3/fbgemm_ascend-1.2.0-cp311-cp311-linux_x86_64.whl
+              wget -q https://pytorch-package.obs.cn-north-4.myhuaweicloud.com/pta/Daily/v2.7.1/20260327.4/pytorch_v2.7.1_py311.tar.gz && tar -zxvf pytorch_v2.7.1_py311.tar.gz
+              wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.2.0/20260824.8/rec_ops-2.7.1%2Bx86.64-cp311-cp311-linux_x86_64.whl
+          else
+              echo "Unsupported architecture: $ARCH"
+              exit 1
+          fi
+          source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
+          source /usr/local/set_cann_env.sh a2
+          python3 -m pip install pytest pyyaml pytz tensordict
+          ls -1 *.whl | grep $ARCH | xargs -I {} python3 -m pip install {}
+          cd ${ATOMGIT_WORKSPACE}
+          echo "打印torchrec产物"
+          ls -al ${ATOMGIT_WORKSPACE}
+          # wget https://mindx-package.obs.cn-north-4.myhuaweicloud.com/RecSDK/pr/${pr_id}/Ascend-mindxsdk-torchrec-1.2.0-npu-linux-aarch64.tar.gz 2>/dev/null || true
+          # wget https://mindx-package.obs.cn-north-4.myhuaweicloud.com/RecSDK/pr/${pr_id}/Ascend-mindxsdk-hybrid-torchrec-1.2.0-pytorch2.7.1-linux-aarch64.tar.gz 2>/dev/null || true
+          cd ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/build && bash run_presmoke.sh
