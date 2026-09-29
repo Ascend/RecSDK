@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
 project(embedding_cache LANGUAGES CXX C)
 
+# 禁用 RPATH/RUNPATH（安全编译要求，构建/安装产物均不带）
+set(CMAKE_SKIP_RPATH TRUE)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -30,8 +33,6 @@ list(JOIN COMMON_FLAGS " " COMMON_FLAGS_STR)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     message(STATUS "====== Build Type: Release")
-    set(CMAKE_SKIP_RPATH TRUE)
-    set(CMAKE_SKIP_BUILD_RPATH TRUE)
     add_link_options(-Wl,-z,relro,-z,now)
     set(CMAKE_CXX_FLAGS "${COMMON_FLAGS_STR} -O3 -D_FORTIFY_SOURCE=2 -fstack-protector-all -fstack-protector-strong -s")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack")

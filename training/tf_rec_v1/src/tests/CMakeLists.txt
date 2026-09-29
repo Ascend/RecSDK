@@ -13,6 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
+# UT 为构建树测试产物（不安装、不交付），局部恢复构建期 RPATH 用于运行时定位依赖库；
+# 交付产物仍由工程顶层 CMAKE_SKIP_RPATH 保证不携带 RPATH/RUNPATH
+set(CMAKE_SKIP_RPATH FALSE)
+
 # 开启测试
 enable_testing()
 set(CMAKE_CXX_STANDARD 17)

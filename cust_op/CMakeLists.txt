@@ -4,6 +4,9 @@
 cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
 project(rec_cust_ops LANGUAGES CXX)
 
+# 禁用 RPATH/RUNPATH（安全编译要求，构建/安装产物均不带）
+set(CMAKE_SKIP_RPATH TRUE)
+
 set(RECSDK_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "Show compile commands" FORCE)
 

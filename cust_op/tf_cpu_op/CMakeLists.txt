@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.14.1)
 
 project(ctr CXX C)
 
+# 禁用 RPATH/RUNPATH（安全编译要求，构建/安装产物均不带）
+set(CMAKE_SKIP_RPATH TRUE)
+
 execute_process(COMMAND ${CMAKE_C_COMPILER} -dumpfullversion -dumpversion
                 OUTPUT_VARIABLE GCC_VERSION)
         string(REGEX MATCHALL "[0-9]+" GCC_VERSION_COMPONENTS ${GCC_VERSION})
