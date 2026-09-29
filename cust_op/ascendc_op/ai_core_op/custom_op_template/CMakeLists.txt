@@ -11,6 +11,9 @@
 
 cmake_minimum_required(VERSION 3.16.0)
 project(opp)
+
+# 禁用 RPATH/RUNPATH（安全编译要求，构建/安装产物均不带）
+set(CMAKE_SKIP_RPATH TRUE)
 find_package(ASC REQUIRED)
 set(package_name ${vendor_name})
 
