@@ -16,6 +16,9 @@ cmake_minimum_required(VERSION 3.14.1)
 
 project(ctr CXX C)
 
+# 禁用 RPATH/RUNPATH（安全编译要求，构建/安装产物均不带）
+set(CMAKE_SKIP_RPATH TRUE)
+
 if (${BUILD_MODE} MATCHES "release")
     message("======BUILD_MODE release")
     set(CXX_FLAGS
