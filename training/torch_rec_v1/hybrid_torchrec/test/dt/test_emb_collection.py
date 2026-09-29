@@ -19,6 +19,7 @@ from unittest.mock import MagicMock
 mock_npu = MagicMock()
 mock_npu.npu = MagicMock()  # 显式定义npu子模块
 sys.modules['torch_npu'] = mock_npu
+sys.modules['fbgemm_ascend'] = MagicMock()
 
 import pytest
 import torch
