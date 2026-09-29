@@ -37,16 +37,11 @@ fi
 # build Rec SDK and get output directory
 bash "$TOP_PATH"/build/build_tf1.sh
 
-# create libasc directory and copy so files into it
-cd "$TOP_PATH"/training/tf_rec_v1/src
-mkdir -p libasc
-cp -f "$TOP_PATH"/training/tf_rec_v1/src/build/core/*.so ./libasc
-cp -f "$TOP_PATH"/training/tf_rec_v1/src/build/dataset_tf/*.so ./libasc
-cp -f "$TOP_PATH"/training/tf_rec_v1/src/build/ops_tf/*.so ./libasc
-cp -f "$TOP_PATH"/training/tf_rec_v1/src/build/pybind/*.so ./libasc
-cp -f "$TOP_PATH"/training/common/src/build/pybind/*.so ./libasc
-cp -f "$TOP_PATH"/cust_op/framework/tf_plugin/build/src/*.so ./libasc
-cd -
+# so 目录与模型运行时（site-packages/mx_rec/libasc、rec_sdk_common/lib）同构：
+# build_tf1.sh 已将全部交付 so（tf1 各模块 install 产物、AccCTR、tf_plugin、securec）
+# 收集至包内 libasc / lib；禁用 RPATH 后，so 依赖统一由 LD_LIBRARY_PATH 定位
+so_path="${TOP_PATH}"/training/tf_rec_v1/python/libasc
+common_so_path="${TOP_PATH}"/training/common/python/lib
 
 # Make the pure-Python packages importable without a pre-installed wheel.
 # mx_rec ships as tf_rec_v1/python and rec_sdk_common as common/python (see their
@@ -55,8 +50,8 @@ ln -sfn python "$TOP_PATH"/training/tf_rec_v1/mx_rec
 ln -sfn python "$TOP_PATH"/training/common/rec_sdk_common
 
 # set environment variable
-export PYTHONPATH="${TOP_PATH}"/training/tf_rec_v1:"${TOP_PATH}"/training/common:"${TOP_PATH}"/training/tf_rec_v1/src/libasc:"${TOP_PATH}":$PYTHONPATH
-export LD_LIBRARY_PATH="${TOP_PATH}"/training/tf_rec_v1/src/libasc:/usr/local/lib:$LD_LIBRARY_PATH
+export PYTHONPATH="${TOP_PATH}"/training/tf_rec_v1:"${TOP_PATH}"/training/common:${so_path}:${common_so_path}:"${TOP_PATH}":$PYTHONPATH
+export LD_LIBRARY_PATH=${so_path}:${common_so_path}:/usr/local/lib:$LD_LIBRARY_PATH
 
 rm -rf result
 mkdir -p result
@@ -78,9 +73,6 @@ end=$(date +%s)
 echo "*************************************  End  Rec SDK LLT Test *************************************"
 echo "LLT running take: $(expr "${end}" - "${start}") seconds"
 
-rm -rf "$TOP_PATH"/training/tf_rec_v1/src/libasc
-# mx_rec / rec_sdk_common may be a symlink (ln above) or a real directory
-# left by setup.py copytree, so use rm -rf to handle both cases
 rm -rf "$TOP_PATH"/training/tf_rec_v1/mx_rec
 rm -rf "$TOP_PATH"/training/common/rec_sdk_common
 

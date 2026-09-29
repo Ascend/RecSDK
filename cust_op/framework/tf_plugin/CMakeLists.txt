@@ -15,6 +15,10 @@
 
 cmake_minimum_required(VERSION 3.20)
 project(MxRec LANGUAGES CXX)
+
+# 禁用 RPATH/RUNPATH（安全编译要求，构建/安装产物均不带）
+set(CMAKE_SKIP_RPATH TRUE)
+
 set(CMAKE_CXX_STANDARD 14)
 
 if (DEFINED OMPI_PATH)

@@ -19,6 +19,9 @@ cmake_minimum_required(VERSION 3.5.1)
 # project information
 project(acl_execute)
 
+# 禁用 RPATH/RUNPATH（安全编译要求，构建/安装产物均不带）
+set(CMAKE_SKIP_RPATH TRUE)
+
 # Compile options
 add_compile_options(-std=c++14)
 
