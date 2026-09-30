@@ -17,16 +17,11 @@ See the License for the specific language governing permissions and
 #include <torch/library.h>
 
 #include "../common/pytorch_npu_helper.hpp"
+#include "hstu_attn_metadata_layout.h"
 
 using namespace at;
 
 namespace {
-// metadata 内存布局常量，与 op_kernel_aicpu/hstu_attn_metadata.h 保持一致：
-//   每个 section 内 AIC/AIV core 各占 16 个 int32；head 段额外 16 个 int32。
-constexpr int64_t AIC_CORE_NUM = 36;
-constexpr int64_t AIV_CORE_NUM = 72;
-constexpr int64_t METADATA_STRIDE = 16;
-constexpr int64_t METADATA_ALIGN = 4096;
 
 int64_t DeriveBatchSize(int64_t batch_size, const c10::optional<at::Tensor>& seqused_q,
                         const c10::optional<at::Tensor>& cu_seqlens_q)
@@ -69,8 +64,8 @@ at::Tensor hstu_attn_metadata_impl_npu(const c10::optional<at::Tensor>& cu_seqle
                 "hstu_attn_metadata: batch_size must be > 0, or provide seqused_q / cu_seqlens_q to derive it.");
 
     // 输出 metadata 大小：((AIC+AIV) * batch * num_heads_kv + 1) * 16，再按 4096 对齐。
-    int64_t elems = ((AIC_CORE_NUM + AIV_CORE_NUM) * batch * num_heads_kv + 1) * METADATA_STRIDE;
-    int64_t aligned = ((elems + METADATA_ALIGN - 1) / METADATA_ALIGN) * METADATA_ALIGN;
+    int64_t elems = hstu_meta::HstuMetadataCapacityElems(batch * num_heads_kv);
+    int64_t aligned = ((elems + hstu_meta::METADATA_ALIGN - 1) / hstu_meta::METADATA_ALIGN) * hstu_meta::METADATA_ALIGN;
 
     auto options = at::TensorOptions(torch_npu::utils::get_npu_device_type()).dtype(at::kInt);
     at::Tensor metadata = at::empty({aligned}, options);

@@ -96,31 +96,30 @@ class Kernel:
         torch.npu.synchronize()
         return metadata
 
-    def create_backward_metadata(self, q, v):
-        """调用 hstu_attn_metadata，为 HSTU backward 的 K 行调度生成 metadata。"""
+    def create_backward_metadata(self, q, v, mask_mode=0, num_contexts=None, num_targets=None, target_group_size=0):
+        """调用 hstu_attn_metadata_backward，为 HSTU backward 的 K 行调度生成 metadata。
+
+        新算子(hstu_attn_metadata_backward)入参: (cu_seqlens_q, cu_seqlens_kv, num_heads, head_dim,
+        mask_mode=0, num_contexts=None, num_targets=None, target_group_size=0)。
+        与旧算子(hstu_attn_metadata)仅在接线层不同: num_heads=head_num, head_dim=max(dimQK, dimGV),
+        batch_size/max_seqlen/布局均由算子内部从 offsets 推导, 不需再传。
+        掩码相关参数为可选: 现有调用方(no-mask 用例)不传, 走 mask_mode=0; causal 场景显式传
+        mask_mode=1 + num_contexts/num_targets/target_group_size。
+        """
         seq_offset_q = torch.as_tensor(self.seq_offset_q, dtype=torch.int32, device="npu")
         seq_offset_k = torch.as_tensor(self.seq_offset_k, dtype=torch.int32, device="npu")
-        batch_size = seq_offset_q.numel() - 1
         head_num = q.shape[1]
         head_dim = max(q.shape[-1], v.shape[-1])
 
-        metadata = torch.ops.mxrec.hstu_attn_metadata(
+        metadata = torch.ops.mxrec.hstu_attn_metadata_backward(
             seq_offset_q,
             seq_offset_k,
-            None,
-            None,
-            batch_size,
-            self.max_seqlen_q,
-            self.max_seqlen_k,
-            head_num,
             head_num,
             head_dim,
-            0,
-            -1,
-            -1,
-            "TND",
-            "TND",
-            "TND",
+            mask_mode,
+            num_contexts,
+            num_targets,
+            target_group_size,
         )
         torch.npu.synchronize()
         return metadata

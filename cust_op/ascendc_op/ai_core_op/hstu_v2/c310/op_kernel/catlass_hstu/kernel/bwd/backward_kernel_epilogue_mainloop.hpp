@@ -25,13 +25,10 @@ See the License for the specific language governing permissions and
  */
 
 #pragma once
-#include "kernel_operator_list_tensor_intf.h"
 #include "catlass/detail/macros.hpp"
 #include "catlass/arch/cross_core_sync.hpp"
 #include "catlass/gemm/gemm_type.hpp"
 #include "catlass/layout/layout.hpp"
-#include "../../../catlass_hstu/kernel/mask/predictor_builder.hpp"
-#include "../../../catlass_hstu/gemm/block/metadata_row_block_scheduler.hpp"
 
 namespace Catlass::Kernel {
 

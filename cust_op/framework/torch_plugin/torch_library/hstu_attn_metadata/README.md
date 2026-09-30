@@ -6,6 +6,9 @@ RecSDK，并通过 `torch.ops.mxrec.hstu_attn_metadata` 暴露给 PyTorch。
 算子在 AI CPU 上执行 **SectionStreamK 负载均衡**，产出一段 INT32 metadata（用户预分配、算子内
 in-place 写入），供后续 FlashAttention 主算子做**分核调度**使用。
 
+> 本目录同时包含反向绑定 `hstu_attn_metadata_backward.cpp`（接口与 metadata 语义见
+> `README_backward.md`），与前向编进同一个 `libhstu_attn_metadata.so`。
+
 ---
 
 ## 一、依赖关系（与普通 AscendC 算子不同）

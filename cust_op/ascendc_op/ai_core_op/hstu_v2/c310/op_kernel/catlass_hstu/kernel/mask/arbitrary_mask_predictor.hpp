@@ -31,6 +31,7 @@ See the License for the specific language governing permissions and
  */
 
 #pragma once
+#include "kernel_operator_list_tensor_intf.h"
 
 namespace Catlass::Kernel::Mask {
 constexpr uint32_t INVALID_U32 = 0xFFFFFFFFU;
