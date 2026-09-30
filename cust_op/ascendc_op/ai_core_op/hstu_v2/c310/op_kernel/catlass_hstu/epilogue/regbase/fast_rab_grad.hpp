@@ -54,8 +54,8 @@ namespace catlass::Epilogue::RegBase {
 
  */
 template <typename Type, typename AccType, typename GrabType>
-__simd_vf__ inline void FastRabGradVf(__ubuf__ AccType *ubGSPtr, __ubuf__ GrabType *ubGRabPartPtr,
-                                      __ubuf__ Type *ubGRabPtr, uint32_t count, uint32_t repeatTimes)
+__simd_vf__ inline void FastRabGradVf(__ubuf__ AccType* ubGSPtr, __ubuf__ GrabType* ubGRabPartPtr,
+                                      __ubuf__ Type* ubGRabPtr, uint32_t count, uint32_t repeatTimes)
 {
     constexpr uint32_t oneRepElm = static_cast<uint32_t>(AscendC::GetVecLen() / sizeof(AccType));
 
@@ -84,4 +84,36 @@ __simd_vf__ inline void FastRabGradVf(__ubuf__ AccType *ubGSPtr, __ubuf__ GrabTy
     }
 }
 
+// SameAB keeps GV Fixpipe in NO_QUANT mode. Fuse its scale into the register
+// computation instead of materializing a scaled FP32 GS tile back to UB.
+template <typename Type, typename AccType, typename GrabType>
+__simd_vf__ inline void FastRabGradScaledVf(__ubuf__ AccType* ubGSPtr, __ubuf__ GrabType* ubGRabPartPtr,
+                                            __ubuf__ Type* ubGRabPtr, AccType scale, uint32_t count,
+                                            uint32_t repeatTimes)
+{
+    constexpr uint32_t oneRepElm = static_cast<uint32_t>(AscendC::GetVecLen() / sizeof(AccType));
+
+    AscendC::MicroAPI::RegTensor<AccType> vregA;
+    AscendC::MicroAPI::RegTensor<AccType> vregT;
+    AscendC::MicroAPI::MaskReg maskReg;
+    for (uint16_t i = 0; i < repeatTimes; ++i) {
+        maskReg = AscendC::MicroAPI::UpdateMask<AccType>(count);
+        AscendC::MicroAPI::LoadAlign(vregA, ubGSPtr + i * oneRepElm);
+        AscendC::MicroAPI::Muls(vregA, vregA, scale, maskReg);
+
+        if constexpr (!std::is_same<GrabType, AccType>::value) {
+            CastUpLoad<AccType, GrabType>(vregT, ubGRabPartPtr + i * oneRepElm, maskReg);
+        } else {
+            AscendC::MicroAPI::LoadAlign(vregT, ubGRabPartPtr + i * oneRepElm);
+        }
+        AscendC::MicroAPI::Mul(vregA, vregA, vregT, maskReg);
+
+        if constexpr (!std::is_same<Type, AccType>::value) {
+            CastDownStore<Type, AccType>(ubGRabPtr + i * oneRepElm, vregA, maskReg);
+        } else {
+            AscendC::MicroAPI::StoreAlign(ubGRabPtr + i * oneRepElm, vregA, maskReg);
+        }
+    }
 }
+
+}  // namespace catlass::Epilogue::RegBase
