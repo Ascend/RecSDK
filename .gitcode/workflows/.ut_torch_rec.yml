@@ -34,7 +34,7 @@ jobs:
   JOB_compile:
     name: JOB_compile
     select: selected_by_default
-    runs-on: [ self-hosted, "${{ inputs.runs_on_arch }}", cpu=32 ]
+    runs-on: [ self-hosted, "${{ inputs.runs_on_arch }}", cpu=16 ]
     container:
       image: ${{ inputs.IMAGE_FLAG }}
       options: --user root
@@ -83,13 +83,6 @@ jobs:
         run: |
           set -e
           echo "ATOMGIT_WORKSPACE=${ATOMGIT_WORKSPACE}"
-          # echo '查看pytorch版本'
-          # export LD_LIBRARY_PATH=/usr/local/python3.11.0/lib/:$LD_LIBRARY_PATH
-          # export PATH=/usr/local/python3.11.0/bin:$PATH
-          # python3 -m pip install torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu
-          # python3 -m pip show torch
-          # echo '查看pytorch版本2'
-          # python3 -c "import torch; print('PyTorch Version:', torch.__version__); print('Bind CUDA Version:', torch.version.cuda if hasattr(torch.version, 'cuda') else 'None'); print('File Path:', torch.__file__)"
           file_path='change.txt'
           if grep -q "training/torch_rec_v1/" "${ATOMGIT_WORKSPACE}/$file_path"; then
               cd ${ATOMGIT_WORKSPACE}

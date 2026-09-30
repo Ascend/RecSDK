@@ -279,6 +279,14 @@ stages:
           IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindxrec_x86:mxrec_device_9_dt_noproxy"
           runs_on_arch: "x86"
 
+      UT_torch_rec:
+         name: UT_torch_rec
+         if: ${{ jobs.Detect_file_changes.outputs.need_build == 'yes' }}
+         uses: .gitcode/workflows/.ut_torch_rec.yml
+         with:
+           IMAGE_FLAG: "swr.cn-north-4.myhuaweicloud.com/ascend-mindx/mindx_x86:RecSDK_TorchRec_v1_20260818_02"
+           runs_on_arch: "x86"
+
   stage_2:
     name: PreSmoke
     select: selected_by_default
