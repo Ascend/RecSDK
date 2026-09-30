@@ -17,7 +17,7 @@
 # pylint: disable=redefined-outer-name, duplicate-code
 import sysconfig
 from dataclasses import dataclass
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 
 import pytest
 import torch
@@ -28,8 +28,10 @@ from utils import (
     BenchmarkRecord,
     SeqStats,
     create_batch_arbitrary_mask,
+    create_batch_hstu_mask_arbitrary_func,
     create_k2q_sparse_info,
     get_block_q_kv,
+    HSTU_AF_GROUPS,
 )
 from backend import KernelBackend, create_hstu_atten_backend
 
@@ -53,6 +55,9 @@ class BenchmarkConfig:
     has_rab: bool
     groups: int
     data_type: torch.dtype
+    num_context: Optional[int] = None
+    num_target: Optional[int] = None
+    target_group_size: Optional[int] = None
 
 
 # 常量定义
@@ -84,8 +89,14 @@ class TestRunner:
         data_type: torch.dtype,
         groups: int,
         is_metadata: bool,
+        num_context: Optional[int] = None,
+        num_target: Optional[int] = None,
+        target_group_size: Optional[int] = None,
     ) -> Tuple[bool, Dict[str, Any], Dict[str, Any]]:
         """运行单个测试用例
+
+        num_context / num_target / target_group_size 全部为 None 时使用旧的 causal arbitrary af，
+        否则使用 hstu v2 layout 的 af（context / history / target 三段）。
 
         Returns:
             (passed, detail, seq_stats): passed 为总体是否通过，detail 为详细精度数据，seq_stats 为序列长度统计
@@ -107,9 +118,24 @@ class TestRunner:
         )
 
         # 构造 arbitrary mask 与稀疏索引信息
-        mask, arbitrary_func = create_batch_arbitrary_mask(
-            batch_size, head_num, max_seqlen_q, max_seqlen_k, seq_offset_q, seq_offset_k, groups, data_type
-        )
+        if num_context is None and num_target is None and target_group_size is None:
+            mask, arbitrary_func = create_batch_arbitrary_mask(
+                batch_size, head_num, max_seqlen_q, max_seqlen_k, seq_offset_q, seq_offset_k, groups, data_type
+            )
+        else:
+            mask, arbitrary_func = create_batch_hstu_mask_arbitrary_func(
+                batch_size,
+                head_num,
+                max_seqlen_q,
+                max_seqlen_k,
+                seq_offset_q,
+                seq_offset_k,
+                num_context,
+                num_target,
+                target_group_size,
+                data_type,
+            )
+            groups = HSTU_AF_GROUPS
         BLOCK_Q, BLOCK_KV = get_block_q_kv(head_dim_qk, head_dim_v, "bwd")
         k2q_sparse_info = create_k2q_sparse_info(mask, seq_offset_q, seq_offset_k, BLOCK_Q, BLOCK_KV)
 
@@ -168,6 +194,9 @@ def _run_benchmark(test_backend, test_record, config: BenchmarkConfig):
             config.data_type,
             config.groups,
             is_metadata,
+            config.num_context,
+            config.num_target,
+            config.target_group_size,
         )
 
         params = {
@@ -182,6 +211,9 @@ def _run_benchmark(test_backend, test_record, config: BenchmarkConfig):
             "groups": config.groups,
             "seed": config.seed,
             "is_metadata": is_metadata,
+            "num_context": config.num_context,
+            "num_target": config.num_target,
+            "target_group_size": config.target_group_size,
         }
         test_record.record(params, seq_stats)
 
@@ -276,6 +308,54 @@ def test_user_case_2(
         has_rab=has_rab,
         groups=groups,
         data_type=data_type,
+    )
+    _run_benchmark(test_backend, benchmark_record, config)
+
+
+@pytest.mark.parametrize(
+    "batch_size, head_num, seq_lens",
+    [(8, 8, (6400, 6400)), (8, 8, (4800, 4800)), (8, 8, (3200, 3200)), (8, 8, (2400, 2400))],
+)
+@pytest.mark.parametrize("head_dims", [(128, 128)])
+@pytest.mark.parametrize("num_context, num_target, target_group_size", [(1, 1200, 1), (0, 0, 1)])
+@pytest.mark.parametrize("has_rab", [False])
+@pytest.mark.parametrize("data_type", [torch.bfloat16])
+@pytest.mark.parametrize("seed", [123])
+def test_hstu_mask_arbitrary_func(
+    test_backend,
+    benchmark_record,
+    batch_size,
+    head_num,
+    head_dims,
+    seq_lens,
+    num_context,
+    num_target,
+    target_group_size,
+    has_rab,
+    data_type,
+    seed,
+):
+    """hstu v2 layout af（context / history / target 三段）的反向 benchmark。"""
+    head_dim_qk, head_dim_v = head_dims
+    max_seqlen_q, max_seqlen_k = seq_lens
+    config = BenchmarkConfig(
+        test_name="test_hstu_mask_arbitrary_func",
+        seed=seed,
+        seq_all_equal=True,
+        # 取满长，保证实际 seqlen 等于 max_seqlen，af 的 target 区不会被随机长度截断
+        seq_max_ratio=1.0,
+        batch_size=batch_size,
+        head_num=head_num,
+        head_dim_qk=head_dim_qk,
+        head_dim_v=head_dim_v,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        has_rab=has_rab,
+        groups=HSTU_AF_GROUPS,
+        data_type=data_type,
+        num_context=num_context,
+        num_target=num_target,
+        target_group_size=target_group_size,
     )
     _run_benchmark(test_backend, benchmark_record, config)
 

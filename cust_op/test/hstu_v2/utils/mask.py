@@ -94,6 +94,45 @@ def create_batch_arbitrary_mask(
     return mask, arbitrary_func
 
 
+HSTU_AF_GROUPS = 2  # HSTU af 布局每行区间槽数：slot0 为结构前缀区间，slot1 预留
+
+
+def create_batch_hstu_mask_arbitrary_func(
+    batch_size: int,
+    head_num: int,
+    max_seqlen_q: int,
+    max_seqlen_k: int,
+    seq_offset_q: torch.Tensor,
+    seq_offset_k: torch.Tensor,
+    num_context: int = None,
+    num_target: int = None,
+    target_group_size: int = None,
+    data_type: torch.dtype = torch.float16,
+    groups: int = HSTU_AF_GROUPS,
+) -> (torch.Tensor, torch.Tensor):
+    """HSTU v2 layout（context / history / target 三段）的 batch mask 与 af 区间编码。
+
+    mask 语义与 create_causal_mask 同源（window 模式的 ground truth 生成器）：context 行对
+    非 target 列全开、history 行下三角、target 行分组对角（tril 语义内，不超出下三角）。
+    该结构下每行 mask 恰为前缀区间 [0, end)，af 编码为 slot0=(0, end)、其余槽位置 0
+    （区间左闭右开 [st, ed)，与 create_causal_arbitrary_mask 的编码方式一致）。
+    """
+    seqlens_q = seq_offset_q[1:] - seq_offset_q[:-1]
+    seqlens_k = seq_offset_k[1:] - seq_offset_k[:-1]
+    mask = torch.zeros(batch_size, head_num, max_seqlen_q, max_seqlen_k, dtype=data_type)
+    arbitrary_func = torch.zeros(batch_size, 1, max_seqlen_q, groups * 2, dtype=torch.int32)
+    for i, (seqlen_q, seqlen_k) in enumerate(zip(seqlens_q, seqlens_k)):
+        _mask = create_causal_mask(seqlen_q, seqlen_k, num_context, num_target, target_group_size).to(data_type)
+        _af = torch.zeros(seqlen_q, groups * 2, dtype=torch.int32)
+        for r in range(seqlen_q):
+            nz = (_mask[r] != 0).nonzero(as_tuple=True)[0]
+            # 结构保证每行为前缀区间，取最后一个非 0 列 +1 作为右端（左闭右开）
+            _af[r, 0], _af[r, 1] = 0, (int(nz[-1]) + 1 if nz.numel() else 0)
+        mask[i, :, :seqlen_q, :seqlen_k] = _mask
+        arbitrary_func[i, :, :seqlen_q, :] = _af
+    return mask, arbitrary_func
+
+
 def _build_sparse_info(
     mask: torch.Tensor,
     seq_offset_q: torch.Tensor,

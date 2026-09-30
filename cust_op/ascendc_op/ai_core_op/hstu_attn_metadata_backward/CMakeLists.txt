@@ -1,8 +1,8 @@
 # ==============================================================================
-# hstu_attn_metadata (AI CPU 自定义算子) 独立 CMake 工程
+# hstu_attn_metadata_backward (AI CPU 自定义算子) 独立 CMake 工程
 #
-# 该算子从 ops-transformer 移植而来，是一个纯 AI CPU 算子，不依赖 ops-transformer
-# 构建框架。本 CMake 产出并打包：
+# 纯 AI CPU 算子，不依赖 ops-transformer 构建框架，也不带 deps/。
+# 本 CMake 产出并打包：
 #   1. libtransformer_aicpu_kernels.so  —— AICPU kernel（aarch64 交叉编译，CANN hcc 工具链）
 #   2. libcust_opapi.so                 —— aclnn 对外接口（host 编译）
 #   3. build/vendor/<VENDOR_NAME>/       —— CANN 自定义算子 vendor 目录（cmake --build 产出）
@@ -15,7 +15,7 @@
 #   * 运行时必须 export ASCEND_CUSTOM_OPP_PATH 指向 vendor 目录。
 # ==============================================================================
 cmake_minimum_required(VERSION 3.14)
-project(hstu_attn_metadata CXX)
+project(hstu_attn_metadata_backward CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,8 +23,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ------------------------------------------------------------------------------
 # 基本配置
 # ------------------------------------------------------------------------------
-set(OP_NAME       hstu_attn_metadata)
-set(VENDOR_NAME   hstu_attn_metadata_transformer)   # 后缀必须为
+set(OP_NAME       hstu_attn_metadata_backward)
+set(VENDOR_NAME   hstu_attn_metadata_backward_transformer)   # 后缀必须为 _transformer
 set(KERNEL_SO     libtransformer_aicpu_kernels.so)
 
 # ------------------------------------------------------------------------------
@@ -81,15 +81,15 @@ message(STATUS "OPP_VENDORS      = ${OPP_VENDORS}")
 
 # ==============================================================================
 # 1. AICPU kernel（交叉编译，专用工具链 → 用 custom_command 驱动）
+#    注意：只编一个 TU（*_aicpu.cpp），其余 op_kernel_aicpu/*.h 全部是头文件，
+#          故头里的函数必须 inline。
 # ==============================================================================
 set(KERNEL_SRC "${CMAKE_CURRENT_SOURCE_DIR}/op_kernel_aicpu/${OP_NAME}_aicpu.cpp")
 set(KERNEL_OBJ "${CMAKE_CURRENT_BINARY_DIR}/${OP_NAME}_aicpu.cpp.o")
 set(KERNEL_OUT "${CMAKE_CURRENT_BINARY_DIR}/${KERNEL_SO}")
 
 file(GLOB_RECURSE KERNEL_DEP_HEADERS
-  "${CMAKE_CURRENT_SOURCE_DIR}/op_kernel_aicpu/*.h"
-  "${CMAKE_CURRENT_SOURCE_DIR}/deps/attention_common/*.h"
-  "${CMAKE_CURRENT_SOURCE_DIR}/deps/hstu_attn/*.h")
+  "${CMAKE_CURRENT_SOURCE_DIR}/op_kernel_aicpu/*.h")
 
 set(KERNEL_INCLUDES
   -I${ARCH_DIR}/pkg_inc/aicpu_common/context
@@ -100,8 +100,6 @@ set(KERNEL_INCLUDES
   -I${ARCH_DIR}/include
   -I${ASCEND_HOME_PATH}/include
   -I${CMAKE_CURRENT_SOURCE_DIR}/op_kernel_aicpu
-  -I${CMAKE_CURRENT_SOURCE_DIR}/deps/attention_common/op_kernel
-  -I${CMAKE_CURRENT_SOURCE_DIR}/deps/hstu_attn
   -isystem${ASCEND_HOME_PATH}/pkg_inc/base)
 
 set(KERNEL_DEFS

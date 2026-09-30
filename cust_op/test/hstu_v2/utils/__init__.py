@@ -21,7 +21,14 @@ import warnings
 from .data import TestDataGenerator
 from .record import Record, BenchmarkRecord
 from .seq_stats import SeqStats
-from .mask import create_causal_mask, create_q2k_sparse_info, create_k2q_sparse_info, create_batch_arbitrary_mask
+from .mask import (
+    create_causal_mask,
+    create_q2k_sparse_info,
+    create_k2q_sparse_info,
+    create_batch_arbitrary_mask,
+    create_batch_hstu_mask_arbitrary_func,
+    HSTU_AF_GROUPS,
+)
 
 __all__ = [
     "Record",
@@ -31,6 +38,8 @@ __all__ = [
     "create_q2k_sparse_info",
     "create_k2q_sparse_info",
     "create_batch_arbitrary_mask",
+    "create_batch_hstu_mask_arbitrary_func",
+    "HSTU_AF_GROUPS",
 ]
 
 DEFAULT_HSTU_CUSTOM_OPP_PATH = "/usr/local/Ascend/ascend-toolkit/latest/opp/vendors/hstu_attn_metadata_transformer"
