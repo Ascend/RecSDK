@@ -100,8 +100,8 @@ jobs:
           if grep -q -E "^build/|^training/common/|^training/tf_rec_v1/" "${ATOMGIT_WORKSPACE}/$file_path"; then
               cd ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }} && python3.7 setup.py
               ls -la ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/output
+              cp -p -f -r ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/output/Ascend-*.tar.gz ${ATOMGIT_WORKSPACE}/artifacts/
           fi
-          cp -p -f -r ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/output/Ascend-*.tar.gz ${ATOMGIT_WORKSPACE}/artifacts/
 
       - name: Upload artifact
         uses: upload-artifact
