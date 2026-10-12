@@ -117,7 +117,7 @@ Rec SDK Torch基于TorchRec、推荐场景主流框架、CANN和各种硬件和�
     <td>openEuler版本：22.03</td>
   </tr>
   <tr>
-    <td rowspan="2"><p>Ascend 950PR&950DT系列产品</p></td>
+    <td rowspan="2"><p>Ascend 950PR系列产品</p></td>
     <td>x86_64</td>
     <td>Debian版本：12<br>Ubuntu版本：22.04</td>
   </tr>
