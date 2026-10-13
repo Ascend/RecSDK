@@ -107,23 +107,11 @@
 
 **下载软件包<a name="section1852417242717"></a>**
 
-请参考本章获取所需软件包和对应的数字签名文件，下载本软件即表示您同意[华为企业业务最终用户许可协议（EULA）](https://e.huawei.com/cn/about/eula)的条款和条件。
+请参考本章获取所需软件包。
 
 |组件名称|软件包|获取链接|
 |--|--|--|
 |Rec SDK|tf\_rec\_v1-\*.tar.gz|[获取链接](https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann)。|
-
-**软件数字签名验证<a name="section10830205518487"></a>**
-
-为了防止软件包在传递过程中或存储期间被恶意篡改，下载软件包时请下载对应的数字签名文件用于完整性验证。
-
-在软件包下载之后，请参考《OpenPGP签名验证指南》，对下载的软件包进行PGP数字签名校验。如果校验失败，请勿使用该软件包并联系华为技术支持工程师解决。
-
-使用软件包安装/升级前，也需要按照上述过程，验证软件包的数字签名，确保软件包未被篡改。
-
-运营商客户请访问：[https://support.huawei.com/carrier/digitalSignatureAction](https://support.huawei.com/carrier/digitalSignatureAction)
-
-企业客户请访问：[https://support.huawei.com/enterprise/zh/tool/software-digital-signature-openpgp-validation-tool-TL1000000054](https://support.huawei.com/enterprise/zh/tool/software-digital-signature-openpgp-validation-tool-TL1000000054)
 
 ## 部署容器内的开发环境<a name="ZH-CN_TOPIC_0000002175060298"></a>
 

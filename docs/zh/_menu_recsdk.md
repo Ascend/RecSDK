@@ -1,5 +1,6 @@
 # Rec SDK 用户指南
 
+<!-- npu="950,A3,910b" id2 -->
 - [简介](overview/01_overview.md)
 - [基于TensorFlow开发模型（非全下沉）]()
   - [简介](./tensorflow/tf_rec_v1/01_introduction/introduction.md)
@@ -21,6 +22,7 @@
   - [安全加固](./tensorflow/tf_rec_v1/07_security_hardening/security_hardening.md)
   - [FAQ](./tensorflow/tf_rec_v1/08_faq/faq.md)
   - [附录](./tensorflow/tf_rec_v1/09_appendix/appendix.md)
+<!-- npu="950" id1 -->
 - [基于TensorFlow开发模型（全下沉）]()
   - [简介](./tensorflow/tf_rec_v2/01_introduction/introduction.md)
   - [软件安装](./tensorflow/tf_rec_v2/02_tf_installation_guide/recsdk_tf_installation_guide.md)
@@ -35,6 +37,7 @@
   - [安全加固](./tensorflow/tf_rec_v2/07_security_hardening/security_hardening.md)
   - [FAQ](./tensorflow/tf_rec_v2/08_faq/faq.md)
   - [附录](./tensorflow/tf_rec_v2/09_appendix/appendix.md)
+<!-- end id1 -->
 
 - [基于PyTorch开发模型（非全下沉）]()
   - [简介](./torch/torch_rec_v1/01_introduction/introduction.md)
@@ -55,6 +58,7 @@
   - [安全加固](./torch/torch_rec_v1/07_security_hardening/security_hardening.md)
   - [FAQ](./torch/torch_rec_v1/08_faq/faq.md)
   - [附录](./torch/torch_rec_v1/09_appendix/appendix.md)
+<!-- npu="950" id3 -->
 - [基于PyTorch开发模型（全下沉）]()
   - [简介](./torch/torch_rec_v2/01_introduction/introduction.md)
   - [软件安装](./torch/torch_rec_v2/02_torch_installation_guide/recsdk_torch_installation_guide.md)
@@ -72,5 +76,7 @@
   - [安全加固](./torch/torch_rec_v2/07_security_hardening/security_hardening.md)
   - [FAQ](./torch/torch_rec_v2/08_faq/faq.md)
   - [附录](./torch/torch_rec_v2/09_appendix/appendix.md)
+<!-- end id3 -->
 
 - [性能调优](performance_optimization/02_performance_tuning.md)
+<!-- end id2 -->

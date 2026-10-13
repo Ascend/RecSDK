@@ -249,7 +249,7 @@ Rec SDK Torch软件包如下表：
 
    **下载软件包<a name="section1852417242717"></a>**
 
-   请参考本章获取所需软件包和对应的数字签名文件，下载本软件即表示您同意[华为企业业务最终用户许可协议（EULA）](https://e.huawei.com/cn/about/eula)的条款和条件。
+   请参考本章获取所需软件包。
 
    | 组件名称                   | 软件包                      | 获取链接                                               |
    | ---------------------- | ------------------------ | -------------------------------------------------- |
@@ -427,7 +427,7 @@ if [ -d "$PACKAGE_PATH" ]; then
   cd ${PACKAGE_PATH}
   rm -rf libfbgemm_npu_api.so
 else
-  echo "no site-package"
+  echo "no site-packages"
 fi
 
 # 基于Release版本安装方式卸载

@@ -44,6 +44,7 @@ Rec SDK 26.2.0 镜像支持操作系统：Ubuntu 22.04、openEuler 22.03（x86_6
 >
 > Rec SDK Torch（torch_rec_v2）：在升级版本后，需要重新编译 torchrec_npu 和自定义算子相关包。
 
+<!-- npu="A3,910b" id1 -->
 ### Atlas A2/A3系列产品
 
 **表 2**  Rec SDK与CANN版本兼容
@@ -129,7 +130,9 @@ Rec SDK 26.2.0 镜像支持操作系统：Ubuntu 22.04、openEuler 22.03（x86_6
   <tr><td>26.2.0</td><td>/</td><td>/</td><td>Y</td><td>Y</td></tr>
 </tbody>
 </table>
+<!-- end id1 -->
 
+<!-- npu="950" id2 -->
 ### Ascend 950PR系列产品
 
 **表 5**  Rec SDK与CANN版本兼容
@@ -204,6 +207,7 @@ Rec SDK 26.2.0 镜像支持操作系统：Ubuntu 22.04、openEuler 22.03（x86_6
   <tr><td>26.2.0</td><td>/</td><td>Y</td><td>Y</td></tr>
 </tbody>
 </table>
+<!-- end id2 -->
 
 ## 版本使用注意事项
 
@@ -264,7 +268,7 @@ torch_rec_v1 自 26.2.0 起不再支持 PyTorch/torch_npu 2.6.0，基于 2.6.0 �
 
 | 文档名称 | 内容简介 | 更新说明 |
 | --- | --- | --- |
-| [《Rec SDK 26.2.0 用户指南》](../README.md)》 | 主要包括 Rec SDK 的简介、软件安装部署、功能特性、模型适配和相关的 API 接口参考。 | 变更详见《Rec SDK 26.2.0 用户指南》。 |
+| 《[Rec SDK 26.2.0 用户指南](../README.md)》 | 主要包括 Rec SDK 的简介、软件安装部署、功能特性、模型适配和相关的 API 接口参考。 | 变更详见《Rec SDK 26.2.0 用户指南》。 |
 
 ## 病毒扫描结果
 
