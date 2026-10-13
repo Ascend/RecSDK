@@ -435,7 +435,7 @@ table_options = [
 
 **功能描述<a name="section634582619155"></a>**
 
-继承自TorchRec的EmbeddingEnumerator，使用方法与其完全相同。该类别在为分片计划执行枚举时会区分常规/动态嵌入表。
+继承自TorchRec的EmbeddingEnumerator，使用方法与其完全相同。该类在为分片计划执行枚举时会区分常规/动态嵌入表。
 
 **函数原型<a name="section1483104721911"></a>**
 
