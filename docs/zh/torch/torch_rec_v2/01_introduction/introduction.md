@@ -193,3 +193,11 @@ undump_score = ret_scores["model.embedding"]
 ```
 
 保存与加载接口详情参见[保存与加载接口](../05_api/05_dump_load_apis.md)。
+
+## 支持的硬件和操作系统<a name="ZH-CN_TOPIC_0000002336268742"></a>
+
+**表 5**  支持的产品列表
+
+|产品型号|产品架构|操作系统版本|
+|--|--|--|
+|Ascend 950PR系列产品|<li>x86_64</li><li>ARM</li>|<li>Debian版本：12</li><li>Ubuntu版本：22.04</li><li>openEuler版本：22.03</li>|

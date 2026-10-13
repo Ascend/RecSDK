@@ -220,7 +220,7 @@ Rec SDK 26.2.0 镜像支持操作系统：Ubuntu 22.04、openEuler 22.03（x86_6
 |Rec SDK TensorFlow(tf_rec_v1)|例行镜像、配套表更新。|Atlas A2训练系列产品<br>Atlas A3训练系列产品<br>Ascend 950PR系列产品|
 |Rec SDK TensorFlow(tf_rec_v2)|例行镜像、配套表更新。|Ascend 950PR系列产品|
 |Rec SDK Torch(torch_rec_v1)|<ul><li>torch_rec_v1 版本升级重构，移除 PyTorch/torch_npu 2.6.0 支持，收敛到 2.7.1 与 2.10.0，采用单一 hybrid_torchrec 包适配 torchrec v1.2.0 与 v1.5.0。</li></ul>|Atlas A2训练系列产品<br>Atlas A3训练系列产品<br>Ascend 950PR系列产品|
-|Rec SDK Torch(torch_rec_v2)|<ul><li>完善 TorchRec API 功能支持，实现 TorchRec 1.2.0/1.5.0 100% API 支持度，适配 TorchRec 1.6.0/1.7.0 双版本。</li></ul>|Atlas A2训练系列产品<br>Atlas A3训练系列产品<br>Ascend 950PR系列产品|
+|Rec SDK Torch(torch_rec_v2)|<ul><li>完善 TorchRec API 功能支持，实现 TorchRec 1.2.0/1.5.0 100% API 支持度，适配 TorchRec 1.6.0/1.7.0 双版本。</li></ul>|Ascend 950PR系列产品|
 |Rec SDK 算子|<ul><li>FBGEMM 类算子迁出至 fbgemm-ascend。</li><li>构建独立 ops-rec 算子库。</li></ul>|Atlas A2训练系列产品<br>Atlas A3训练系列产品<br>Ascend 950PR系列产品|
 
 ### 关键特性变更

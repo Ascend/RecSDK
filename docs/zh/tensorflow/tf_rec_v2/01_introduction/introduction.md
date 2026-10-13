@@ -50,5 +50,4 @@ Rec SDK TensorFlow基于推荐场景主流框架、CANN和各种硬件和网络�
 
 |产品型号|产品架构|操作系统版本|
 |--|--|--|
-|Atlas A2训练系列产品|<li>ARM</li><li>x86_64</li>|<li>CentOS版本：7.6</li><li>OpenEuler版本：22.03</li><li>Ubuntu版本：20.04</li>|
-|Atlas A3训练系列产品|ARM|OpenEuler版本：22.03|
+|Ascend 950PR系列产品|<li>x86_64</li><li>ARM</li>|<li>Debian版本：12</li><li>Ubuntu版本：22.04</li><li>openEuler版本：22.03</li>|
