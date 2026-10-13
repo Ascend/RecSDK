@@ -6,7 +6,7 @@ on:
     keyword: '^compile$'
   pull_request_comment:
     types: [ created ]
-    branches: [ 'develop', 'release/v26.2.0', '26.1.0', '26.0.0' ]
+    branches: [ 'develop', 'release_v26.2.0', 'branch_v26.1.0', 'branch_v26.0.0' ]
     comments: [ '^compile$' ]
 
 env:
