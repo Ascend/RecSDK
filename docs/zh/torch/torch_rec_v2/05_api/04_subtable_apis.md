@@ -187,7 +187,7 @@ class DynamicEmbParameterConstraints(ParameterConstraints):
 
 |参数名|类型| 可选/必选 | 说明                                                                                                                                                                                                 |
 |--|--|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|use_dynamicemb|bool|可选|是否启用动态稀疏表。当使用NPU设备时仅支持默认值为True，不支持用户自定义。|
+|use_dynamicemb|bool|可选|是否启用动态稀疏表。默认值为True。|
 |dynamicemb_options|DynamicEmbTableOptions|可选|配置动态稀疏表的具体选项。参考DynamicEmbTableOptions的取值范围|
 |sharding_type|List[str]|可选|分表的类型。当使用NPU设备时为必选参数，取值范围：<ul><li>"row_wise"：按照行号进行分表。</li></ul><div class="note"><span class="notetitle">说明</span><div class="notebody">不支持混合使用不同的分表类型。</div></div> |
 |compute_kernels|List[str]| 可选    | 计算的kernel类型。当使用NPU设备时为必选参数，取值范围：<ul><li>"fused"：采用合表的方式查询。该方式仅在sharding_type为"row_wise"时使用。</li></ul>|

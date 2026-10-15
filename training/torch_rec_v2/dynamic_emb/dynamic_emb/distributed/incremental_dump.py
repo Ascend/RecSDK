@@ -295,7 +295,8 @@ def incremental_dump(
     collections_list: List[Tuple[str, str, nn.Module]] = find_sharded_modules(model, "")
     if len(collections_list) == 0:
         warnings.warn(
-            "Input model don't have any ShardedDynamicEmbeddingCollection module, can't incremental dump!",
+            "Input model don't have any ShardedDynamicEmbeddingCollection "
+            "or ShardedDynamicEmbeddingBagCollection module, can't incremental dump!",
             UserWarning,
         )
         return None
@@ -336,7 +337,8 @@ def incremental_dump(
             if tmp_input_collection_name not in collection_paths_in_module:
                 warnings.warn(
                     f"'{tmp_input_collection_name}' specified in score_threshold "
-                    "not found in the model or not ShardedDynamicEmbeddingCollection instance",
+                    "not found in the model or not ShardedDynamicEmbeddingCollection "
+                    "or ShardedDynamicEmbeddingBagCollection instance",
                     UserWarning,
                 )
 

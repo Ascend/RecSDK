@@ -73,7 +73,6 @@ def get_planner(args, device, eb_configs):
                 bounds_check_mode=BoundsCheckMode.NONE,
             )
         else:
-            # RecSDK DynamicEmbParameterConstraints only allows use_dynamicemb=True.
             const = DynamicEmbParameterConstraints(  # pylint: disable=unexpected-keyword-arg
                 sharding_types=[ShardingType.ROW_WISE.value],
                 compute_kernels=["fused"],

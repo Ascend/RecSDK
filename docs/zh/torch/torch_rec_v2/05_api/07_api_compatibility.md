@@ -253,7 +253,7 @@
 | API名称                                           | 是否支持 | 限制与说明 |
 | ------------------------------------------------- | -------- | ---------- |
 | DynamicEmbParameterConstraints                    | 是       | -          |
-| DynamicEmbParameterConstraints.use_dynamicemb     | 是       | -          |
+| DynamicEmbParameterConstraints.use_dynamicemb     | 是       | 默认值为True |
 | DynamicEmbParameterConstraints.dynamicemb_options | 是       | -          |
 
 #### DynamicEmbeddingEnumerator
@@ -336,13 +336,13 @@
 | DynamicEmbTableOptions.eval_initializer_args | 是       | -          |
 | DynamicEmbTableOptions.caching               | 是       | -          |
 | DynamicEmbTableOptions.init_capacity         | 是       | -          |
-| DynamicEmbTableOptions.max_load_factor       | 是       | -          |
+| DynamicEmbTableOptions.max_load_factor       | 是       | 取值范围为(0,1)开区间 |
 | DynamicEmbTableOptions.score_strategy        | 是       | -          |
-| DynamicEmbTableOptions.bucket_capacity       | 是       | -          |
+| DynamicEmbTableOptions.bucket_capacity       | 是       | 取值范围为[16,1024]且向上取整到2的幂 |
 | DynamicEmbTableOptions.safe_check_mode       | 是       | -          |
-| DynamicEmbTableOptions.global_hbm_for_values | 是       | -          |
-| DynamicEmbTableOptions.external_storage      | 是       | -          |
-| DynamicEmbTableOptions.index_type            | 是       | -          |
+| DynamicEmbTableOptions.global_hbm_for_values | 是       | 大于或等于0 |
+| DynamicEmbTableOptions.external_storage      | 是       | 为 Storage子类且要求caching=True、training=True |
+| DynamicEmbTableOptions.index_type            | 是       | 仅支持torch.int64类型 |
 
 #### DynamicEmbDump
 

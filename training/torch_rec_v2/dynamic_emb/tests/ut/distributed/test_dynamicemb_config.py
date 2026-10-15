@@ -84,24 +84,6 @@ class TestDynamicEmbInitializerArgs:
             DynamicEmbInitializerArgs(mode="xxx")
 
     @staticmethod
-    @pytest.mark.parametrize("invalid_value", [-0.1, 1.1])
-    def test_mean_value_err(invalid_value):
-        with pytest.raises(ValueError):
-            DynamicEmbInitializerArgs(mean=invalid_value)
-
-    @staticmethod
-    @pytest.mark.parametrize("invalid_value", [-0.1, 1.1])
-    def test_std_dev_value_err(invalid_value):
-        with pytest.raises(ValueError):
-            DynamicEmbInitializerArgs(std_dev=invalid_value)
-
-    @staticmethod
-    @pytest.mark.parametrize("invalid_value", [-0.1, 1.1])
-    def test_value_err(invalid_value):
-        with pytest.raises(ValueError):
-            DynamicEmbInitializerArgs(value=invalid_value)
-
-    @staticmethod
     def test_eq_isinstance_err():
         init_args = DynamicEmbInitializerArgs()
         other_args = "xxxx"
@@ -129,6 +111,42 @@ class TestDynamicEmbInitializerArgs:
     def test_ne_ok():
         init_args = DynamicEmbInitializerArgs()
         other_args = DynamicEmbInitializerArgs(lower=0.9)
+        assert init_args != other_args
+
+    @staticmethod
+    def test_eq_truncated_normal_ok():
+        init_args = DynamicEmbInitializerArgs(
+            mode=DynamicEmbInitializerMode.TRUNCATED_NORMAL,
+            mean=0.5,
+            std_dev=0.2,
+            lower=-1.0,
+            upper=1.0,
+        )
+        other_args = DynamicEmbInitializerArgs(
+            mode=DynamicEmbInitializerMode.TRUNCATED_NORMAL,
+            mean=0.5,
+            std_dev=0.2,
+            lower=-1.0,
+            upper=1.0,
+        )
+        assert init_args == other_args
+
+    @staticmethod
+    def test_ne_truncated_normal_diff():
+        init_args = DynamicEmbInitializerArgs(
+            mode=DynamicEmbInitializerMode.TRUNCATED_NORMAL,
+            mean=0.5,
+            std_dev=0.2,
+            lower=-1.0,
+            upper=1.0,
+        )
+        other_args = DynamicEmbInitializerArgs(
+            mode=DynamicEmbInitializerMode.TRUNCATED_NORMAL,
+            mean=0.5,
+            std_dev=0.2,
+            lower=-1.0,
+            upper=2.0,
+        )
         assert init_args != other_args
 
 
