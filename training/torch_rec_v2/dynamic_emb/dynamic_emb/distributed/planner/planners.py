@@ -140,7 +140,10 @@ class DynamicEmbeddingShardingPlanner:
         class_safe_check("batch_size", batch_size, (int, type(None)))
         class_safe_check("enumerator", enumerator, (DynamicEmbeddingEnumerator, type(None)))
 
-        self._dyn_emb_table_consts = constraints
+        self._dyn_emb_table_consts = {
+            key: constraint for key, constraint in constraints.items() if constraint.use_dynamicemb
+        }
+
         self._topology = topology
         if self._topology is None:
             self._topology = Topology(
@@ -158,7 +161,7 @@ class DynamicEmbeddingShardingPlanner:
 
         self._torchrec_planner = EmbeddingShardingPlanner(
             topology=self._topology,
-            constraints=self._dyn_emb_table_consts,
+            constraints=constraints,
             batch_size=batch_size,
             enumerator=self._enumerator,
             storage_reservation=storage_reservation,

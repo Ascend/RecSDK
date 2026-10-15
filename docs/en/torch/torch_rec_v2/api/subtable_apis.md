@@ -137,7 +137,7 @@ class DynamicEmbParameterConstraints(ParameterConstraints):
 
 |Parameter|Type| Mandatory/Optional| Description                                                                                                                                                                                                |
 |--|--|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|use_dynamicemb|bool|Optional|Indicates whether to enable dynamic sparse tables. When you use an NPU device, only the default value `True` is supported.|
+|use_dynamicemb|bool|Optional|Indicates whether to enable dynamic sparse tables. Default value: `True`.|
 |dynamicemb_options|DynamicEmbTableOptions|Optional|Specific options for dynamic sparse tables. See the value range of `DynamicEmbTableOptions`.|
 |sharding_type|List[str]|Optional|Sharding type. This parameter is required when you use an NPU device. The value range is:<ul><li>`"row_wise"`: Shards by row index. </li></ul><div class="note"><span class="notetitle">Note</span><div class="notebody">Mixing different sharding types is not supported.</div></div> |
 |compute_kernels|List[str]| Optional   | Computing kernel type. This parameter is required when you use an NPU device. The value range is:<ul><li>`"fused"`: Queries with a fused table. This mode is used only when `sharding_type` is `"row_wise"`.</li></ul>|

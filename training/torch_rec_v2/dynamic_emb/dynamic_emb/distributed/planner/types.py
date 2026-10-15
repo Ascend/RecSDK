@@ -21,7 +21,6 @@ from dataclasses import dataclass, field
 
 from torchrec.distributed.planner.types import ParameterConstraints
 from dynamic_emb.distributed.dynamicemb_config import DynamicEmbTableOptions
-from dynamic_emb.distributed.utils import check
 from rec_sdk_common.validator.safe_checker import class_safe_check
 
 
@@ -44,6 +43,5 @@ class DynamicEmbParameterConstraints(ParameterConstraints):
 
     def __post_init__(self):
         class_safe_check("use_dynamicemb", self.use_dynamicemb, (bool,))
-        check(self.use_dynamicemb, "use_dynamicemb should be True")
         class_safe_check("dynamicemb_options", self.dynamicemb_options, (DynamicEmbTableOptions,))
         super().__post_init__()

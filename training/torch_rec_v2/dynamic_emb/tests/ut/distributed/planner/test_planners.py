@@ -15,6 +15,9 @@
 # limitations under the License.
 # ==============================================================================
 
+# pylint: disable=unexpected-keyword-arg
+# pylint: disable=attribute-defined-outside-init
+
 from typing import Dict
 
 import pytest
@@ -26,8 +29,6 @@ from torchrec.distributed.types import ShardingType, ShardingPlan
 
 from dynamic_emb.distributed.dynamicemb_config import (
     DynamicEmbTableOptions,
-    DynamicEmbInitializerMode,
-    DynamicEmbInitializerArgs,
     DistType,
 )
 from dynamic_emb.distributed.embedding import DynamicEmbeddingCollectionSharder
@@ -52,12 +53,6 @@ class TestDynamicEmbParameterSharding:
 
 
 class TestDynamicEmbeddingShardingPlanner:
-    def __init__(self):
-        self.eb_configs = None
-        self.eb_sharder = None
-        self.dict_const = None
-        self.topology = None
-
     def setup_method(self):
         self.eb_configs = [
             EmbeddingConfig(
@@ -140,6 +135,37 @@ class TestDynamicEmbeddingShardingPlanner:
             for _, param_sharding in plan_.items():
                 ranks.extend(param_sharding.ranks)
         assert sorted(expected_ranks) == sorted(ranks)
+
+    def test_use_dynamicemb_false_not_in_dyn_consts(self, monkeypatch):
+        monkeypatch.setattr("dynamic_emb.distributed.planner.planners.dist.get_world_size", lambda: 2)
+
+        dict_const = {
+            "clothes_id": DynamicEmbParameterConstraints(
+                sharding_types=[ShardingType.ROW_WISE.value],
+                compute_kernels=["fused"],
+                use_dynamicemb=False,
+            ),
+            "shoes_id": DynamicEmbParameterConstraints(
+                sharding_types=[ShardingType.ROW_WISE.value],
+                compute_kernels=["fused"],
+                use_dynamicemb=True,
+            ),
+        }
+
+        try:
+            planner = DynamicEmbeddingShardingPlanner(
+                eb_configs=self.eb_configs,
+                topology=self.topology,
+                constraints=dict_const,
+                batch_size=32,
+            )
+        except Exception as e:
+            pytest.fail(f"unexpected exception raised: {e}")
+
+        if "clothes_id" in planner._dyn_emb_table_consts:
+            pytest.fail("use_dynamicemb=False table should not be in _dyn_emb_table_consts")
+        if "shoes_id" not in planner._dyn_emb_table_consts:
+            pytest.fail("use_dynamicemb=True table should be in _dyn_emb_table_consts")
 
     @pytest.mark.parametrize("invalid_value", [["xxx"], None])
     def test_eb_configs_value_err(self, invalid_value):

@@ -15,6 +15,8 @@
 # limitations under the License.
 # ==============================================================================
 
+# pylint: disable=unexpected-keyword-arg
+
 import pytest
 from fbgemm_gpu.split_table_batched_embeddings_ops_common import BoundsCheckMode
 from torchrec import DataType
@@ -36,10 +38,10 @@ class TestDynamicEmbParameterConstraints:
             pytest.fail(f"unexpected exception raised: {e}")
 
     @staticmethod
-    def test_use_dynamicemb_only_support_true():
+    def test_use_dynamicemb_type_err():
         with pytest.raises(ValueError):
             DynamicEmbParameterConstraints(
-                use_dynamicemb=False,
+                use_dynamicemb="xxx",
                 sharding_types=[ShardingType.ROW_WISE.value],
                 compute_kernels=["fused"],
             )

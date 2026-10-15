@@ -51,8 +51,6 @@ DTYPE_NUM_BYTES: Dict[torch.dtype, int] = {
     torch.float16: 2,
     torch.bfloat16: 2,
 }
-_MAX_INIT_ARGS_VALUE = 1.0
-_MIN_INIT_ARGS_VALUE = 0.0
 
 
 class DynamicEmbPoolingMode(enum.IntEnum):
@@ -178,15 +176,19 @@ class DynamicEmbInitializerArgs:
 
     def __post_init__(self):
         class_safe_check("mode", self.mode, (DynamicEmbInitializerMode,))
-        float_safe_check("mean", self.mean, min_value=_MIN_INIT_ARGS_VALUE, max_value=_MAX_INIT_ARGS_VALUE)
-        float_safe_check("std_dev", self.std_dev, min_value=_MIN_INIT_ARGS_VALUE, max_value=_MAX_INIT_ARGS_VALUE)
-        float_safe_check("value", self.value, min_value=_MIN_INIT_ARGS_VALUE, max_value=_MAX_INIT_ARGS_VALUE)
 
     def __eq__(self, other):
         if not isinstance(other, DynamicEmbInitializerArgs):
             return NotImplementedError
         if self.mode == DynamicEmbInitializerMode.NORMAL:
             return self.mean == other.mean and self.std_dev == other.std_dev
+        elif self.mode == DynamicEmbInitializerMode.TRUNCATED_NORMAL:
+            return (
+                self.mean == other.mean
+                and self.std_dev == other.std_dev
+                and self.lower == other.lower
+                and self.upper == other.upper
+            )
         elif self.mode == DynamicEmbInitializerMode.UNIFORM:
             return self.lower == other.lower and self.upper == other.upper
         elif self.mode == DynamicEmbInitializerMode.CONSTANT:

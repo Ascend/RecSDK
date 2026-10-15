@@ -15,10 +15,12 @@
 # limitations under the License.
 # ==============================================================================
 
+# pylint: disable=unexpected-keyword-arg
+# pylint: disable=attribute-defined-outside-init
+
 import pytest
 import torch
 from fbgemm_gpu.split_embedding_configs import SparseType
-from fbgemm_gpu.split_table_batched_embeddings_ops_common import BoundsCheckMode
 from torchrec import DataType, EmbeddingCollection
 from torchrec.distributed.fbgemm_qcomm_codec import get_qcomm_codecs_registry, QCommsConfig, CommType
 from torchrec.distributed.planner import Topology
@@ -36,13 +38,6 @@ from dynamic_emb.distributed.planner.types import DynamicEmbParameterConstraints
 
 
 class TestDynamicEmbeddingEnumerator:
-    def __init__(self):
-        self.sharder = None
-        self.ec = None
-        self.const = None
-        self.topology = None
-        self.enumerator = None
-
     def setup_method(self) -> None:
         optimizer_kwargs = {
             "optimizer": "adam",
