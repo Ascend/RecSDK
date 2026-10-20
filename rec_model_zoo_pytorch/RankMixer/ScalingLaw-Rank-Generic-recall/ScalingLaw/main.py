@@ -589,7 +589,7 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
                     torch_npu.profiler.ProfilerActivity.CPU,
                     torch_npu.profiler.ProfilerActivity.NPU
                     ],
-                schedule=torch_npu.profiler.schedule(wait=1, active=10, warmup=3, repeat=1, skip_first=1),    # 与prof.step()配套使用
+                schedule=torch_npu.profiler.schedule(wait=1, active=10, warmup=8, repeat=1, skip_first=1),    # 与prof.step()配套使用
                 on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(profiler_save_path),
                 record_shapes=True,
                 profile_memory=False,
