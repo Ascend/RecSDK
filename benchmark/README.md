@@ -642,7 +642,9 @@ optimizer step，8P 取各 rank 最大值；吞吐率为 global batch 除以 mea
 
 ## EasyRec 模型
 
-运行前准备与 Atlas A2/A3、CANN 和 Python 匹配的 PyTorch/torch_npu，并安装 `uv`、`wget`、`unzip`；配置会自动准备其余依赖、官方 checkpoint 和数据。
+运行前准备与 Atlas A2/A3、CANN 和 Python 匹配的 PyTorch/torch_npu，并安装 `pip`、`wget`、`unzip`；配置会自动准备其余依赖、官方 checkpoint 和数据，可使用系统 Python 或虚拟环境。
+
+`EASYREC.json` 的 `run_cmd` 中通过 `--device=npu` 选择设备，可改为 `--device=cuda` 或 `--device=cpu`。`DEVICE_TYPE` 环境变量可覆盖此配置，`--cpu` 参数优先级最高。
 
 默认八卡 bf16 性能运行，单卡将 `NPROC_PER_NODE` 设为 `1`：
 
@@ -659,4 +661,4 @@ EASYREC_BATCH_SIZE=1 EASYREC_LEARNING_RATE=5e-6 EASYREC_DETERMINISTIC=1 \
 python run.py EASYREC.json --eager --no_hf32
 ```
 
-`EASYREC_PRECISION` 支持三种精度；默认性能运行使用 batch size 32、`5e-5` 学习率和非确定性 dropout。loss、性能摘要分别写入 `models/save_results_npu/EasyRec/` 和 `models/save_results_npu/performance_result.txt`；`--cpu`、`--eager`、`--no_hf32` 与 `profiling_flag` 均可按通用 benchmark 方式使用。
+`EASYREC_PRECISION` 支持三种精度；默认性能运行使用 batch size 32、`5e-5` 学习率和非确定性 dropout。逐步 loss 写入 `models/save_results_<device>/EasyRec/`，性能和最终结果分别追加到 `performance_result.txt`、`precision_result.txt`。最终结果打印 `The Final Result`，包含数据集、每卡 batch、数据遍历比例 `epoch`、step、实际 optimizer 更新数、final loss、ms/step 和 `in_batch_top1_accuracy`（最后一个训练 batch 中正样本排名第一的比例，非测试集 Recall/NDCG）。`--cpu`、`--eager`、`--no_hf32` 与 `profiling_flag` 均按通用 benchmark 方式使用。

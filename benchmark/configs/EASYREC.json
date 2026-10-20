@@ -9,13 +9,19 @@
     "e2e_flag": true,
     "aclgraph_flag": false,
     "data_type": "bfloat16",
-    "run_cmd": ["bash", "benchmark_entry.sh"],
+    "run_cmd": ["bash", "benchmark_entry.sh", "--device=npu"],
     "pip_install_self": false,
     "pip_install_requirements": false,
     "extra_cmd": [
-        "uv pip install --python python transformers==4.40.0 accelerate==0.28.0 sentencepiece==0.2.0 scipy tqdm protobuf",
+        "python -m pip install transformers==4.40.0 accelerate==0.28.0 sentencepiece==0.2.0 scipy tqdm protobuf",
         "mkdir -p baseline_embedders/easyrec-roberta-small",
-        "for f in config.json merges.txt pytorch_model.bin special_tokens_map.json tokenizer_config.json vocab.json; do wget -O baseline_embedders/easyrec-roberta-small/$f https://huggingface.co/hkuds/easyrec-roberta-small/resolve/main/$f; done",
-        "wget -O data.zip https://archive.org/download/easyrec_data/data.zip && unzip -o data.zip"
+        "wget -O baseline_embedders/easyrec-roberta-small/config.json https://huggingface.co/hkuds/easyrec-roberta-small/resolve/main/config.json",
+        "wget -O baseline_embedders/easyrec-roberta-small/merges.txt https://huggingface.co/hkuds/easyrec-roberta-small/resolve/main/merges.txt",
+        "wget -O baseline_embedders/easyrec-roberta-small/pytorch_model.bin https://huggingface.co/hkuds/easyrec-roberta-small/resolve/main/pytorch_model.bin",
+        "wget -O baseline_embedders/easyrec-roberta-small/special_tokens_map.json https://huggingface.co/hkuds/easyrec-roberta-small/resolve/main/special_tokens_map.json",
+        "wget -O baseline_embedders/easyrec-roberta-small/tokenizer_config.json https://huggingface.co/hkuds/easyrec-roberta-small/resolve/main/tokenizer_config.json",
+        "wget -O baseline_embedders/easyrec-roberta-small/vocab.json https://huggingface.co/hkuds/easyrec-roberta-small/resolve/main/vocab.json",
+        "wget -O data.zip https://archive.org/download/easyrec_data/data.zip",
+        "unzip -o data.zip"
     ]
 }

@@ -1,9 +1,9 @@
 diff --git a/benchmark_easyrec.py b/benchmark_easyrec.py
 new file mode 100644
-index 0000000..2bc1b87
+index 0000000..daacdba
 --- /dev/null
 +++ b/benchmark_easyrec.py
-@@ -0,0 +1,474 @@
+@@ -0,0 +1,506 @@
 +import argparse
 +import json
 +import os
@@ -366,7 +366,8 @@ index 0000000..2bc1b87
 +            synchronize(args.device)
 +            compute_started = time.perf_counter()
 +            with autocast_context(args.device, args.precision):
-+                loss = model(**batch).loss
++                outputs = model(**batch)
++                loss = outputs.loss
 +            if scaler is None:
 +                loss.backward()
 +                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0, foreach=False)
@@ -413,6 +414,14 @@ index 0000000..2bc1b87
 +                stream.flush()
 +                if step == 1 or step % 10 == 0:
 +                    print(json.dumps(record, sort_keys=True), flush=True)
++                if step == args.steps:
++                    # Training-batch retrieval only; not held-out Recall/NDCG.
++                    logits = outputs.logits.detach()
++                    targets = torch.arange(logits.size(0), device=logits.device)
++                    final_accuracy = float(
++                        (logits.argmax(dim=1) == targets).float().mean().cpu()
++                    )
++            del outputs
 +            if profiler is not None:
 +                profiler.step()
 +
@@ -440,9 +449,11 @@ index 0000000..2bc1b87
 +                "data_source": data_source,
 +                "update": args.update,
 +                "optimizer_steps": optimizer_steps,
++                "final_loss": record["loss"],
++                "metrics": {"in_batch_top1_accuracy": final_accuracy},
 +            }
 +            print(json.dumps(summary, sort_keys=True), flush=True)
-+            result_root = os.getenv("EASYREC_BENCHMARK_RESULT_ROOT")
++            result_root = os.getenv("EASYREC_BENCHMARK_RESULT_ROOT") or f"../save_results_{args.device}"
 +            if result_root:
 +                result_dir = Path(result_root)
 +                result_dir.mkdir(parents=True, exist_ok=True)
@@ -460,6 +471,27 @@ index 0000000..2bc1b87
 +                    "unit": "ms/step",
 +                }
 +                mode = "compile" if compile_enabled else "eager"
++                # Fractional data passes, not MODEL_EPOCH (which counts benchmark steps).
++                epoch = (
++                    args.steps * args.batch_size * world_size / len(official_batch_factory.dataset)
++                    if official_batch_factory else None
++                )
++                final_results = {
++                    "dataset_name": args.datasets if official_batch_factory else "synthetic",
++                    "batch_size": args.batch_size,
++                    "epoch": epoch,
++                    "step": args.steps,
++                    "optimizer_steps": optimizer_steps,
++                    "final_loss": summary["final_loss"],
++                    "ms/step": mean_step_time,
++                    "metrics": summary["metrics"],
++                }
++                output_str = f"{args.device}_EasyRec_{mode}_{args.precision}_{world_size}p_{final_results}"
++                print(f"The Final Result: {output_str}", flush=True)
++                with (result_dir / "precision_result.txt").open(
++                    "a", encoding="utf-8"
++                ) as result_stream:
++                    result_stream.write(output_str + "\n")
 +                detail = f"{args.device}_EasyRec_{mode}_{performance}"
 +                with (result_dir / "performance_result.txt").open(
 +                    "a", encoding="utf-8"
@@ -480,17 +512,25 @@ index 0000000..2bc1b87
 +    main()
 diff --git a/benchmark_entry.sh b/benchmark_entry.sh
 new file mode 100755
-index 0000000..b6eb9e9
+index 0000000..6cd41d4
 --- /dev/null
 +++ b/benchmark_entry.sh
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,52 @@
 +#!/usr/bin/env bash
 +set -euo pipefail
++
++config_device=npu
++for arg in "$@"; do
++    case "${arg}" in
++        --device=cpu|--device=cuda|--device=npu) config_device=${arg#--device=} ;;
++        *) echo "Expected --device=cpu, --device=cuda, or --device=npu" >&2; exit 2 ;;
++    esac
++done
 +
 +if [[ "${MODEL_CPU_ONLY:-false}" =~ ^([Tt][Rr][Uu][Ee]|1)$ ]]; then
 +    DEVICE_TYPE=cpu
 +else
-+    DEVICE_TYPE=${DEVICE_TYPE:-npu}
++    DEVICE_TYPE=${DEVICE_TYPE:-${config_device}}
 +fi
 +PRECISION=${EASYREC_PRECISION:-${MODEL_DATA_TYPE:-bfloat16}}
 +NPROC_PER_NODE=${NPROC_PER_NODE:-8}
