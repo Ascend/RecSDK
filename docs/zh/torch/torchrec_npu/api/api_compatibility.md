@@ -177,66 +177,66 @@ torchrec_npu框架总体约束如下：
 
 | API名称                                 | 是否支持 | 限制与说明 |
 | --------------------------------------- | -------- | ---------- |
-| torchrec.distributed.types.ShardingPlan | 是       | -          |
-| ShardingPlan.plan                       | 是       | -          |
-| ShardingPlan.get_plan_for_module        | 是       | -          |
+| torchrec.distributed.types.ShardingPlan | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| ShardingPlan.plan                       | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| ShardingPlan.get_plan_for_module        | 是       | v1.6.0/v1.7.0版本暂不支持 |
 
 #### torchrec.distributed.planner.planners.EmbeddingShardingPlanner
 
 | API名称                                                      | 是否支持 | 限制与说明               |
 | ------------------------------------------------------------ | -------- | ------------------------ |
-| torchrec.distributed.planner.planners.EmbeddingShardingPlanner | 是       | 仅支持FUSED+ROW_WISE场景 |
-| EmbeddingShardingPlanner.collective_plan                     | 是       | 仅支持FUSED+ROW_WISE场景 |
+| torchrec.distributed.planner.planners.EmbeddingShardingPlanner | 是       | 仅支持FUSED+ROW_WISE场景，v1.6.0/v1.7.0版本暂不支持 |
+| EmbeddingShardingPlanner.collective_plan                     | 是       | 仅支持FUSED+ROW_WISE场景，v1.6.0/v1.7.0版本暂不支持 |
 | EmbeddingShardingPlanner.get_search_space                    | 否       | -                        |
 | EmbeddingShardingPlanner.get_selected_options                | 否       | -                        |
-| EmbeddingShardingPlanner.plan                                | 是       | 仅支持FUSED+ROW_WISE场景 |
+| EmbeddingShardingPlanner.plan                                | 是       | 仅支持FUSED+ROW_WISE场景，v1.6.0/v1.7.0版本暂不支持 |
 
 #### torchrec.distributed.planner.enumerators.EmbeddingEnumerator
 
 | API名称                                                      | 是否支持 | 限制与说明 |
 | ------------------------------------------------------------ | -------- | ---------- |
-| torchrec.distributed.planner.enumerators.EmbeddingEnumerator | 是       | -          |
-| EmbeddingEnumerator.enumerate                                | 是       | -          |
-| EmbeddingEnumerator.populate_estimates                       | 是       | -          |
+| torchrec.distributed.planner.enumerators.EmbeddingEnumerator | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| EmbeddingEnumerator.enumerate                                | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| EmbeddingEnumerator.populate_estimates                       | 是       | v1.6.0/v1.7.0版本暂不支持 |
 
 #### torchrec.distributed.planner.partitioners.GreedyPerfPartitioner
 
 | API名称                                                      | 是否支持 | 限制与说明 |
 | ------------------------------------------------------------ | -------- | ---------- |
-| torchrec.distributed.planner.partitioners.GreedyPerfPartitioner | 是       | -          |
-| GreedyPerfPartitioner.partition                              | 是       | -          |
+| torchrec.distributed.planner.partitioners.GreedyPerfPartitioner | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| GreedyPerfPartitioner.partition                              | 是       | v1.6.0/v1.7.0版本暂不支持 |
 
 #### torchrec.distributed.planner.storage_reservations.HeuristicalStorageReservation
 
 | API名称                                                      | 是否支持 | 限制与说明        |
 | ------------------------------------------------------------ | -------- | ----------------- |
-| torchrec.distributed.planner.storage_reservations.HeuristicalStorageReservation | 是       | -                 |
-| HeuristicalStorageReservation.last_reserved_topology         | 是       | v1.5.0版本新增    |
-| HeuristicalStorageReservation.reserve                        | 是       | -                 |
+| torchrec.distributed.planner.storage_reservations.HeuristicalStorageReservation | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| HeuristicalStorageReservation.last_reserved_topology         | 是       | v1.5.0版本新增，v1.6.0/v1.7.0版本暂不支持 |
+| HeuristicalStorageReservation.reserve                        | 是       | v1.6.0/v1.7.0版本暂不支持 |
 
 #### torchrec.distributed.planner.proposers.GreedyProposer
 
 | API名称                                               | 是否支持 | 限制与说明 |
 | ----------------------------------------------------- | -------- | ---------- |
-| torchrec.distributed.planner.proposers.GreedyProposer | 是       | -          |
-| GreedyProposer.feedback                               | 是       | -          |
-| GreedyProposer.load                                   | 是       | -          |
-| GreedyProposer.propose                                | 是       | -          |
+| torchrec.distributed.planner.proposers.GreedyProposer | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| GreedyProposer.feedback                               | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| GreedyProposer.load                                   | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| GreedyProposer.propose                                | 是       | v1.6.0/v1.7.0版本暂不支持 |
 
 #### torchrec.distributed.planner.shard_estimators.EmbeddingPerfEstimator
 
 | API名称                                                      | 是否支持 | 限制与说明 |
 | ------------------------------------------------------------ | -------- | ---------- |
-| torchrec.distributed.planner.shard_estimators.EmbeddingPerfEstimator | 是       | -          |
+| torchrec.distributed.planner.shard_estimators.EmbeddingPerfEstimator | 是       | v1.6.0/v1.7.0版本暂不支持 |
 | EmbeddingPerfEstimator.perf_func_emb_wall_time               | 是       | v1.2.0/v1.5.0支持，v1.6.0起移除|
-| EmbeddingPerfEstimator.estimate                              | 是       | -          |
+| EmbeddingPerfEstimator.estimate                              | 是       | v1.6.0/v1.7.0版本暂不支持 |
 
 #### torchrec.distributed.planner.shard_estimators.EmbeddingStorageEstimator
 
 | API名称                                                      | 是否支持 | 限制与说明 |
 | ------------------------------------------------------------ | -------- | ---------- |
-| torchrec.distributed.planner.shard_estimators.EmbeddingStorageEstimator | 是       | -          |
-| EmbeddingStorageEstimator.estimate                           | 是       | -          |
+| torchrec.distributed.planner.shard_estimators.EmbeddingStorageEstimator | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| EmbeddingStorageEstimator.estimate                           | 是       | v1.6.0/v1.7.0版本暂不支持 |
 
 ### Model Parallel
 
@@ -244,18 +244,18 @@ torchrec_npu框架总体约束如下：
 
 | API名称                                                      | 是否支持 | 限制与说明               |
 | ------------------------------------------------------------ | -------- | ------------------------ |
-| torchrec.distributed.model_parallel.DistributedModelParallel | 是       | 仅支持FUSED+ROW_WISE场景 |
-| DistributedModelParallel.copy                                | 是       | -                        |
-| DistributedModelParallel.forward                             | 是       | -                        |
-| DistributedModelParallel.get_delta_tracker                   | 是       | v1.5.0版本新增           |
-| DistributedModelParallel.init_data_parallel                  | 是       | -                        |
-| DistributedModelParallel.init_torchrec_delta_tracker         | 是       | v1.5.0版本新增           |
-| DistributedModelParallel.load_state_dict                     | 是       | -                        |
-| DistributedModelParallel.module                              | 是       | -                        |
-| DistributedModelParallel.named_buffers                       | 是       | -                        |
-| DistributedModelParallel.named_parameters                    | 是       | -                        |
-| DistributedModelParallel.reshard                             | 是       | v1.5.0版本新增           |
-| DistributedModelParallel.state_dict                          | 是       | -                        |
+| torchrec.distributed.model_parallel.DistributedModelParallel | 是       | 仅支持FUSED+ROW_WISE场景，v1.6.0/v1.7.0版本暂不支持 |
+| DistributedModelParallel.copy                                | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| DistributedModelParallel.forward                             | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| DistributedModelParallel.get_delta_tracker                   | 是       | v1.5.0版本新增，v1.6.0/v1.7.0版本暂不支持 |
+| DistributedModelParallel.init_data_parallel                  | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| DistributedModelParallel.init_torchrec_delta_tracker         | 是       | v1.5.0版本新增，v1.6.0/v1.7.0版本暂不支持 |
+| DistributedModelParallel.load_state_dict                    | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| DistributedModelParallel.module                              | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| DistributedModelParallel.named_buffers                       | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| DistributedModelParallel.named_parameters                    | 是       | v1.6.0/v1.7.0版本暂不支持 |
+| DistributedModelParallel.reshard                             | 是       | v1.5.0版本新增，v1.6.0/v1.7.0版本暂不支持 |
+| DistributedModelParallel.state_dict                          | 是       | v1.6.0/v1.7.0版本暂不支持 |
 | DistributedModelParallel.write                               | 否       | v1.6.0版本新增           |
 
 ### Inference
@@ -270,4 +270,4 @@ torchrec_npu框架总体约束如下：
 
 | API名称                                      | 是否支持 | 限制与说明 |
 | -------------------------------------------- | -------- | ---------- |
-| torchrec.inference.modules.shard_quant_model | 是       | -          |
+| torchrec.inference.modules.shard_quant_model | 是       | v1.6.0/v1.7.0版本暂不支持 |
