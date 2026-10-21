@@ -27,13 +27,19 @@ opensource_path="${MxRec_DIR}"/../opensource
 
 function prepare_pybind(){
   cd "${opensource_path}"
-  if [ ! -d pybind11 ]; then
-    rm -rf pybind11-*/
-    zip_file=$(find . -maxdepth 1 -name "pybind11-*.zip" -type f -printf "%T@ %p\n" | sort -nr \
-                  | head -n 1 | cut -d' ' -f2-)
-    unzip "${zip_file}"
-    mv pybind11-*/ pybind11
+  if [ -d pybind11 ]; then
+    echo "pybind11 source tree already exists, skip extraction"
+    return 0
   fi
+  zip_file=$(find . -maxdepth 1 -name "pybind11-*.zip" -type f -printf "%T@ %p\n" 2>/dev/null \
+                | sort -nr | head -n 1 | cut -d' ' -f2-)
+  if [ -z "${zip_file}" ]; then
+    echo "[WARN] no pybind11 zip found in ${opensource_path}, will fall back to installed pybind11"
+    return 0
+  fi
+  rm -rf pybind11-*/
+  unzip "${zip_file}"
+  mv pybind11-*/ pybind11
 }
 
 function prepare_securec(){

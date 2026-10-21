@@ -49,18 +49,42 @@ def modify_version():
     return default_version
 
 
+_PYBIND11_DIR = None
+
+
 def ensure_pybind11():
-    """确保pybind11可用"""
+    """确保pybind11可用：优先已安装（import直接可用），其次opensource源码树，最后pip安装。"""
+    global _PYBIND11_DIR
+    if _PYBIND11_DIR is not None:
+        return _PYBIND11_DIR
+
+    # 1. 已安装：import pybind11 直接可用
     try:
         import pybind11
 
-        return pybind11.get_cmake_dir()
-    except ImportError:
-        logging.info("Installing pybind11...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pybind11"])
-        import pybind11
+        _PYBIND11_DIR = pybind11.get_cmake_dir()
+        logging.info("[PYBIND11-FALLBACK] import pybind11 succeeded, use installed cmake dir: %s", _PYBIND11_DIR)
+        return _PYBIND11_DIR
+    except Exception as exc:
+        # get_cmake_dir() 在旧版/损坏的 pybind11 下可能抛 AttributeError 等，保底回退到下一级
+        logging.warning("[PYBIND11-FALLBACK] installed pybind11 unavailable (%s), fallback", exc)
 
-        return pybind11.get_cmake_dir()
+    # 2. 本地opensource源码树（build.sh的prepare_pybind已解压）
+    mxrec_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    local_pybind11 = os.path.join(mxrec_dir, "..", "opensource", "pybind11")
+    if os.path.isdir(local_pybind11):
+        logging.info("Use local pybind11 from opensource: %s", local_pybind11)
+        _PYBIND11_DIR = local_pybind11
+        return _PYBIND11_DIR
+
+    # 3. 均不可用，pip安装
+    logging.info("[PYBIND11-FALLBACK] pybind11 not importable and opensource not found, installing via pip...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pybind11>=2.10.3"])
+    import pybind11
+
+    _PYBIND11_DIR = pybind11.get_cmake_dir()
+    logging.info("[PYBIND11-FALLBACK] pip install succeeded, cmake dir: %s", _PYBIND11_DIR)
+    return _PYBIND11_DIR
 
 
 class CMakeExtension(Extension):
@@ -135,10 +159,18 @@ class CMakeBuild(build_ext):
         cmake_args = [
             f'-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}',
             f'-DPYTHON_EXECUTABLE={sys.executable}',
+            f'-DPython3_EXECUTABLE={sys.executable}',
+            f'-DPython3_ROOT_DIR={sys.prefix}',
             f'-DCMAKE_BUILD_TYPE={"Debug" if self.debug else "Release"}',
-            f'-Dpybind11_DIR={self.pybind11_dir}',
-            f'-DCMAKE_PREFIX_PATH={self.pybind11_dir}',
         ]
+        # 本地opensource的pybind11源码树 vs pip安装的cmake config，二者取其一
+        if os.path.isdir(os.path.join(self.pybind11_dir, "include", "pybind11")):
+            logging.info("Use local pybind11 source tree: %s", self.pybind11_dir)
+            cmake_args.append(f'-DPYBIND11_SOURCE_DIR={self.pybind11_dir}')
+        else:
+            logging.info("Use pybind11 cmake dir: %s", self.pybind11_dir)
+            cmake_args.append(f'-Dpybind11_DIR={self.pybind11_dir}')
+            cmake_args.append(f'-DCMAKE_PREFIX_PATH={self.pybind11_dir}')
 
         # 从环境变量获取配置或使用默认值
         run_mode = os.getenv('RUN_MODE', 'npu')

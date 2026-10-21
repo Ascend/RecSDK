@@ -45,12 +45,12 @@ Build environment dependencies:
 
 Open-source dependencies:
 
-- [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
-- [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
+- [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip) (optional, see below)
+- [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip) (required)
 - [openmpi 4.1.5](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz): Install it in the build environment according to the software documentation.
 - TensorFlow 1.15: Select the corresponding version as required.
 
-Place the compressed packages of pybind11 (`>= 2.10.3`) and securec (`huaweicloud-sdk-c-obs-3.23.9.zip`) in the same directory as the RecSDK code under the `opensource` subdirectory.
+Place the compressed package of securec (`huaweicloud-sdk-c-obs-3.23.9.zip`) in the same directory as the RecSDK code under the `opensource` subdirectory. For pybind11, the build resolves it in the following priority: use the installed pybind11 (`import pybind11` works directly) → the local `opensource` source tree (place the pybind11 >= 2.10.3 compressed package in the `opensource` directory) → a pip installation (if neither is available, it tries `pip install pybind11`, which requires network access).
 
 **Compilation method:**
 

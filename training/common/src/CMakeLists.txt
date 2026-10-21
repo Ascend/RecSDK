@@ -76,10 +76,21 @@ if(NOT OPENSOURCE_DIR)
     set(OPENSOURCE_DIR ${PROJECT_SOURCE_DIR}/../../../../opensource/)
 endif()
 
-if(IS_DIRECTORY ${OPENSOURCE_DIR})
+if(DEFINED pybind11_DIR)
+    # 1. 已安装：build.sh 已通过 import 确认并传入 pybind11_DIR / CMAKE_PREFIX_PATH
+    message(STATUS "[PYBIND11-FALLBACK] use installed pybind11 via pybind11_DIR: ${pybind11_DIR}")
+    # 先显式定位 Python3，避免 pybind11 内部 find_package(Python) 抓到系统 python3.8 而缺少 Development.Module
+    find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+    set(PYBIND11_FINDPYTHON ON CACHE BOOL "" FORCE)
+    find_package(pybind11 CONFIG REQUIRED)
+    message(STATUS "[PYBIND11-FALLBACK] found installed pybind11: ${pybind11_DIR}")
+elseif(IS_DIRECTORY ${OPENSOURCE_DIR}/pybind11)
+    # 2. opensource 源码树
     add_subdirectory(${OPENSOURCE_DIR}/pybind11 pybind11.out)
+    message(STATUS "Use local opensource pybind11 source tree: ${OPENSOURCE_DIR}/pybind11")
 else()
-    message(FATAL_ERROR "INVALID FOLDER, ${OPENSOURCE_DIR}")
+    # 3. 已安装和源码树都不可用
+    message(FATAL_ERROR "pybind11 not found (neither installed nor opensource source tree)")
 endif()
 
 add_subdirectory(pybind)

@@ -36,7 +36,17 @@ if(CMAKE_INSTALL_PREFIX STREQUAL /usr/local)
 endif()
 
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
-find_package(pybind11 CONFIG REQUIRED)
+# pybind11 获取优先级由上层构建脚本决定：已安装(import) → 本地opensource源码树 → pip安装。
+# 显式传入 PYBIND11_SOURCE_DIR 时走 add_subdirectory（本地源码树），否则走 find_package（已安装/pip安装）。
+if(DEFINED PYBIND11_SOURCE_DIR AND IS_DIRECTORY ${PYBIND11_SOURCE_DIR})
+    add_subdirectory(${PYBIND11_SOURCE_DIR} ${CMAKE_BINARY_DIR}/pybind11)
+    message(STATUS "Use local pybind11 source tree: ${PYBIND11_SOURCE_DIR}")
+else()
+    # 用新版 FindPython 定位 Python，避免旧版 FindPythonLibsNew 依赖已移除的 distutils.sysconfig
+    set(PYBIND11_FINDPYTHON ON CACHE BOOL "" FORCE)
+    find_package(pybind11 CONFIG REQUIRED)
+    message(STATUS "Use installed pybind11 via find_package (PYBIND11_FINDPYTHON=ON)")
+endif()
 
 
 # 收集AscendC自定义算子

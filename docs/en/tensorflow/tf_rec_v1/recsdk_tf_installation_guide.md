@@ -43,12 +43,12 @@ Before you build the source code, follow the [CANN Software Installation Guide](
    - CMake 3.22.6
 
 2. Open-source dependencies:
-   - [pybind11](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
-   - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
+   - [pybind11](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip) (optional, see below)
+   - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip) (required)
    - [openmpi 4.1.5](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz): Install it in the build environment according to the software documentation.
    - TensorFlow 1.15/2.6.5: Select the corresponding version as required.
 
-   Place the compressed packages of pybind11 (`>= 2.10.3`) and securec (`huaweicloud-sdk-c-obs-3.23.9.zip`) in the same directory as the RecSDK code under the `opensource` subdirectory.
+   Place the compressed package of securec (`huaweicloud-sdk-c-obs-3.23.9.zip`) in the same directory as the RecSDK code under the `opensource` subdirectory. For pybind11, the build resolves it in the following priority: use the installed pybind11 (`import pybind11` works directly) → the local `opensource` source tree (place the pybind11 >= 2.10.3 compressed package in the `opensource` directory) → a pip installation (if neither is available, it tries `pip install pybind11`, which requires network access).
 
 3. Build method:
 
@@ -95,10 +95,10 @@ Before you build the source code, follow the [CANN Software Installation Guide](
 
    - [googletest 1.8.1](https://github.com/google/googletest/archive/refs/tags/release-1.8.1.zip)
    - [emock 0.9.0](https://github.com/ez8-co/emock/archive/refs/tags/v0.9.0.zip)
-   - [pybind11](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+   - [pybind11](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip) (optional, see below)
    - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
 
-   Place the compressed packages of googletest (`googletest-release-1.8.1.zip`), emock (`emock-0.9.0.zip`), pybind11 (`>= 2.10.3`) and securec (`huaweicloud-sdk-c-obs-3.23.9.zip`) in the same level as the RecSDK code in the `opensource` directory.
+   Place the compressed packages of googletest (`googletest-release-1.8.1.zip`), emock (`emock-0.9.0.zip`) and securec (`huaweicloud-sdk-c-obs-3.23.9.zip`) in the same level as the RecSDK code in the `opensource` directory. For pybind11, the build resolves it in the following priority: use the installed pybind11 (`import pybind11` works directly) → the local `opensource` source tree (place the pybind11 >= 2.10.3 compressed package in the `opensource` directory) → a pip installation (if neither is available, it tries `pip install pybind11`, which requires network access).
 
    To run the C++ test cases, install the preceding dependencies. Then, go to the `RecSDK/training/tf_rec_v1/src` directory and run the C++ test cases.
 
