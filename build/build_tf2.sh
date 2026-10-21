@@ -37,13 +37,18 @@ if [ ! -d ${opensource_path} ]; then
 fi
 
 function prepare_pybind(){
+  # pybind11 载入容错：优先已安装/opensource 源码树/pip 回退（见 common/src/build.sh、tf_rec_v1/src/build.sh），zip 缺失时不强制解压
   cd "${opensource_path}"
   if [ ! -d pybind11 ]; then
-    rm -rf pybind11-*/
     zip_file=$(find . -maxdepth 1 -name "pybind11-*.zip" -type f -printf "%T@ %p\n" | sort -nr \
                   | head -n 1 | cut -d' ' -f2-)
-    unzip "${zip_file}"
-    mv pybind11-*/ pybind11
+    if [ -n "${zip_file}" ]; then
+      rm -rf pybind11-*/
+      unzip "${zip_file}"
+      mv pybind11-*/ pybind11
+    else
+      echo "[PYBIND11-FALLBACK] no pybind11 zip in opensource, fallback to installed/pip"
+    fi
   fi
 }
 
