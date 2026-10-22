@@ -52,7 +52,7 @@ jobs:
           git config --global user.name AtlasAccount
           git config --global user.email AtlasAccount@noreply.gitcode.com
           git merge --no-edit pr_${{ inputs.pr_id }}
-          (git diff ${servicebranch_1} --no-commit-id --name-only | grep -E "^build/|^training/common/|^training/tf_rec_v1/" | sort -u) > ${ATOMGIT_WORKSPACE}/change.txt
+          (git diff ${{ inputs.TARGET_BRANCH }} --no-commit-id --name-only | grep -E "^build/|^training/common/|^training/tf_rec_v1/" | sort -u) > ${ATOMGIT_WORKSPACE}/change.txt
           cat ${ATOMGIT_WORKSPACE}/change.txt
 
           if [ "${{ inputs.TARGET_BRANCH }}" != "${{ inputs.DEFAULT_BRANCH }}" ]; then
@@ -72,10 +72,14 @@ jobs:
       - name: execute presmoke
         run: |
           set -e
-          echo "ATOMGIT_WORKSPACE=${ATOMGIT_WORKSPACE}"
-          source /etc/profile
-          python3 --version
-          pip3 --version
-          git clone -b develop_examples_and_tools --depth=1 https://gitcode.com/Ascend/${{ inputs.servicename }}.git RecSDK_examples
+          if [ -f "${ATOMGIT_WORKSPACE}/change.txt" ] && [ -s "${ATOMGIT_WORKSPACE}/change.txt" ]; then
+              echo "ATOMGIT_WORKSPACE=${ATOMGIT_WORKSPACE}"
+              source /etc/profile
+              python3 --version
+              pip3 --version
+              git clone -b develop_examples_and_tools --depth=1 https://gitcode.com/Ascend/${{ inputs.servicename }}.git RecSDK_examples
 
-          cd ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/build && bash run_presmoke_tf.sh ${ATOMGIT_WORKSPACE}
+              cd ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/build && bash run_presmoke_tf.sh ${ATOMGIT_WORKSPACE}
+          else
+              echo "****************************no presmoke***************************************"
+          fi
