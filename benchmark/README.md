@@ -92,6 +92,7 @@ python run.py xxx.json --eager
 |ONN|[ONN.json](configs/ONN.json)|
 |OpenP5|[OpenP5.json](configs/OpenP5.json)|
 |OpenP5_LLaMA|[OpenP5_LLaMA.json](configs/OpenP5_LLaMA.json)|
+|PEPNet|[PEPNet.json](configs/PEPNet.json)|
 |PLE|[PLE.json](configs/PLE.json)|
 |PNN|[PNN.json](configs/PNN.json)|
 |RANKMIXER|[RANKMIXER.json](configs/RANKMIXER.json)|
@@ -662,3 +663,134 @@ python run.py EASYREC.json --eager --no_hf32
 ```
 
 `EASYREC_PRECISION` 支持三种精度；默认性能运行使用 batch size 32、`5e-5` 学习率和非确定性 dropout。逐步 loss 写入 `models/save_results_<device>/EasyRec/`，性能和最终结果分别追加到 `performance_result.txt`、`precision_result.txt`。最终结果打印 `The Final Result`，包含数据集、每卡 batch、数据遍历比例 `epoch`、step、实际 optimizer 更新数、final loss、ms/step 和 `in_batch_top1_accuracy`（最后一个训练 batch 中正样本排名第一的比例，非测试集 Recall/NDCG）。`--cpu`、`--eager`、`--no_hf32` 与 `profiling_flag` 均按通用 benchmark 方式使用。
+
+## PEPNet 模型
+
+[PEPNet](https://github.com/alibaba/TorchEasyRec/blob/v1.3.0/docs/source/models/pepnet.md) 直接使用 TorchEasyRec v1.3.0 的原生完整模型，适配 Atlas 800T A3 超节点服务器（本小节后续描述中简称 A3）。A3 使用公共 TorchRec 1.7.0 NPU 适配，不在本仓库补丁中修改 TorchRec 源码。
+
+`pepnet_npu.patch` 只提供 PEPNet benchmark 入口、共享输入和初始权重、GPU/NPU loss 比较，以及两处必要兼容：`FG_NONE` 模式下允许不安装 pyfg，并在稀疏查表期间关闭 autocast。
+
+### 固定版本
+
+| 组件 | 版本或提交 |
+|--|--|
+| TorchEasyRec | `ee3ef097fa6ed9821f1c21e317f010c4519f7334`（v1.3.0） |
+| TorchRec 1.7.0 NPU 适配 | RecSDK `1ffef5e6bd8e40189c211c155c7dcdf823ab5033` |
+| TorchRec NPU 源码 | `75ae119b` |
+
+### 运行依赖
+
+- Python 3.11 独立环境。
+- A3：PyTorch `2.12.0+cpu`、torch_npu `2.12.0.post3`、TorchRec `1.7.0+npu`、CANN 9.0，以及基于 `fbgemm-ascend` v1.7.0 构建的 A3 算子包。
+- H20：PyTorch `2.12.0+cu126`、TorchRec `1.7.0`、FBGEMM `1.7.0`。
+- 公共 [TorchRec 1.7.0 NPU 适配说明](https://gitcode.com/Ascend/RecSDK/blob/1ffef5e6bd8e40189c211c155c7dcdf823ab5033/third_party/torchrec/v1.7.0/torchrec_npu/README.md) 配套 PyTorch 2.12.0；`torch_npu 2.12.0.post3` 也要求 PyTorch 2.12.0。
+- [fbgemm-ascend v1.7.0](https://gitcode.com/Ascend/fbgemm-ascend/blob/v1.7.0/README.md) 需按实际 PyTorch/CANN 版本重新构建，不能复用 2.10 或 2.14 的二进制文件。
+
+v1.3.0 的 [runtime.txt](https://github.com/alibaba/TorchEasyRec/blob/v1.3.0/requirements/runtime.txt) 声明 PyTorch 2.12.1、TorchRec 1.7.0、FBGEMM 1.7.0 和 pyfg 1.0.5。不要整份安装该文件覆盖 NPU 依赖；除上述设备相关包外，可安装运行和编译 protobuf 所需依赖。本次数据准备环境实际使用 pyfg 1.0.7，生成的 manifest 和逐步 input hash 已由 A3/H20 共同校验。
+
+### 准备数据集
+
+PEPNet 复用 benchmark 的统一源码、补丁和数据下载函数，读取 [TorchEasyRecData.json](data/TorchEasyRecData.json) 自动下载并解压数据，不需要手动下载。通用 `run.py` 主流程还包含 TDM 建树步骤，因此 PEPNet 按以下方式准备后，使用本节的独立训练入口。
+
+首次使用时，在 RecSDK 的 `benchmark/` 目录运行以下命令。已有 `models/TorchEasyRec/` 时，先确认其源码版本与补丁和本节一致：
+
+```shell
+python - <<'PY'
+from pathlib import Path
+
+from run import download_and_install, download_data_file, read_config
+
+config = read_config(Path("configs/PEPNet.json"))
+target_dir = Path("models/TorchEasyRec")
+if not download_and_install(
+    config, config["url"], target_dir, config["commit_id"], config["patch_path"]
+):
+    raise SystemExit("Failed to prepare PEPNet source and patch")
+if not download_data_file(target_dir):
+    raise SystemExit("Failed to prepare TorchEasyRec data")
+PY
+```
+
+训练数据默认解压到 `models/TorchEasyRec/data/taobao_data_train/`。
+
+在 x86 环境生成 A3/H20 共用的输入和初始权重。进入 `benchmark/models/TorchEasyRec`，运行 pyfg 前需要把 pyarrow 的动态库目录加入 `LD_LIBRARY_PATH`：
+
+```shell
+cd models/TorchEasyRec
+export PYTHON=/absolute/path/to/venv/bin/python
+export TZREC_PEPNET_ONLY=1
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+"$PYTHON" -m grpc_tools.protoc -I. --python_out=. \
+    tzrec/protos/*.proto tzrec/protos/models/*.proto
+export LD_LIBRARY_PATH="$("$PYTHON" -c 'import pathlib, pyarrow; print(pathlib.Path(pyarrow.__file__).parent)')${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+"$PYTHON" prepare_pepnet_inputs.py \
+    --data data/taobao_data_train \
+    --output /absolute/path/to/pepnet_inputs --batch-size 4096 --steps 2000
+"$PYTHON" benchmark_pepnet.py --device cpu --align \
+    --write-initial-state /absolute/path/to/initial_parameters.pt
+```
+
+将完整的 `pepnet_inputs/`（包含 `manifest.json`）和同一份 `initial_parameters.pt` 复制到 GPU/NPU 两端。输入批次数至少为训练步数乘以世界大小：单卡 1000 步需要 1000 批，两卡需要 2000 批。数据准备使用上游 DataParser/pyfg，并过滤配置中标签为空的样本。
+
+### 精度验证
+
+GPU/NPU 必须使用相同输入、初始权重、卡数、每卡 batch size、精度和对应学习率。float32 使用 FP32；float16/bfloat16 使用上游 `TrainWrapper` 的 AMP，稀疏查表保持 FP32。`PEPNET_ALIGN_DEVICES=1` 固定 seed，关闭 dropout、TF32/HF32 和 CUDA reduced-precision reduction。
+
+A3 先加载 CANN 环境，并保留当前 TorchEasyRec 的 `PYTHONPATH`：
+
+```shell
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
+```
+
+```shell
+export DEVICE_TYPE=npu NPROC_PER_NODE=2
+export PEPNET_INPUTS=/absolute/path/to/pepnet_inputs
+export PEPNET_INITIAL_PARAMETERS=/absolute/path/to/initial_parameters.pt
+export PEPNET_STEPS=1000 PEPNET_BATCH_SIZE=4096 PEPNET_ALIGN_DEVICES=1
+export CUBLAS_WORKSPACE_CONFIG=:4096:8
+
+for precision in float32 float16 bfloat16; do
+    learning_rate=0.0001
+    if [ "$precision" = float16 ]; then learning_rate=0.00001; fi
+    PEPNET_PRECISION="$precision" PEPNET_LEARNING_RATE="$learning_rate" \
+        bash benchmark_entry_pepnet.sh
+done
+```
+
+GPU 将 `DEVICE_TYPE` 改为 `cuda`；单卡将 `NPROC_PER_NODE` 改为 `1`。`PEPNET_BATCH_SIZE` 是每卡 batch，默认全局 batch 为 `4096 × NPROC_PER_NODE`。逐步结果写入 `../save_results_<device>/PEPNet/<device>_<precision>_<卡数>p.jsonl`，可通过 `OUTPUT` 指定；训练结束按 benchmark 统一格式打印 `The Final Result`，并追加写入 `../save_results_<device>/precision_result.txt`。
+
+将 GPU/NPU 结果放到同一台机器后，在 TorchEasyRec 根目录比较：
+
+```shell
+for precision in float32 float16 bfloat16; do
+    "$PYTHON" compare_losses_pepnet.py \
+        --ref "../save_results_cuda/PEPNet/cuda_${precision}_${NPROC_PER_NODE}p.jsonl" \
+        --target "../save_results_npu/PEPNet/npu_${precision}_${NPROC_PER_NODE}p.jsonl" \
+        --steps 1000
+done
+```
+
+以 GPU 为参考，验收指标为 `MAE = mean(abs(npu_loss[i] - gpu_loss[i]))`。Float32、float16、bfloat16 的门限分别为 `<1e-4`、`<1e-3`、`<1e-2`。比较器会先核对配置、初始权重和每一步的 input hash；多卡每一步的 loss 取各 rank 均值。
+
+### 验证结果
+
+两端各用两卡、每卡 batch 4096，完成前 1000 个 optimizer step。H20 只参与精度对照：
+
+| 精度 | 1000-step MAE | 最大绝对误差 | 门限 | 结果 |
+|--|--:|--:|--:|--|
+| float32 | `7.035e-5` | `6.920e-4` | `<1e-4` | PASS |
+| float16 | `4.776e-4` | `4.055e-3` | `<1e-3` | PASS |
+| bfloat16 | `8.601e-5` | `8.472e-4` | `<1e-2` | PASS |
+
+验收口径是 1000 步平均绝对误差，不是逐 step 最大误差；因此 float16 的最大绝对误差可以超过 `1e-3`，只要 MAE 满足门限。旧 v1.5.0 结果不用于本实现验收。
+
+A3 默认训练配置、1000 步外部端到端计时如下，包含进程启动。H20 不参与性能测试：
+
+| 精度 | A3 单卡 ms/step | A3 两卡 ms/step |
+|--|--:|--:|
+| float32 | 45.027 | 57.827 |
+| float16 | 50.085 | 58.116 |
+| bfloat16 | 49.118 | 52.881 |
+
+当前可用的 A3 环境只有两张卡，因此八卡性能未实测，两卡结果不能替代八卡验收。

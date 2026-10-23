@@ -1,0 +1,756 @@
+diff --git a/benchmark_entry_pepnet.sh b/benchmark_entry_pepnet.sh
+new file mode 100644
+index 0000000..6f3f1cc
+--- /dev/null
++++ b/benchmark_entry_pepnet.sh
+@@ -0,0 +1,39 @@
++#!/usr/bin/env bash
++set -euo pipefail
++cd "$(dirname "$0")"
++
++PYTHON_BIN=${PYTHON:-python3}
++DEVICE_TYPE=${DEVICE_TYPE:-npu}
++PRECISION=${PEPNET_PRECISION:-${MODEL_DATA_TYPE:-float32}}
++STEPS=${PEPNET_STEPS:-${MODEL_EPOCH:-1000}}
++BATCH_SIZE=${PEPNET_BATCH_SIZE:-4096}
++NPROC_PER_NODE=${NPROC_PER_NODE:-1}
++RESULT_ROOT=${PEPNET_BENCHMARK_RESULT_ROOT:-../save_results_${DEVICE_TYPE}}
++OUTPUT=${OUTPUT:-${RESULT_ROOT}/PEPNet/${DEVICE_TYPE}_${PRECISION}_${NPROC_PER_NODE}p.jsonl}
++: "${PEPNET_INPUTS:?Set PEPNET_INPUTS to the official preprocessed input directory}"
++: "${PEPNET_INITIAL_PARAMETERS:?Set PEPNET_INITIAL_PARAMETERS to the shared CPU checkpoint}"
++
++export TZREC_PEPNET_ONLY=1
++export PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}"
++export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
++if [[ "$DEVICE_TYPE" == npu ]]; then
++    export FBGEMM_ASCEND_FORCE_BUILD_VER=A3
++    export HCCL_NPU_SOCKET_PORT_RANGE=${HCCL_NPU_SOCKET_PORT_RANGE:-auto}
++    export HCCL_HOST_SOCKET_PORT_RANGE=${HCCL_HOST_SOCKET_PORT_RANGE:-auto}
++fi
++if [[ ! -f tzrec/protos/pipeline_pb2.py ]]; then
++    "$PYTHON_BIN" -m grpc_tools.protoc -I. --python_out=. \
++        tzrec/protos/*.proto tzrec/protos/models/*.proto
++fi
++mkdir -p "$(dirname "$OUTPUT")"
++arguments=(--device "$DEVICE_TYPE" --precision "$PRECISION"
++    --steps "$STEPS" --batch-size "$BATCH_SIZE"
++    --inputs "$PEPNET_INPUTS" --initial-state "$PEPNET_INITIAL_PARAMETERS"
++    --learning-rate "${PEPNET_LEARNING_RATE:-0.001}" --output "$OUTPUT")
++if [[ "${PEPNET_ALIGN_DEVICES:-0}" == 1 ]]; then
++    arguments+=(--align)
++fi
++"$PYTHON_BIN" -m torch.distributed.run --rdzv-backend=static \
++    --master-addr="${MASTER_ADDR:-127.0.0.1}" --master-port="${MASTER_PORT:-29741}" \
++    --nproc_per_node="$NPROC_PER_NODE" \
++    benchmark_pepnet.py "${arguments[@]}"
+diff --git a/benchmark_pepnet.py b/benchmark_pepnet.py
+new file mode 100644
+index 0000000..f034892
+--- /dev/null
++++ b/benchmark_pepnet.py
+@@ -0,0 +1,407 @@
++# Copyright (c) 2025, Alibaba Group;
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#    http://www.apache.org/licenses/LICENSE-2.0
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++"""Train the complete upstream PEPNet with TorchRec on shared real inputs."""
++
++import argparse
++import hashlib
++import importlib
++import json
++import os
++import time
++from pathlib import Path
++
++
++def main():
++    """Check full-model forward, native loss, backward and parameter updates."""
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--device", required=True, choices=["cpu", "cuda", "npu"])
++    parser.add_argument("--batch-size", type=int, default=4096)
++    parser.add_argument("--steps", type=int, default=1000)
++    parser.add_argument("--inputs", type=Path)
++    parser.add_argument("--initial-state", type=Path)
++    parser.add_argument("--write-initial-state", type=Path)
++    parser.add_argument("--output", type=Path)
++    parser.add_argument(
++        "--precision", choices=["float32", "float16", "bfloat16"], default="float32"
++    )
++    parser.add_argument("--learning-rate", type=float, default=0.001)
++    parser.add_argument("--align", action="store_true")
++    args = parser.parse_args()
++    if args.steps < 1 or args.batch_size < 1:
++        parser.error("steps and batch-size must be positive")
++    if not args.write_initial_state and (
++        args.device == "cpu"
++        or not args.inputs
++        or not args.initial_state
++        or not args.output
++    ):
++        parser.error("training requires CUDA/NPU, inputs, initial-state and output")
++    os.environ["TZREC_PEPNET_ONLY"] = "1"
++    if args.device == "npu":
++        os.environ["FBGEMM_ASCEND_FORCE_BUILD_VER"] = "A3"
++    import torch
++
++    local_rank = int(os.getenv("LOCAL_RANK", "0"))
++    rank = int(os.getenv("RANK", "0"))
++    world_size = int(os.getenv("WORLD_SIZE", "1"))
++    device = torch.device(
++        f"{args.device}:{local_rank}" if args.device != "cpu" else "cpu"
++    )
++    if args.device == "npu":
++        importlib.import_module("torch_npu")
++        importlib.import_module("fbgemm_ascend")
++        if args.align:
++            torch.npu.set_option({"ACL_PRECISION_MODE": "must_keep_origin_dtype"})
++            torch.npu.matmul.allow_hf32 = False
++            torch.npu.conv.allow_hf32 = False
++        torch.npu.set_device(local_rank)
++    elif args.device == "cuda":
++        torch.cuda.set_device(local_rank)
++        torch.backends.cuda.matmul.allow_tf32 = False
++        torch.backends.cudnn.allow_tf32 = False
++        if args.align:
++            torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = False
++            torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = False
++    from google.protobuf import text_format
++
++    from tzrec.constant import Mode
++    from tzrec.datasets.data_parser import DataParser
++    from tzrec.features.feature import create_features
++    from tzrec.models.model import TrainWrapper
++    from tzrec.models.pepnet import PEPNet
++    from tzrec.protos.data_pb2 import FgMode
++    from tzrec.protos.pipeline_pb2 import EasyRecConfig
++    from tzrec.utils.state_dict_util import init_parameters
++
++    torch.manual_seed(1234)
++    config = EasyRecConfig()
++    text_format.Parse(Path("examples/pepnet_taobao.config").read_text(), config)
++    if args.align:
++        config.model_config.pepnet.ppnet_dropout_ratio[:] = [0.0, 0.0]
++    features = create_features(list(config.feature_configs), fg_mode=FgMode.FG_NONE)
++    data_parser = DataParser(
++        features, labels=list(config.data_config.label_fields), mode=Mode.TRAIN
++    )
++    model = PEPNet(config.model_config, features, list(config.data_config.label_fields))
++    init_parameters(model, torch.device("cpu"))
++    if args.write_initial_state:
++        torch.save(model.state_dict(), args.write_initial_state)
++        print(f"Saved upstream initial state: {args.write_initial_state}")
++        return
++    manifest_path = args.inputs / "manifest.json"
++    manifest = json.loads(manifest_path.read_text())
++    if (
++        manifest["batch_size"] != args.batch_size
++        or len(manifest["steps"]) < args.steps * world_size
++    ):
++        raise RuntimeError(
++            "Input manifest has insufficient batches or a different batch size"
++        )
++    if (
++        manifest["config_sha256"]
++        != hashlib.sha256(
++            Path("examples/pepnet_taobao.config").read_bytes()
++        ).hexdigest()
++    ):
++        raise RuntimeError(
++            "Input manifest does not match the upstream model configuration"
++        )
++    if args.initial_state:
++        model.load_state_dict(
++            torch.load(args.initial_state, map_location="cpu", weights_only=True)
++        )
++    initial_state = {
++        name: value.detach().cpu().clone() for name, value in model.state_dict().items()
++    }
++    native_model = model
++    import torch.distributed as dist
++    from torchrec.distributed.embeddingbag import EmbeddingBagCollectionSharder
++    from torchrec.distributed.model_parallel import DistributedModelParallel
++    from torchrec.distributed.planner import EmbeddingShardingPlanner, Topology
++    from torchrec.distributed.planner.types import ParameterConstraints
++    from torchrec.modules.embedding_modules import EmbeddingBagCollection
++    from torchrec.optim.apply_optimizer_in_backward import apply_optimizer_in_backward
++    from torchrec.optim.optimizers import in_backward_optimizer_filter
++
++    dist.init_process_group({"npu": "hccl", "cuda": "nccl", "cpu": "gloo"}[args.device])
++    sparse_params, _ = model.sparse_parameters()
++    apply_optimizer_in_backward(
++        torch.optim.Adagrad, sparse_params, {"lr": args.learning_rate}
++    )
++    constraints = {}
++    for module in model.modules():
++        if isinstance(module, EmbeddingBagCollection):
++            for table in module.embedding_bag_configs():
++                constraints[table.name] = ParameterConstraints(
++                    sharding_types=["row_wise"], compute_kernels=["fused"]
++                )
++    wrapper = TrainWrapper(
++        model,
++        device=device,
++        mixed_precision={"float32": None, "float16": "FP16", "bfloat16": "BF16"}[
++            args.precision
++        ],
++    )
++    sharders = [EmbeddingBagCollectionSharder()]
++    planner = EmbeddingShardingPlanner(
++        topology=Topology(
++            world_size=world_size,
++            local_world_size=world_size,
++            compute_device=args.device,
++            hbm_cap=16 * 1024**3,
++            ddr_cap=32 * 1024**3,
++        ),
++        batch_size=args.batch_size,
++        constraints=constraints,
++    )
++    plan = planner.collective_plan(wrapper, sharders, dist.group.WORLD)
++    model = DistributedModelParallel(
++        wrapper, device=device, sharders=sharders, plan=plan
++    )
++    model.load_state_dict(
++        {f"model.{name}": value for name, value in initial_state.items()}
++    )
++    optimizer = torch.optim.Adam(
++        dict(in_backward_optimizer_filter(model.named_parameters())).values(),
++        lr=args.learning_rate,
++    )
++    for name, value in model.state_dict().items():
++        source = initial_state[name.removeprefix("model.")]
++        if hasattr(value, "local_shards"):
++            for shard in value.local_shards():
++                expected = source[
++                    tuple(
++                        slice(offset, offset + size)
++                        for offset, size in zip(
++                            shard.metadata.shard_offsets, shard.metadata.shard_sizes
++                        )
++                    )
++                ]
++                if not torch.equal(expected, shard.tensor.detach().cpu()):
++                    raise RuntimeError(f"Initial embedding shard mismatch: {name}")
++        elif not torch.equal(source, value.detach().cpu()):
++            raise RuntimeError(f"Initial parameter mismatch: {name}")
++    model.train()
++    bs = args.batch_size
++    before = {
++        name: p.detach().cpu().clone()
++        for name, p in native_model.named_parameters()
++        if not name.startswith("embedding_group.")
++    }
++
++    def embedding_hashes():
++        """Hash local embedding shards before and after native optimizer updates."""
++        hashes = {}
++        for name, value in model.state_dict().items():
++            if "embedding_group." not in name:
++                continue
++            shards = (
++                [shard.tensor for shard in value.local_shards()]
++                if hasattr(value, "local_shards")
++                else [value]
++            )
++            digest = hashlib.sha256()
++            for shard in shards:
++                digest.update(shard.detach().cpu().contiguous().numpy().tobytes())
++            hashes[name] = digest.hexdigest()
++        return hashes
++
++    embedding_before = embedding_hashes()
++    losses = []
++    step_times = []
++    input_hashes = []
++    output = args.output.open("w") if args.output and rank == 0 else None
++
++    def gather_digest(digest):
++        """Exchange fixed size hashes on the active communication device."""
++        value = torch.tensor(
++            list(bytes.fromhex(digest)), dtype=torch.float32, device=device
++        )
++        values = [torch.empty_like(value) for _ in range(world_size)]
++        dist.all_gather(values, value)
++        return [bytes(int(x) for x in item.cpu().tolist()).hex() for item in values]
++
++    def verify_dense_replicas():
++        digest = hashlib.sha256()
++        for name, parameter in model.named_parameters():
++            if "embedding_group." not in name:
++                digest.update(name.encode())
++                digest.update(parameter.detach().cpu().contiguous().numpy().tobytes())
++        hashes = gather_digest(digest.hexdigest())
++        if len(set(hashes)) != 1:
++            raise RuntimeError("Dense parameters differ across ranks")
++        return hashes[0]
++
++    verify_dense_replicas()
++    metadata = {
++        "type": "metadata",
++        "upstream": "TorchEasyRec/v1.3.0/ee3ef097fa6ed9821f1c21e317f010c4519f7334",
++        "source_sha256": {
++            name: hashlib.sha256(Path(name).read_bytes()).hexdigest()
++            for name in [
++                "tzrec/modules/personalized_net.py",
++                "tzrec/modules/embedding.py",
++                "tzrec/models/multi_task_rank.py",
++                "tzrec/modules/task_tower.py",
++            ]
++        },
++        "input_manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
++        "model_sha256": hashlib.sha256(
++            Path("tzrec/models/pepnet.py").read_bytes()
++        ).hexdigest(),
++        "config_sha256": hashlib.sha256(
++            Path("examples/pepnet_taobao.config").read_bytes()
++        ).hexdigest(),
++        "initial_state_sha256": hashlib.sha256(
++            args.initial_state.read_bytes()
++        ).hexdigest()
++        if args.initial_state
++        else None,
++        "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
++        "seed": 1234,
++        "batch_size": bs,
++        "world_size": world_size,
++        "steps": args.steps,
++        "precision": args.precision,
++        "learning_rate": args.learning_rate,
++        "align": args.align,
++        "alignment_policy": (
++            "dropout=0,TF32/HF32=off,CUDA reduced reductions=off,NPU origin dtype"
++        )
++        if args.align
++        else "upstream dropout; standard backend precision",
++        "optimizer": "TorchRec fused Adagrad + torch.optim.Adam",
++        "sharding": "row_wise/fused",
++        "device": args.device,
++        "initial_parameters_verified": True,
++    }
++    if output:
++        output.write(json.dumps(metadata) + "\n")
++    for step in range(args.steps):
++        input_path = args.inputs / f"step_{step * world_size + rank:04d}.pt"
++        input_hashes.append(hashlib.sha256(input_path.read_bytes()).hexdigest())
++        if input_hashes[-1] != manifest["steps"][step * world_size + rank]["sha256"]:
++            raise RuntimeError(f"Input file does not match the manifest: {input_path}")
++        step_input_hashes = gather_digest(input_hashes[-1])
++        parsed = torch.load(input_path, map_location="cpu", weights_only=True)
++        batch = data_parser.to_batch(parsed).to(device)
++        if batch.labels[config.data_config.label_fields[0]].shape[0] != bs:
++            raise RuntimeError(
++                "Input batch size differs from the experiment configuration"
++            )
++        step_start = time.perf_counter()
++        optimizer.zero_grad(set_to_none=True)
++        loss, _ = model(batch)
++        if not torch.isfinite(loss):
++            raise RuntimeError("Non-finite native loss")
++        loss.backward()
++        finite_grads = [
++            torch.isfinite(parameter.grad).all()
++            for parameter in model.parameters()
++            if parameter.grad is not None
++        ]
++        if finite_grads and not torch.stack(finite_grads).all():
++            raise RuntimeError("Non-finite native gradient")
++        optimizer.step()
++        if args.device == "npu":
++            torch.npu.synchronize()
++        elif args.device == "cuda":
++            torch.cuda.synchronize()
++        step_times.append(time.perf_counter() - step_start)
++        reported_loss = loss.detach().float().clone()
++        dist.all_reduce(reported_loss)
++        reported_loss /= world_size
++        losses.append(float(reported_loss.cpu()))
++        replica_hash = None
++        if step == 0 or (step + 1) % 100 == 0 or step + 1 == args.steps:
++            replica_hash = verify_dense_replicas()
++        if output:
++            output.write(
++                json.dumps(
++                    {
++                        "type": "step",
++                        "step": step + 1,
++                        "loss": losses[-1],
++                        "input_hashes": step_input_hashes,
++                        "dense_replica_hash": replica_hash,
++                        "precision": args.precision,
++                        "update": True,
++                    }
++                )
++                + "\n"
++            )
++            output.flush()
++        if rank == 0 and (step == 0 or (step + 1) % 100 == 0):
++            print(f"native step={step + 1} loss={losses[-1]:.9f}", flush=True)
++    changed = [
++        name
++        for name, p in native_model.named_parameters()
++        if name in before and not torch.equal(before[name], p.detach().cpu())
++    ]
++    if not changed:
++        raise RuntimeError("No parameter changed")
++    embedding_after = embedding_hashes()
++    embedding_changed = [
++        name
++        for name, digest in embedding_before.items()
++        if embedding_after[name] != digest
++    ]
++    if not embedding_changed:
++        raise RuntimeError("No embedding table changed")
++    local_updates = torch.tensor(
++        [len(changed), len(embedding_changed)], dtype=torch.float32, device=device
++    )
++    rank_updates = [torch.empty_like(local_updates) for _ in range(world_size)]
++    dist.all_gather(rank_updates, local_updates)
++    per_rank_updates = [value.int().cpu().tolist() for value in rank_updates]
++    if any(dense < 1 or sparse < 1 for dense, sparse in per_rank_updates):
++        raise RuntimeError("A rank did not update dense and embedding parameters")
++    mean_step_time = 1000.0 * sum(step_times) / len(step_times)
++    if rank == 0:
++        final_results = {
++            "dataset_name": "taobao_data_train",
++            "batch_size": args.batch_size,
++            "epoch": 1,
++            "step": args.steps,
++            "final_loss": losses[-1],
++            "ms/step": mean_step_time,
++            "metrics": {
++                "changed_parameters": len(changed),
++                "changed_embedding_tensors": len(embedding_changed),
++            },
++        }
++        model_detail_info = f"{args.device}_PEPNet_eager"
++        output_str = model_detail_info + "_" + str(final_results)
++        print(f"The Final Result: {output_str}", flush=True)
++        result_dir = Path(f"../save_results_{args.device}")
++        result_dir.mkdir(parents=True, exist_ok=True)
++        with (result_dir / "precision_result.txt").open(
++            "a", encoding="utf-8"
++        ) as result_stream:
++            result_stream.write(output_str + "\n")
++    if output:
++        output.write(
++            json.dumps(
++                {
++                    "type": "summary",
++                    "completed": True,
++                    "per_rank_updates": per_rank_updates,
++                }
++            )
++            + "\n"
++        )
++        output.close()
++    dist.destroy_process_group()
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/compare_losses_pepnet.py b/compare_losses_pepnet.py
+new file mode 100644
+index 0000000..0a5fde3
+--- /dev/null
++++ b/compare_losses_pepnet.py
+@@ -0,0 +1,112 @@
++# Copyright (c) 2025, Alibaba Group;
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#    http://www.apache.org/licenses/LICENSE-2.0
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++"""Compare native PEPNet losses after checking shared experiment inputs."""
++
++import argparse
++import json
++import math
++from pathlib import Path
++
++
++def read_run(path, steps):
++    """Read a completed run and validate input and parameter update evidence.
++
++    Args:
++        path: JSONL training log.
++        steps: Required number of training updates.
++
++    Returns:
++        Experiment metadata and per-step records.
++    """
++    records = [
++        json.loads(line) for line in path.read_text().splitlines() if line.strip()
++    ]
++    if not records or records[0].get("type") != "metadata":
++        raise ValueError(f"Missing experiment metadata: {path}")
++    if records[-1].get("type") != "summary" or not records[-1].get("completed"):
++        raise ValueError(f"Run did not complete parameter update checks: {path}")
++    metadata, values, summary = records[0], records[1:-1], records[-1]
++    updates = summary.get("per_rank_updates", [])
++    if len(updates) != metadata["world_size"] or any(
++        dense < 1 or sparse < 1 for dense, sparse in updates
++    ):
++        raise ValueError(f"Missing dense/embedding update evidence on a rank: {path}")
++    if metadata["steps"] != steps or len(values) != steps:
++        raise ValueError(f"Expected exactly {steps} updates: {path}")
++    if (
++        not metadata["initial_parameters_verified"]
++        or not metadata["initial_state_sha256"]
++    ):
++        raise ValueError(f"Shared initial parameters were not verified: {path}")
++    for step, record in enumerate(values, 1):
++        if (
++            record["step"] != step
++            or not record["update"]
++            or not math.isfinite(record["loss"])
++        ):
++            raise ValueError(f"Invalid update at step {step}: {path}")
++        if len(record["input_hashes"]) != metadata["world_size"]:
++            raise ValueError(f"Missing per-rank input evidence at step {step}: {path}")
++        if (step == 1 or step % 100 == 0 or step == steps) and not record[
++            "dense_replica_hash"
++        ]:
++            raise ValueError(f"Missing replica verification at step {step}: {path}")
++    return metadata, values
++
++
++def main():
++    """Compare matched GPU and NPU training losses against task thresholds."""
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--ref", type=Path, required=True)
++    parser.add_argument("--target", type=Path, required=True)
++    parser.add_argument("--steps", type=int, default=1000)
++    parser.add_argument("--output", type=Path)
++    args = parser.parse_args()
++    reference_meta, reference = read_run(args.ref, args.steps)
++    target_meta, target = read_run(args.target, args.steps)
++    if {reference_meta["device"], target_meta["device"]} != {"cuda", "npu"}:
++        raise ValueError("Expected one CUDA run and one NPU run")
++    if reference_meta.keys() != target_meta.keys():
++        raise ValueError("Experiment metadata fields differ")
++    for key in reference_meta:
++        if key != "device" and reference_meta[key] != target_meta.get(key):
++            raise ValueError(f"Experiment differs: {key}")
++    for step, (left, right) in enumerate(zip(reference, target), 1):
++        if left["input_hashes"] != right["input_hashes"]:
++            raise ValueError(f"Per-rank inputs differ at step {step}")
++    differences = [
++        abs(left["loss"] - right["loss"]) for left, right in zip(reference, target)
++    ]
++    precision = reference_meta["precision"]
++    threshold = {"float32": 1e-4, "float16": 1e-3, "bfloat16": 1e-2}[precision]
++    result = {
++        "precision": precision,
++        "steps": args.steps,
++        "world_size": reference_meta["world_size"],
++        "mae": sum(differences) / len(differences),
++        "max_abs_error": max(differences),
++        "threshold": threshold,
++        "scope": "1000-step precision"
++        if args.steps == 1000
++        else "short correctness check; not 1000-step acceptance",
++    }
++    result["passed"] = result["mae"] < threshold
++    content = json.dumps(result, indent=2)
++    print(content)
++    if args.output:
++        args.output.write_text(content + "\n")
++    if not result["passed"]:
++        raise SystemExit(1)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/prepare_pepnet_inputs.py b/prepare_pepnet_inputs.py
+new file mode 100644
+index 0000000..3473fb1
+--- /dev/null
++++ b/prepare_pepnet_inputs.py
+@@ -0,0 +1,94 @@
++# Copyright (c) 2025, Alibaba Group;
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#    http://www.apache.org/licenses/LICENSE-2.0
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++"""Generate native PEPNet inputs with the official x86 feature generator."""
++
++import argparse
++import hashlib
++import json
++import os
++from pathlib import Path
++
++
++def main():
++    """Save native DataParser tensor dictionaries for replay on both devices."""
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--data", type=Path, required=True)
++    parser.add_argument("--output", type=Path, required=True)
++    parser.add_argument("--batch-size", type=int, default=4096)
++    parser.add_argument("--steps", type=int, default=3)
++    args = parser.parse_args()
++    os.environ["TZREC_PEPNET_ONLY"] = "1"
++    import pyarrow as pa
++    import pyarrow.compute as pc
++    import pyarrow.parquet as pq
++    import torch
++    from google.protobuf import text_format
++
++    from tzrec.constant import Mode
++    from tzrec.datasets.data_parser import DataParser
++    from tzrec.features.feature import create_features
++    from tzrec.protos.data_pb2 import FgMode
++    from tzrec.protos.pipeline_pb2 import EasyRecConfig
++
++    config = EasyRecConfig()
++    config_text = Path("examples/pepnet_taobao.config").read_text()
++    text_format.Parse(config_text, config)
++    features = create_features(list(config.feature_configs), fg_mode=FgMode.FG_DAG)
++    data_parser = DataParser(
++        features, labels=list(config.data_config.label_fields), mode=Mode.TRAIN
++    )
++    args.output.mkdir(parents=True, exist_ok=True)
++    manifest = {
++        "generator": "upstream DataParser FG_DAG / official pyfg",
++        "config_sha256": hashlib.sha256(config_text.encode()).hexdigest(),
++        "batch_size": args.batch_size,
++        "steps": [],
++        "null_label_policy": "drop rows with null configured labels",
++        "dropped_null_label_rows": 0,
++    }
++    pending = None
++    for path in sorted(args.data.glob("part-*.parquet")):
++        for record in pq.ParquetFile(path).iter_batches(batch_size=args.batch_size):
++            table = pa.Table.from_batches([record])
++            mask = pa.array([True] * table.num_rows)
++            for label in config.data_config.label_fields:
++                mask = pc.and_(mask, pc.is_valid(table[label]))
++            valid = table.filter(mask)
++            manifest["dropped_null_label_rows"] += table.num_rows - valid.num_rows
++            table = valid
++            pending = table if pending is None else pa.concat_tables([pending, table])
++            while pending.num_rows >= args.batch_size:
++                current = pending.slice(0, args.batch_size).combine_chunks()
++                pending = pending.slice(args.batch_size)
++                parsed = data_parser.parse(
++                    {name: current[name].chunk(0) for name in current.column_names}
++                )
++                step = len(manifest["steps"])
++                out = args.output / f"step_{step:04d}.pt"
++                torch.save(parsed, out)
++                manifest["steps"].append(
++                    {
++                        "step": step,
++                        "sha256": hashlib.sha256(out.read_bytes()).hexdigest(),
++                    }
++                )
++                if len(manifest["steps"]) == args.steps:
++                    (args.output / "manifest.json").write_text(
++                        json.dumps(manifest, indent=2)
++                    )
++                    print(json.dumps({"steps": args.steps, "output": str(args.output)}))
++                    return
++    raise RuntimeError("Insufficient real input data; no completed manifest written")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/tzrec/__init__.py b/tzrec/__init__.py
+index 49b36a7..05332c6 100644
+--- a/tzrec/__init__.py
++++ b/tzrec/__init__.py
+@@ -71,7 +71,12 @@ _use_deterministic_algorithms = _os.getenv("USE_DETERMINISTIC_ALGORITHMS", "0")
+ if _use_deterministic_algorithms:
+     _torch.use_deterministic_algorithms(True)
+
+-_load_class.auto_import()
++if _os.getenv("TZREC_PEPNET_ONLY") == "1":
++    from tzrec.features import id_feature as id_feature
++    from tzrec.features import raw_feature as raw_feature
++    from tzrec.models import pepnet as pepnet
++else:
++    _load_class.auto_import()
+
+ from tzrec.utils.filesystem_util import (  # NOQA
+     register_external_filesystem as _register_external_filesystem,  # NOQA
+diff --git a/tzrec/datasets/data_parser.py b/tzrec/datasets/data_parser.py
+index 4ffb4b7..d20fc50 100644
+--- a/tzrec/datasets/data_parser.py
++++ b/tzrec/datasets/data_parser.py
+@@ -17,7 +17,12 @@ import numpy as np
+ import numpy.typing as npt
+ import pyarrow as pa
+ import pyarrow.compute as pc
+-import pyfg
++try:
++    import pyfg
++except ModuleNotFoundError as error:
++    if error.name != "pyfg":
++        raise
++    pyfg = None
+ import torch
+ from torchrec import JaggedTensor, KeyedJaggedTensor, KeyedTensor
+
+diff --git a/tzrec/features/feature.py b/tzrec/features/feature.py
+index d7b90c2..6960602 100644
+--- a/tzrec/features/feature.py
++++ b/tzrec/features/feature.py
+@@ -19,7 +19,12 @@ from typing import Any, Dict, List, Optional, Tuple, Union
+
+ import numpy as np
+ import pyarrow as pa
+-import pyfg
++try:
++    import pyfg
++except ModuleNotFoundError as error:
++    if error.name != "pyfg":
++        raise
++    pyfg = None
+ import torch
+ from torch import nn  # NOQA
+ from torchrec.distributed.planner.types import ParameterConstraints
+@@ -406,6 +411,8 @@ class BaseFeature(object, metaclass=_meta_cls):
+         self._feature_config = feature_config
+         self.config = getattr(self._feature_config, fc_type)
+
++        if pyfg is None and fg_mode != FgMode.FG_NONE:
++            raise ImportError("pyfg is required unless fg_mode=FG_NONE")
+         self.fg_mode = fg_mode
+
+         self._fg_op = None
+diff --git a/tzrec/models/pepnet.py b/tzrec/models/pepnet.py
+index 2488fc8..b5ee8c8 100644
+--- a/tzrec/models/pepnet.py
++++ b/tzrec/models/pepnet.py
+@@ -105,7 +105,11 @@ class PEPNet(MultiTaskRank):
+         Return:
+             predictions (dict): a dict of predicted result.
+         """
+-        grouped_features = self.build_input(batch)
++        with torch.autocast(
++            device_type=self._task_tower[0].linear.weight.device.type,
++            enabled=False,
++        ):
++            grouped_features = self.build_input(batch)
+
+         # Get main features
+         main_features = grouped_features[self._main_group_name]
