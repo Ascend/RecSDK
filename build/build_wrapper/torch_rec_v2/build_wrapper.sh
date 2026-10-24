@@ -85,7 +85,7 @@ fi
 echo "Installing torchrec 1.2.0 to target venv..."
 # 使用 torch_v2 对应的环境
 source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
-pip install $TORCHREC_120_WHL
+pip install $TORCHREC_120_WHL "torch==2.7.1+cpu"
 deactivate
 
 # 初始化 git 子模块（hkv依赖）
