@@ -1074,3 +1074,14 @@ index 26aaba0e..d370c8ed 100644
 @@ -1 +1 @@
 -1.2.0
 +1.2.0+npu
+diff --git a/install-requirements.txt b/install-requirements.txt
+--- a/install-requirements.txt
++++ b/install-requirements.txt
+@@ -1,6 +1,6 @@
+ fbgemm-gpu
+-tensordict
++tensordict==0.14.3
+ torchmetrics==1.0.3
+ tqdm
+ pyre-extensions
+ iopath
