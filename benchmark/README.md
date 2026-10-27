@@ -548,6 +548,14 @@ profiling，将 `configs/OpenP5.json` 中的 `profiling_flag` 改为 `true` 后�
 结果保存在 `benchmark/models/profiling/OpenP5/<device>/`，该次运行不用于正式
 性能对比。
 
+训练结束时，控制台以 `The Final Result:` 打印最终训练结果，并追加到
+`benchmark/models/save_results_<device>/precision_result.txt`。结果包含
+`dataset_name`、`batch_size`（global batch）、`step`（实际 optimizer step）、
+`final_loss`（最后一步在梯度累积及各 rank 上平均的训练 loss）和 `ms/step`
+（排除 warmup 后的平均步时），同时写入 `summary.json` 的 `final_results`。
+入口按 optimizer steps 停止，不输出 epoch；此训练 benchmark 不执行推荐排名评估，
+因此不输出 HR/NDCG 等 `metrics`。
+
 数值验收前必须先核对 GPU/NPU manifest 和每步 input hash，再按显式
 `optimizer_step` 计算前 1000 步：
 
@@ -568,7 +576,7 @@ overlay 中，不替换系统 PyTorch：
 ```shell
 mkdir -p adaptation/deps
 python -m pip install --target adaptation/deps --no-deps \
-  transformers==4.31.0 peft==0.5.0 accelerate==0.25.0
+  transformers==4.31.0 peft==0.5.0 accelerate==0.25.0 protobuf==3.20.3
 ```
 
 在 `benchmark/` 目录执行默认 BF16 A3 八卡、global batch 8、220 optimizer
@@ -588,7 +596,7 @@ scheduler 为 1000 steps、warmup 为 50 steps，FP32 global batch 为 1，FP16/
 
 ```shell
 export PYTHONPATH=$PWD/adaptation/deps
-export RECSDK_BENCHMARK_MODELS_ROOT=..
+export RECSDK_BENCHMARK_MODELS_ROOT=../..
 run_llama_accuracy() {
   precision=$1
   global_batch=$2
@@ -640,6 +648,11 @@ optimizer step，8P 取各 rank 最大值；吞吐率为 global batch 除以 mea
 将 `OpenP5_LLaMA.json` 的 `profiling_flag` 改为 `true` 可独立采集 NPU profiler，
 结果保存到 `benchmark/models/profiling/OpenP5_LLaMA/npu/`；profiling 运行不用于
 正式性能对比。
+
+训练结束时，按 T5 相同格式打印最终训练结果，并写入
+`benchmark/models/save_results_<device>/precision_result.txt` 及 `summary.json`
+的 `final_results`。`final_loss` 为最后一个 optimizer step 在梯度累积及各 rank 上
+平均的训练 loss；此训练 benchmark 不输出 epoch 和推荐排名评估 `metrics`。
 
 ## EasyRec 模型
 

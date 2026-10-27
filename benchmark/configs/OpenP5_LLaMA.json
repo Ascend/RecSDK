@@ -12,7 +12,7 @@
   "run_cmd": [
     "env",
     "PYTHONPATH=adaptation/deps",
-    "RECSDK_BENCHMARK_MODELS_ROOT=..",
+    "RECSDK_BENCHMARK_MODELS_ROOT=../..",
     "OMP_NUM_THREADS=1",
     "MKL_NUM_THREADS=1",
     "OPENBLAS_NUM_THREADS=1",
@@ -53,7 +53,7 @@
   "pip_install_requirements": false,
   "extra_cmd": [
     "mkdir -p adaptation/deps",
-    "python -m pip install --target adaptation/deps --no-deps transformers==4.31.0 peft==0.5.0 accelerate==0.25.0",
+    "python -m pip install --target adaptation/deps --no-deps transformers==4.31.0 peft==0.5.0 accelerate==0.25.0 protobuf==3.20.3",
     "python adaptation/prepare_llama_assets.py"
   ]
 }

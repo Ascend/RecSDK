@@ -153,10 +153,10 @@ index 0000000..256e095
 +    main()
 diff --git a/src/src_t5/benchmark_npu.py b/src/src_t5/benchmark_npu.py
 new file mode 100644
-index 0000000..e00a43b
+index 0000000..8e842ee
 --- /dev/null
 +++ b/src/src_t5/benchmark_npu.py
-@@ -0,0 +1,577 @@
+@@ -0,0 +1,590 @@
 +"""Reproducible native CUDA/torch_npu training benchmark for OpenP5 T5."""
 +
 +import argparse
@@ -701,9 +701,22 @@ index 0000000..e00a43b
 +            "optimizer_steps": args.max_optimizer_steps,
 +            "loss_samples": len(step_records),
 +            "measurement": measurement,
++            "final_results": {
++                "dataset_name": args.datasets,
++                "batch_size": args.global_batch_size,
++                "step": step_records[-1]["optimizer_step"],
++                "final_loss": step_records[-1]["loss"],
++                "ms/step": measurement["mean_ms"],
++            },
 +        }
 +        write_json(output_dir / "summary.json", summary)
 +        print(json.dumps(summary, indent=2, sort_keys=True))
++        output_str = f"{args.device}_{MODEL_NAME}_eager_{summary['final_results']}"
++        precision_dir = Path("..") / f"save_results_{args.device}"
++        precision_dir.mkdir(parents=True, exist_ok=True)
++        with (precision_dir / "precision_result.txt").open("a", encoding="utf-8") as stream:
++            stream.write(output_str + "\n")
++        print(f"The Final Result: {output_str}")
 +
 +    if world_size > 1:
 +        dist.barrier()
