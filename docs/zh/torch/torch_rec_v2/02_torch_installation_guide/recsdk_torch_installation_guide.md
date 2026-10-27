@@ -33,6 +33,12 @@
 
 ## 获取Rec SDK Torch软件包<a name="ZH-CN_TOPIC_0000002336148981"></a>
 
+构建/安装前先安装如下Python构建工具包和tensordict包（最新版本tensordict依赖PyTorch 2.14版本，默认安装会导致PyTorch版本错误）：
+
+```bash
+pip3 install wheel "setuptools<70.0.0" scikit-build "tensordict<0.15"
+```
+
 ### 源码编译安装
 
 > [!NOTE]

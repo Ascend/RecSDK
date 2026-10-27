@@ -1,6 +1,6 @@
 # 统一编译脚本说明
 
-build_ai_core_op.sh 脚本用于统一编译Ascend平台的RecSDK定制算子，支持A2、A2-TF、A3、A5、310P版本。
+build_ai_core_op.sh 脚本用于统一编译Ascend平台的RecSDK定制算子包。
 
 ## 编译生成 Ascend-recsdk-npu-ops-\*-linux-\*.tar.gz 并同时安装
 
@@ -17,7 +17,7 @@ e.g. 'bash build_ai_core_op.sh A2 false continue' 表示编译支持Atlas A2训�
     - A2/A2-TF：Atlas A2训练系列产品
     - A3：Atlas A3训练系列产品
     - A5：Atlas A5训练系列产品
-    - 310P：Ascend 推理系列产品
+    - 310P：Atlas 推理系列产品
 - rebuild_all：是否重新编译已编译成功的算子，默认为true，设置为false后会跳过已编译成功的算子，减少编译时间，选填项
 - error_mode：编译错误处理模式，默认为exit，设置为exit表示在编译过程中遇到错误时立即退出脚本，设置为continue表示在编译过程中遇到错误时记录失败的算子但继续编译剩余算子，选填项
 
