@@ -104,6 +104,12 @@ Rec SDK Torch软件包如下表：
 > \[!NOTE]
 > 对于用户集成的开源和第三方软件，漏洞和问题请自行跟踪社区并及时进行修复；可以并且不限于通过[CVE（通用漏洞字典）官网](https://www.cve.org/)确认对应开源软件版本的已知漏洞，并通过版本升级、使用patch补丁包更新等方式修复。
 
+构建/安装前先安装如下Python构建工具包和tensordict包（最新版本tensordict依赖PyTorch 2.14版本，默认安装会导致PyTorch版本错误）：
+
+```bash
+pip3 install wheel "setuptools<70.0.0" scikit-build "tensordict<0.15"
+```
+
 ### 镜像安装<a id="ZH-CN_TOPIC_0000002302389237"></a>
 
 #### 简要步骤说明
@@ -164,7 +170,7 @@ Rec SDK Torch软件包如下表：
    >
    > - -m 300g 表示设置容器内可以使用的内存大小上限为300G，可根据实际情况进行配置。
    > - -e ASCEND\_VISIBLE\_DEVICES=0-7 表示将服务器上编号为device0\~device7的NPU设备挂载到容器内，可根据实际情况进行配置。
-   > - image_name：镜像名称，该参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/66155ae6a2f34eff9142f069612da088)中26.1.0版本适用于Atlas 800T A2的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/recsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.11-pt`。
+   > - image_name：镜像名称，该参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/66155ae6a2f34eff9142f069612da088)中26.1.0版本适用于Atlas A2训练系列产品的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/recsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.11-pt`。
 
    执行如下命令新建容器并进入容器内：
 
@@ -231,10 +237,11 @@ Rec SDK Torch软件包如下表：
    RECSDK_BUILD_VERS=A2 bash build_whl.sh
    # 安装算子包
    pip3 uninstall -y rec_cust_ops
+   cd dist
    pip3 install rec_cust_ops*.whl
    ```
 
-   rec_cust_ops算子包默认编译Atlas A2训练系列产品对应算子包，更多编译安装说明请参见[rec_cust_ops编译安装](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md#build_recsdk_cust_ops)。
+   上述指令中编译rec_cust_ops算子包时仅编译Atlas A2训练系列产品对应算子包，若需编译其他昇腾硬件产品对应的算子包，请参见[rec_cust_ops编译安装](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md#build_recsdk_cust_ops)中`RECSDK_BUILD_VERS`参数说明。
 
 ### 离线安装
 
@@ -263,11 +270,11 @@ Rec SDK Torch软件包如下表：
 
    **软件包Hash值校验<a name="section10830205518487"></a>**
 
-   为了防止软件包在传递过程中或存储期间被恶意篡改，请同时下载软件包和软件包对应的`.sha256sum`的文件到同一目录，并执行如下指令进行完整性校验：
+   为了防止软件包在传递过程中或存储期间被恶意篡改，请同时下载软件包和软件包对应的`.sha256`的文件到同一目录，并执行如下指令进行完整性校验：
 
    ```bash
    # FILE_NAME需替换为软件包文件名
-   sha256sum -c FILE_NAME.sha256sum
+   sha256sum -c FILE_NAME.sha256
    ```
 
    **安装软件包**
@@ -290,12 +297,6 @@ Rec SDK Torch软件包如下表：
      ```
 
      其中，host\_file\_path为宿主机文件路径，container\_name为待拷入的docker容器名称，container\_file\_path为待拷入的docker容器内的文件路径。
-
-   安装构建依赖：
-
-   ```bash
-   pip3 install wheel "setuptools<70.0.0"
-   ```
 
    执行如下指令进行安装：
 
@@ -327,7 +328,7 @@ Rec SDK Torch软件包如下表：
 
    ```shell
    # 卸载已安装的算子包
-   pip3 unisntall -y fbgemm_ascend rec_cust_ops
+   pip3 uninstall -y fbgemm_ascend rec_cust_ops
    # 安装fbgemm_ascend算子包
    pip3 install fbgemm_ascend-*.whl
    # 安装rec_cust_ops算子包
@@ -341,6 +342,14 @@ Rec SDK Torch软件包如下表：
 **UT验证**
 
 下载RecSDK仓库源码后，进入`RecSDK/training/torch_rec_v1/hybrid_torchrec/test/dt`目录，执行`bash test_all.sh`进行验证。
+
+`test_all.sh`依赖pytest与pytest-cov，若环境中未安装，请先执行如下指令安装前置依赖：
+
+```bash
+pip3 install pytest pytest-cov
+```
+
+UT验证需在已安装hybrid_torchrec及其依赖的环境中执行。
 
 **模型单卡验证**
 

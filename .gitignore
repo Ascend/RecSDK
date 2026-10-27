@@ -18,6 +18,14 @@ __pycache__/
 **/embcache_pybind.so
 **/hybrid_torchrec/version.py
 **/torchrec_embcache/version.py
+compile_commands.json
+*.whl
+*.tar.gz
+# 忽略测试产物
+**/dt/coverage*
+**/dt/.coverage*
+**/dt/final.xml
+**/test*.log
 
 # 忽略 autogen 生成的嵌套算子目录 (ai_core_op/<op>/<arch>/<op>/，含 CMakeLists.txt 的算子工程)
 # 源码结构为 ai_core_op/<op>/<arch>/{op_host,op_kernel,README.md,run.sh,<op>.json}

@@ -57,6 +57,41 @@ def install_requirements():
     print("Finished processing all requirements from requirements.txt.")
 
 
+def install_requirements_new():
+    """Install dependencies from requirements.txt in a single pip call.
+
+    install_requirements 的优化版本（其他子组件仍在使用原方法，故新增本方法）。
+
+    调用场景：被 setup.py 在 ``is_building`` 块调用（先于任何 ``from torchrec``）。
+
+    单次 ``pip install -r`` 替代原逐行 ``pip install <pkg>`` 的 N 次循环
+    （N 次子进程 + N 轮解析 -> 1 次子进程 + 1 轮联合解析，典型 5min+ -> 数十秒）。
+    两点语义保证：
+    - 传递依赖完整：pip 对全文件联合解析并安装传递依赖（google-auth、rich 等），
+      不使用 --no-deps（会跳过传递依赖，导致 tensorboard/torchx 等运行时缺包）；
+    - grpcio 约束保住：grpcio<1.63.0 与 tensorboard 的 grpcio 依赖（无上界）
+      同场联合解析，结果落在上界内；旧"双装"问题源于逐行调用时 tensorboard
+      单独解析拉最新版，单次 -r 语义上不会重现。
+    """
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    req_file = os.path.join(base_dir, "requirements.txt")
+
+    if not os.path.exists(req_file):
+        print(f"No requirements.txt found in {base_dir}, skipping.")
+        return
+
+    print(f"Installing requirements from {req_file} (single-pass, before setuptools stage)...")
+    cmd = [sys.executable, "-m", "pip", "install", "-r", req_file]
+    try:
+        subprocess.check_call(cmd)
+        print("Successfully installed all requirements.")
+    except subprocess.CalledProcessError as e:
+        print(
+            f"Warning: pip install -r {req_file} failed (exit {e.returncode}). "
+            f"Subsequent setuptools stage may fail if dependencies are missing."
+        )
+
+
 def detect_npu_chip():
     """Detect NPU chip type (A2/A3/A5)."""
     manual_core = os.environ.get("CORE_TYPE", "").upper()
@@ -154,6 +189,57 @@ def make_custom_build_py(merged_dir_name, chmod_so=False):
                             os.chmod(dest_file, 0o755)
 
     return _CustomBuildPy
+
+
+def make_custom_build_py_new(merged_dir_name, chmod_so=False):
+    """Create a custom build_py class that merges whl contents into build_lib.
+
+    make_custom_build_py 的优化版本（其他子组件仍在使用原方法，故新增本方法）。
+
+    O2 优化：原方案在 merged_tmp_dir 解压后 ``os.walk + shutil.copy2`` 把每份
+    文件单独拷贝到 build_lib——N 次 stat + 读 + 写。改为单次 ``copytree`` +
+    ``dirs_exist_ok=True``，由 shutil 内部对每个目录用一次 scandir 批处理，
+    I/O 调用次数从 N 降到 1。
+
+    O4 优化：copytree 完成后用 ``os.scandir`` 一次性遍历 build_lib 给 ``*.so``
+    加执行权限（不再每次 copy2 之后单独 chmod）。
+    """
+
+    class _CustomBuildPy(build_py):
+        def run(self):
+            super().run()
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            src_dir = os.path.join(base_dir, merged_dir_name)
+            if not os.path.exists(src_dir):
+                return
+
+            dest = self.build_lib
+            os.makedirs(dest, exist_ok=True)
+            # O2：单步 copytree 替代 N 次 walk + copy2；显式忽略子包 .dist-info
+            # 目录（保留当前包自身 dist-info，由 build_py 自动生成）。
+            shutil.copytree(
+                src_dir,
+                dest,
+                dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns("*.dist-info"),
+            )
+
+            # O4：copytree 完成后再一次性 chmod *.so
+            if chmod_so:
+                _chmod_so_recursive(dest)
+
+    return _CustomBuildPy
+
+
+def _chmod_so_recursive(root):
+    """对 root 下所有 *.so 加 0755 权限（O4：copytree 之后的批量 chmod）。"""
+    for dirpath, _dirnames, filenames in os.walk(root):
+        for name in filenames:
+            if name.endswith('.so'):
+                try:
+                    os.chmod(os.path.join(dirpath, name), 0o755)
+                except OSError:
+                    pass
 
 
 def install_horovod():

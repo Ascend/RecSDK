@@ -49,7 +49,7 @@ docker run \
 - free_devices：检测当前空闲NPU卡号。
 - -m 300g：设置容器内使用内存大小，可根据实际情况进行配置。
 - -e ASCEND_VISIBLE_DEVICES="${free_devices}"：将服务器上空闲的NPU设备挂载到容器内，可根据实际情况进行配置。
-- image_name：镜像名称，该参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/66155ae6a2f34eff9142f069612da088)中26.1.0版本适用于Atlas 800T A2的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/recsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.11-pt`。
+- image_name：镜像名称，该参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/66155ae6a2f34eff9142f069612da088)中26.1.0版本适用于Atlas A2训练系列产品的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/recsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.11-pt`。
 
 执行如下命令新建容器：
 
