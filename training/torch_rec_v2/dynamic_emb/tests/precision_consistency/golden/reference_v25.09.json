@@ -1,0 +1,26 @@
+{
+ "schema": 2,
+ "reference": {"backend": "gpu", "upstream": "nvidia/recsys-examples tag v25.09 (corelib/dynamicemb)", "recorded_at": "2026-10-26T10:06:42", "python": "3.10.12", "torch": "2.6.0+cu124", "device": "cuda:0"},
+ "cases": {
+  "SGD": {
+   "config": {"optimizer": "SGD", "rounds": 5, "batch_size": 8},
+   "result": {"losses": [280655424.0, 44904868.0, 7184778.5, 1149564.5, 183930.21875], "initial_probe": {"sum": 13848.0, "mean": 865.5, "abs_sum": 13848.0}, "post_training_probe": {"sum": 141.80340576171875, "mean": 8.862712860107422, "abs_sum": 141.80340576171875}, "dump_load": {"load_changed_state": true, "loaded_matches_trained": true}}
+  },
+  "EXACT_SGD": {
+   "config": {"optimizer": "EXACT_SGD", "rounds": 5, "batch_size": 8},
+   "result": {"losses": [280655424.0, 44904868.0, 7184778.5, 1149564.5, 183930.21875], "initial_probe": {"sum": 13848.0, "mean": 865.5, "abs_sum": 13848.0}, "post_training_probe": {"sum": 141.80340576171875, "mean": 8.862712860107422, "abs_sum": 141.80340576171875}, "dump_load": {"load_changed_state": true, "loaded_matches_trained": true}}
+  },
+  "ADAM": {
+   "config": {"optimizer": "ADAM", "rounds": 5, "batch_size": 8},
+   "result": {"losses": [280655424.0, 280547328.0, 280439232.0, 280331136.0, 280223104.0], "initial_probe": {"sum": 13848.0, "mean": 865.5, "abs_sum": 13848.0}, "post_training_probe": {"sum": 13824.001953125, "mean": 864.0001220703125, "abs_sum": 13824.001953125}, "dump_load": {"load_changed_state": true, "loaded_matches_trained": true}}
+  },
+  "EXACT_ADAGRAD": {
+   "config": {"optimizer": "EXACT_ADAGRAD", "rounds": 5, "batch_size": 8},
+   "result": {"losses": [280655424.0, 280547328.0, 280470880.0, 280408512.0, 280354464.0], "initial_probe": {"sum": 13848.0, "mean": 865.5, "abs_sum": 13848.0}, "post_training_probe": {"sum": 13832.4921875, "mean": 864.53076171875, "abs_sum": 13832.4921875}, "dump_load": {"load_changed_state": true, "loaded_matches_trained": true}}
+  },
+  "EXACT_ROWWISE_ADAGRAD": {
+   "config": {"optimizer": "EXACT_ROWWISE_ADAGRAD", "rounds": 5, "batch_size": 8},
+   "result": {"losses": [280655424.0, 280547328.0, 280470880.0, 280408512.0, 280354464.0], "initial_probe": {"sum": 13848.0, "mean": 865.5, "abs_sum": 13848.0}, "post_training_probe": {"sum": 13832.4921875, "mean": 864.53076171875, "abs_sum": 13832.4921875}, "dump_load": {"load_changed_state": true, "loaded_matches_trained": true}}
+  }
+ }
+}
