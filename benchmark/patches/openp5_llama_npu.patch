@@ -129,10 +129,10 @@ index 0000000..0e4d637
 +    main()
 diff --git a/src/src_llama/benchmark_llama_npu.py b/src/src_llama/benchmark_llama_npu.py
 new file mode 100644
-index 0000000..4140d7a
+index 0000000..9f0fed1
 --- /dev/null
 +++ b/src/src_llama/benchmark_llama_npu.py
-@@ -0,0 +1,719 @@
+@@ -0,0 +1,732 @@
 +"""Native CUDA/torch_npu OpenP5 OpenLLaMA LoRA benchmark."""
 +
 +import argparse
@@ -822,9 +822,22 @@ index 0000000..4140d7a
 +            "status": "complete",
 +            "optimizer_steps": len(records),
 +            "measurement": measurement,
++            "final_results": {
++                "dataset_name": args.dataset,
++                "batch_size": args.global_batch_size,
++                "step": records[-1]["optimizer_step"],
++                "final_loss": records[-1]["loss"],
++                "ms/step": measurement["mean_ms"],
++            },
 +        }
 +        write_json(output_dir / "summary.json", summary)
 +        print(json.dumps(summary, indent=2, sort_keys=True))
++        output_str = f"{args.device}_{MODEL_NAME}_eager_{summary['final_results']}"
++        precision_dir = recsdk_models_root() / f"save_results_{args.device}"
++        precision_dir.mkdir(parents=True, exist_ok=True)
++        with (precision_dir / "precision_result.txt").open("a", encoding="utf-8") as stream:
++            stream.write(output_str + "\n")
++        print(f"The Final Result: {output_str}")
 +
 +    if world_size > 1:
 +        dist.barrier()
