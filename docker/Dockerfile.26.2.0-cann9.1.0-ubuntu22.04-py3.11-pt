@@ -22,7 +22,7 @@ RUN sed -i 's/archive.ubuntu.com/repo.huaweicloud.com/g' /etc/apt/sources.list &
 
 # 1.安装编译环境
 RUN apt-get update -qq && \
-    apt-get -y -qq install net-tools make wget zlib1g-dev bzip2 libbz2-dev libssl-dev libncurses5-dev libncursesw5-dev openssh-client \
+    apt-get -y -qq install libc6-dev build-essential net-tools make wget zlib1g-dev bzip2 libbz2-dev libssl-dev libncurses5-dev libncursesw5-dev openssh-client \
     openssh-server libsqlite3-dev libopenmpi-dev libreadline-dev tk-dev libgdbm-dev libpcap-dev liblzma-dev \
     libffi-dev libhdf5-dev patch pciutils lcov vim dos2unix g++ automake libtool autoconf m4 perl git e2fsprogs unzip ninja-build && \
     apt-get clean && \
@@ -74,6 +74,9 @@ RUN wget -q https://mirrors.huaweicloud.com/python/3.11.0/Python-3.11.0.tar.xz &
 
 ENV PATH=$PATH:/usr/local/python3.11.0/bin \
     LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/python3.11.0/lib
+
+# 兜底：写入 /etc/profile.d，确保 SSH 登录 shell 等场景下 LD_LIBRARY_PATH 不丢失（与上方 ENV 一致；非登录进程仍走镜像 ENV）
+RUN echo 'export LD_LIBRARY_PATH=/usr/local/python3.11.0/lib:$LD_LIBRARY_PATH' > /etc/profile.d/python311.sh
 
 RUN ln -sf /usr/local/python3.11.0/bin/python3 /usr/bin/python3 && \
     ln -sf /usr/local/python3.11.0/bin/python3 /usr/bin/python && \
@@ -134,19 +137,19 @@ RUN pip3 install --quiet pip==25.0.1 wheel "setuptools<70.0.0"
 RUN ARCH=$(uname -m) && \
     # === 1. 按架构下载RecSDK包 ===
     if [ "$ARCH" = "x86_64" ]; then \
-        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260720.8/torch_rec_v1-26.1.0-linux_x86_64.tar.gz && \
-        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260720.8/torch_rec_v2-26.1.0-linux_x86_64.tar.gz && \
-        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260707.7/fbgemm_ascend-1.2.0-cp311-cp311-linux_x86_64.whl && \
-        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260707.12/rec_ops-2.7.1%2Bx86.64-cp311-cp311-linux_x86_64.whl && \
-        wget -q "https://download-r2.pytorch.org/whl/cpu/fbgemm_gpu-1.5.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" -O fbgemm_gpu-1.5.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl && \
-        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260707.7/fbgemm_ascend-1.5.0-cp311-cp311-linux_x86_64.whl;  \
+        wget -q https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0/torch_rec_v1-26.2.0-linux_x86_64.tar.gz && \
+        wget -q https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0/torch_rec_v2-26.2.0-linux_x86_64.tar.gz && \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.2.0/20260928.2/fbgemm_ascend-1.2.0-cp311-cp311-linux_x86_64.whl && \
+        wget -q https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0/rec_cust_ops-2.7.1-cp311-cp311-linux_x86_64.whl && \
+        wget -q "https://files.pythonhosted.org/packages/18/31/340253f1f31f86526439daba562fcd0ff9c41ccf5eebbcdb0d8a34cc38ec/fbgemm_gpu_cpu-1.5.0-cp311-cp311-manylinux_2_28_x86_64.whl" && \
+        wget -q https://gitcode.com/Ascend/fbgemm-ascend/releases/download/v26.2.0-1.5.0/fbgemm_ascend-1.5.0-cp311-cp311-linux_x86_64.whl;  \
     elif [ "$ARCH" = "aarch64" ]; then \
-        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260720.8/torch_rec_v1-26.1.0-linux_aarch64.tar.gz && \
-        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260720.8/torch_rec_v2-26.1.0-linux_aarch64.tar.gz && \
-        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260707.7/fbgemm_ascend-1.2.0-cp311-cp311-linux_aarch64.whl && \
-        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/newRecSDK/daily/version/26.1.0/20260707.12/rec_ops-2.7.1%2Baarch64-cp311-cp311-linux_aarch64.whl && \
-        wget -q "https://download-r2.pytorch.org/whl/cpu/fbgemm_gpu-1.5.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl" -O fbgemm_gpu-1.5.0+cpu-cp311-cp311-manylinux_2_28_aarch64.whl && \
-        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.1.0/20260707.7/fbgemm_ascend-1.5.0-cp311-cp311-linux_aarch64.whl;  \
+        wget -q https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0/torch_rec_v1-26.2.0-linux_aarch64.tar.gz && \
+        wget -q https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0/torch_rec_v2-26.2.0-linux_aarch64.tar.gz && \
+        wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.2.0/20260928.2/fbgemm_ascend-1.2.0-cp311-cp311-linux_aarch64.whl && \
+        wget -q https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0/rec_cust_ops-2.7.1-cp311-cp311-linux_aarch64.whl && \
+        wget -q "https://files.pythonhosted.org/packages/7b/eb/0e0dc3fb34ea751c709c429f453194d9a94c71d9e316becc6027a277328c/fbgemm_gpu_cpu-1.5.0-cp311-cp311-manylinux_2_28_aarch64.whl" && \
+        wget -q https://gitcode.com/Ascend/fbgemm-ascend/releases/download/v26.2.0-1.5.0/fbgemm_ascend-1.5.0-cp311-cp311-linux_aarch64.whl;  \
     else \
         echo "Error: Unsupported architecture '$ARCH'. Only x86_64 and aarch64 are supported." && exit 1; \
     fi && \
@@ -154,17 +157,17 @@ RUN ARCH=$(uname -m) && \
     # === 2.1 创建 torch_v1_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v1 + fbgemm_ascend + rec_ops) ===
     python3 -m venv /opt/buildtools/torch_v1_pt2.7.1 && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet pip==25.0.1 && \
-    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet wheel "setuptools<70.0.0" && \
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet wheel "setuptools<70.0.0" "tensordict==0.12.4" && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet torch==2.7.1+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet torch-npu==2.7.1.post4 && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet fbgemm_gpu==1.2.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v1*.tar.gz && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet /tmp/fbgemm_ascend-1.2.0*.whl && \
-    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet /tmp/rec_ops*.whl && \
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet /tmp/rec_cust_ops*.whl && \
     # === 2.2 创建 torch_v1_pt2.10.0 (PyTorch 2.10.0 + torch_rec_v1 + fbgemm_ascend + rec_ops) ===
     python3 -m venv /opt/buildtools/torch_v1_pt2.10.0 && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet pip==25.0.1 && \
-    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet wheel "setuptools<70.0.0" && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet wheel "setuptools<70.0.0" "tensordict==0.12.4" && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet torch==2.10.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
     # A5(950) 使用每日构建包安装 torch_npu（pip install torch-npu==2.10.0 有兼容问题）
     if [ "$CORE_TYPE" = "a5" ]; then \
@@ -175,26 +178,28 @@ RUN ARCH=$(uname -m) && \
     else \
         /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet torch-npu==2.10.0; \
     fi && \
-    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_gpu-1.5.0*.whl && \
+    # 不预装 fbgemm-gpu：由 torch_rec_v1 sdist 嵌套拉取（1.9.0，仅依赖 numpy 不绑 torch），装完卸载并换装 PyPI 的 fbgemm-gpu-cpu 1.5.0
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v1*.tar.gz && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip uninstall --quiet -y fbgemm-gpu && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_gpu_cpu-1.5.0*.whl && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_ascend-1.5.0*.whl && \
-    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet torchrec==1.5.0 && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet pytest pytest-cov pytest-html pytest-metadata && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet click hypothesis pyyaml && \
     # === 3. 创建 torch_rec_v2 环境 ===
     # === 3.1 创建 torch_v2_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v2 + fbgemm_ascend + rec_ops) ===
     python3 -m venv /opt/buildtools/torch_v2_pt2.7.1 && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet pip==25.0.1 && \
-    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet wheel "setuptools<70.0.0" && \
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet wheel "setuptools<70.0.0" "tensordict==0.12.4" && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet torch==2.7.1+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet torch-npu==2.7.1.post4 && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet fbgemm_gpu==1.2.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v2*.tar.gz && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet /tmp/fbgemm_ascend-1.2.0*.whl && \
-    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet /tmp/rec_ops*.whl && \
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet /tmp/rec_cust_ops*.whl && \
     # === 3.2 创建 torch_v2_pt2.10.0 (PyTorch 2.10.0 + torchrec 1.5.0 + fbgemm_ascend 1.5.0) ===
     python3 -m venv /opt/buildtools/torch_v2_pt2.10.0 && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet pip==25.0.1 && \
-    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet wheel "setuptools<70.0.0" && \
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet wheel "setuptools<70.0.0" "tensordict==0.12.4" && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet torch==2.10.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
     # A5(950) 使用每日构建包安装 torch_npu（pip install torch-npu==2.10.0 有兼容问题）
     if [ "$CORE_TYPE" = "a5" ]; then \
@@ -205,9 +210,11 @@ RUN ARCH=$(uname -m) && \
     else \
         /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet torch-npu==2.10.0; \
     fi && \
-    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_gpu-1.5.0*.whl && \
+    # 不预装 fbgemm-gpu：由 torch_rec_v2 sdist 安装流程处理，装完卸载并换装 PyPI 的 fbgemm-gpu-cpu 1.5.0
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v2*.tar.gz && \
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip uninstall --quiet -y fbgemm-gpu && \
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_gpu_cpu-1.5.0*.whl && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_ascend-1.5.0*.whl && \
-    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet torchrec==1.5.0 && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet pytest pytest-cov pytest-html pytest-metadata && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet click hypothesis pyyaml && \
     # === 4. 清理pip缓存和所有下载的临时文件 ===
