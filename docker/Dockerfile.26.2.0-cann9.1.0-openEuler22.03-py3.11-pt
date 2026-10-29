@@ -59,8 +59,8 @@ RUN wget -q https://mirrors.huaweicloud.com/python/3.11.0/Python-3.11.0.tar.xz &
     rm -rf /tmp/Python-3.11.0* && \
     ldconfig
 
-ENV PATH=$PATH:/usr/local/python3.11.0/bin \
-    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/python3.11.0/lib
+ENV PATH=/usr/local/python3.11.0/bin:$PATH \
+    LD_LIBRARY_PATH=/usr/local/python3.11.0/lib:$LD_LIBRARY_PATH
 
 # 兜底：写入 /etc/profile.d，确保 SSH 登录 shell 等场景下 LD_LIBRARY_PATH 不丢失（与上方 ENV 一致；非登录进程仍走镜像 ENV）
 RUN echo 'export LD_LIBRARY_PATH=/usr/local/python3.11.0/lib:$LD_LIBRARY_PATH' > /etc/profile.d/python311.sh
