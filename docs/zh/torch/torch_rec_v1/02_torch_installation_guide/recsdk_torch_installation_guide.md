@@ -83,7 +83,7 @@ Rec SDK Torch软件包如下表：
 | rec_cust_ops             | Rec SDK Torch自定义算子包及PyTorch框架适配层                       |
 | fbgemm\_ascend           | fbgemm自定义算子包及PyTorch框架适配层                |
 
-> rec_cust_ops和fbgemm_ascend算子包使用时会通过`npu-smi info`指令自动探测NPU芯片版本并加载对应芯片版本的算子包。自动探测失败时默认加载Ascend 950PR&950DT系列产品的算子包。此时若当前环境非Ascend 950PR&950DT系列产品，可通过设置环境变量`SOC_VERSION`来指定NPU芯片版本。示例：`export SOC_VERSION=Ascend910B`。`SOC_VERSION`环境变量取值参考[配置环境变量](#配置环境变量)。
+> rec_cust_ops和fbgemm_ascend算子包使用时会通过ACL接口`acl.get_soc_name`自动探测NPU芯片版本并加载对应芯片版本的算子包。自动探测失败时默认加载Ascend 950PR&950DT系列产品的算子包。此时若当前环境非Ascend 950PR&950DT系列产品，可通过设置环境变量`SOC_VERSION`来指定NPU芯片版本。示例：`export SOC_VERSION=Ascend910B`。`SOC_VERSION`环境变量取值参考[配置环境变量](#配置环境变量)。
 
 ## 安装Rec SDK Torch<a id="section182972951211"></a>
 
