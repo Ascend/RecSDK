@@ -16,8 +16,6 @@
 
 import logging
 import os
-import shutil
-import subprocess
 import torch
 
 _EXT_SUFFIX = ".pyd" if os.name == "nt" else ".so"
@@ -29,32 +27,17 @@ package_dir = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))
 # ========================================================================
 # 1. SOC 检测与 OPP 路径设置
 # ========================================================================
-def _detect_soc_from_npu_smi():
-    npu_smi = shutil.which("npu-smi")
-    if not npu_smi:
-        logging.warning("rec_cust_ops: npu-smi not found.")
-        return None
-    try:
-        out = subprocess.check_output(
-            [npu_smi, "info", "-m"],
-            stderr=subprocess.STDOUT,
-        ).decode(errors="ignore")
-    except subprocess.CalledProcessError:
-        logging.warning("rec_cust_ops: npu-smi failed.")
-        return None
-
-    for line in out.splitlines():
-        if "Ascend" in line and "Mcu" not in line:
-            suffix = line.split("Ascend", 1)[1].strip().split()[0]
-            return f"Ascend{suffix}"
-    return None
-
-
 def _detect_soc_version():
     soc = os.environ.get("SOC_VERSION")
     if soc:
         return soc
-    return _detect_soc_from_npu_smi()
+    try:
+        import acl
+
+        return acl.get_soc_name()
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("rec_cust_ops: acl.get_soc_name() SOC detection failed: %s", exc)
+        return None
 
 
 def _map_soc_to_variant(soc):
