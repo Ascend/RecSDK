@@ -22,13 +22,14 @@ Rec SDK 作为面向互联网市场搜索推荐广告场景的应用使能SDK产
 
 2. CANN软件栈
 
-    - 基础算子：支持 Ascend C、CATLASS、Triton 等算子开发语言与库。
+    - 基础算子：支持 Ascend C、CATLASS 等算子开发语言与库。
     - 自动编译优化：提供AutoFuse、Inductor等算子自动融合能力，提升计算效率。
+    - 高性能数据处理库：ops-df 基于昇腾平台提供高效的数据处理能力。
 
 3. AI框架与适配层
 
     - AI框架：兼容 PyTorch、TensorFlow 业界主流框架。
-    - 框架适配：通过PyTorch-Adapter（PT-Adapter）、TensorFlow-Adapter（TF-Adapter）实现模型在昇腾平台的无缝迁移与运行。
+    - 框架适配：通过 PyTorch-Adapter（Inductor-ascend、Triton-ascend）、TensorFlow-Adapter 实现模型在昇腾平台的无缝迁移与运行。
 
 4. 应用层
 
@@ -163,7 +164,10 @@ Rec SDK由多个组件构成，包含`tf_rec_v1`、`tf_rec_v2`、`torch_rec_v1`�
 |              | [Inductor-Ascend](https://gitcode.com/Ascend/pytorch/blob/v2.7.1/torch_npu/_inductor/docs/overview/overview.md)                 | Inductor-Ascend在继承PyTorch社区Inductor能力的基础上，针对昇腾Ascend硬件，进行了亲和性改进和优化。其目标是：提供昇腾亲和的torch.compile图模式后端；生成昇腾亲和的Triton DSL，支持基于triton的算子自动融合；支持动态shape        | 与`torch_rec_v1/v2`协同，支持PyTorch模型的自动编译优化       |
 | 框架适配 | [PyTorch-Adapter](https://www.hiascend.com/document/detail/zh/Pytorch/730/productoverview/docs/zh/overview/product_overview.md) | PyTorch框架的昇腾适配层，使PyTorch模型能运行在昇腾设备上                                                                                                                    | 支撑`torch_rec_v1/v2`在NPU上的运行                           |
 |              | [TensorFlow-Adapter](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/index/index.html)                      | TensorFlow框架的昇腾适配层，使TensorFlow模型能运行在昇腾设备上                                                                                                              | 支撑`tf_rec_v1/v2`在NPU上的运行                              |
+| 数据处理 | ops-df | 基于华为 Ascend 硬件生态和 Ascend C 编程语言开发的高性能 DataFrame 处理库，为 Ascend 平台提供高效的处理能力 | 支撑推荐领域特征/数据处理 |
 | 硬件使能 | [CANN](https://www.hiascend.com/cann)                                                                                           | 昇腾异构计算架构，提供模型推理与训练的基础能力                                                                                                                                | 所有上层组件的基础软件栈，提供芯片使能、算子库、图编译等核心能力 |
+
+注：ops-df 仓库当前暂未开源，并将于后续开源，届时补充开源链接。
 
 #### 周边组件能力支撑
 
@@ -177,6 +181,8 @@ Rec SDK由多个组件构成，包含`tf_rec_v1`、`tf_rec_v2`、`torch_rec_v1`�
 
 - 模型迁移：借助 [PyTorch-Adapter](https://www.hiascend.com/document/detail/zh/Pytorch/730/productoverview/docs/zh/overview/product_overview.md)、[TensorFlow-Adapter](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/index/index.html)，将存量 TensorFlow/PyTorch 模型快速迁移至昇腾平台
 
+- 数据处理：依托 ops-df 提供类似 pandas 的 API 接口，支持大规模推荐特征/数据的快速处理和分析
+
 - 模型开发：基于 [Rec SDK](https://gitcode.com/Ascend/RecSDK) 的高层 API，快速构建推荐模型训练任务
 
 - 性能分析和调优：依托 CANN 提供的[性能分析工具](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta2/devaids/Profiling/atlasprofiling_16_0144.html)（如 msProf），定位模型执行瓶颈和性能调优
@@ -188,6 +194,8 @@ Rec SDK由多个组件构成，包含`tf_rec_v1`、`tf_rec_v2`、`torch_rec_v1`�
 周边组件与核心组件（`Rec SDK`、`fbgemm-ascend` 和 `HierarchicalKV-ascend`）的关系如下：
 
 - CANN 作为基础软件栈，为所有组件提供底层算力支持与运行时环境
+
+- ops-df 作为高性能数据处理库，为推荐领域特征/数据处理提供支持
 
 - PyTorch-Adapter / TensorFlow-Adapter 分别支撑 `torch_rec_v1/v2` 与 `tf_rec_v1/v2` 在昇腾设备上的运行
 
