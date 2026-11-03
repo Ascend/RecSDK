@@ -21,7 +21,7 @@
 
 // Device-side fast division using precomputed magic numbers.
 // Used in both scatter and gather kernels to compute page_id_idx and entry_idx.
-__aicore__ inline void divmod(uint32_t n, uint32_t d, uint32_t m, uint32_t s, uint32_t a, uint32_t& q, uint32_t& r)
+__simt_callee__ inline void divmod(uint32_t n, uint32_t d, uint32_t m, uint32_t s, uint32_t a, uint32_t& q, uint32_t& r)
 {
     if (d == 1) {
         q = n;

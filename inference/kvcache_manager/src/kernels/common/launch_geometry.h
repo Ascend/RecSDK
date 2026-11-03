@@ -28,7 +28,11 @@ constexpr uint32_t kVecBytes = 16;         // bytes moved per SIMT lane per memc
 constexpr uint32_t kThreadGroupSize = 32;  // threads per lane-group; each head gets >= 1 full group
 
 template <typename DType, uint32_t HEAD_DIM>
-constexpr uint32_t VecSize()
+#if defined(__DAV_C310__)
+__host__ __aicore__
+#endif
+    constexpr uint32_t
+    VecSize()
 {
     // std::max is unavailable in aicore context; use a constexpr ternary instead.
     constexpr uint32_t by_bytes = kVecBytes / sizeof(DType);
@@ -37,7 +41,11 @@ constexpr uint32_t VecSize()
 }
 
 template <uint32_t HEAD_DIM, uint32_t VEC_SIZE>
-constexpr uint32_t BlockDimX(uint32_t num_heads)
+#if defined(__DAV_C310__)
+__host__ __aicore__
+#endif
+    constexpr uint32_t
+    BlockDimX(uint32_t num_heads)
 {
     return (HEAD_DIM / VEC_SIZE) * num_heads;
 }
