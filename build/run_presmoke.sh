@@ -36,12 +36,7 @@ pip3 list | grep -E "(torch|fbgemm)"
 echo "----------------        match cases        ----------------"
 cd $PRESMOKE_DIR
 rm -fr changes.txt
-if [[ -f /workspace/change.txt ]]; then
-    cp -f /workspace/change.txt ./changes.txt
-else
-    echo "/workspace/change.txt not found."
-    git fetch origin && git diff --name-only HEAD..origin/develop > changes.txt
-fi
+cp $PROJECT_DIR/../change.txt ./changes.txt
 cat changes.txt
 python3 control.py
 
