@@ -24,7 +24,7 @@
 // compiling. Only bfloat16 is supported today.
 template <typename T, size_t vec_size>
 struct vec_t {
-    static __aicore__ inline void memcpy(__gm__ T* dst, const __gm__ T* src);
+    static __simt_callee__ inline void memcpy(__gm__ T* dst, const __gm__ T* src);
 };
 
 // Callers derive vec_size as max(16 / sizeof(DType), head_dim / 32); with
@@ -34,7 +34,7 @@ struct vec_t {
 // bfloat16 × 8
 template <>
 struct vec_t<bfloat16_t, 8> {
-    static __aicore__ inline void memcpy(__gm__ bfloat16_t* dst, const __gm__ bfloat16_t* src)
+    static __simt_callee__ inline void memcpy(__gm__ bfloat16_t* dst, const __gm__ bfloat16_t* src)
     {
         dst[0] = src[0];
         dst[1] = src[1];
@@ -51,7 +51,7 @@ struct vec_t<bfloat16_t, 8> {
 template <size_t vec_size>
 struct vec_t<bfloat16_t, vec_size> {
     static_assert(vec_size % 8 == 0, "Invalid vector size");
-    static __aicore__ inline void memcpy(__gm__ bfloat16_t* dst, const __gm__ bfloat16_t* src)
+    static __simt_callee__ inline void memcpy(__gm__ bfloat16_t* dst, const __gm__ bfloat16_t* src)
     {
 #pragma unroll
         for (size_t i = 0; i < vec_size; ++i) {

@@ -575,7 +575,7 @@ std::tuple<at::Tensor, at::Tensor, std::vector<at::Tensor>> NPUKVCacheManagerImp
                 continue;
             }
 
-            const auto& page_ids = page_it->second;
+            auto& page_ids = page_it->second;
             if (page_ids.empty()) {
                 offload_page_ids_list.push_back(at::empty({0}, at::dtype(torch::kInt32)));
             } else {
@@ -629,7 +629,7 @@ std::tuple<at::Tensor, at::Tensor, std::vector<at::Tensor>> NPUKVCacheManagerImp
 
             const int pages_offload_start = (offloaded_length - cached_startpos) / this->num_tokens_per_page;
             const int pages_offload_num = (cached_end_index - offloaded_length) / this->num_tokens_per_page;
-            const auto& page_ids = page_it->second;
+            auto& page_ids = page_it->second;
             TORCH_CHECK(pages_offload_start >= 0 && pages_offload_num >= 0 &&
                             static_cast<size_t>(pages_offload_start + pages_offload_num) <= page_ids.size(),
                         "offload page range exceeds cached pages for uid ", uid);
