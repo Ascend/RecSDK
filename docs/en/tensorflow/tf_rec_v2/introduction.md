@@ -4,10 +4,10 @@
 
 Rec SDK TensorFlow provides the following functions:
 
-- Basic model training functions: Rec SDK TensorFlow supports single-server single-card training, and single-server multi-card training, as well as model development based on TensorFlow.
+- Basic model training functions: Rec SDK TensorFlow supports single-server single-device training, and single-server multi-device distributed training, as well as model development based on TensorFlow.
 - Recommendation-specific functions: Based on the sparse table solution, Rec SDK TensorFlow provides essential functions such as feature saving and loading, feature admission, and feature eviction.
 
-**Key features**
+**Key Features**
 
 Rec SDK TensorFlow provides functional features such as sparse table creation, sparse table query, saving and loading, and feature admission and eviction. You can incorporate the desired features into your adapted models.
 
@@ -40,7 +40,7 @@ Built upon mainstream recommendation frameworks, CANN, and diverse hardware and 
 |Rec SDK TensorFlow Module|Description|
 |--|--|
 |API layer|Provides easy-to-use APIs to simplify customer access and support service growth.|
-|Recommended function layer|Provides core capabilities to meet customer requirements.|
+|Recommendation function layer|Provides core capabilities to meet customer requirements.|
 |Recommendation acceleration layer|Provides core components to build performance competitiveness and offer superb performance for the entire system.|
 |Sparse storage layer|Supports large-scale sparse table storage of more than 10 TB.|
 

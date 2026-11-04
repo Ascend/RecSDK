@@ -1,13 +1,13 @@
-# readme
+# tf rec v2
 
-Built upon mainstream recommendation frameworks, CANN, and diverse hardware and network architectures, Rec SDK TensorFlow addresses the specific requirements of search, recommendation, and advertising model training. It provides high-performance, streamlined APIs designed for ease of use, enabling Ascend AI Processors to achieve highly efficient training for search, recommendation, and advertising models.
+Built upon mainstream recommendation frameworks, CANN, and diverse hardware and network architectures, Rec SDK TensorFlow addresses the specific requirements of search, recommendation, and advertising model training scenarios. It provides high-performance, streamlined APIs designed for ease of use, enabling Ascend AI Processors to achieve highly efficient training for search, recommendation, advertising, and other models.
 
 Rec SDK TensorFlow functions:
 
 - [API Description](api/api_description.md)
-  - [Initialization of the Training Framework](api/initialization_of_the_training_framework.md)
-  - [Model APIs](api/model_apis.md)
-  - [Optimizers](api/optimizers_apis.md)
+    - [Initialization of the Training Framework](api/initialization_of_the_training_framework.md)
+    - [Model APIs](api/model_apis.md)
+    - [Optimizers](api/optimizers_apis.md)
 - [Introduction](introduction.md)
 - [Quick Start](quick_start.md)
 - [Installation and Deployment](recsdk_tf_installation_guide.md)

@@ -9,20 +9,20 @@ Creates a sparse table.
 **Function Prototype**
 
 ```python
-def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1, host_vocabulary_size=0, ssd_vocabulary_size=0, ssd_data_path=(os.getcwd(),), is_save=True, is_dp=False, init_param=1.0, all2all_gradients_op=All2allGradientsOp.SUM_GRADIENTS.value, enable_merge=False, padding_keys=None, padding_keys_mask=False, padding_keys_len=None, value_dtype=tf.float32, shard_num=1, fusion_optimizer_var=True, hashtable_threshold=0)
+def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1, host_vocabulary_size=0, ssd_vocabulary_size=0, ssd_data_path=(os.getcwd(),), is_save=True, is_dp=False, init_param=1.0, all2all_gradients_op=All2allGradientsOp.SUM_GRADIENTS.value, enable_merge=False, padding_keys=None, padding_keys_mask=False, padding_keys_len=None, value_dtype=tf.float32, shard_num=1, fusion_optimizer_var=True, hashtable_threshold=0):
 ```
 
 **Parameters**
 
 |Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
-|key_dtype|TensorFlow dtype|Mandatory|Data type of the sparse feature keys. Only tf.int64 and tf.int32 are supported.|
+|key_dtype|TensorFlow dtype|Mandatory|Data type of the sparse feature keys. Only `tf.int64` and `tf.int32` are supported.|
 |dim|<li>int</li><li>tf.TensorShape</li>|Mandatory|Embedding layer dimension. The value range is [1, 8192]. If `dim` needs to be greater than 512, ensure sufficient memory and drive space, use DDR mode, or reduce the vocabulary size of the sparse table.<br>If the input is of tf.TensorShape type, its `ndims` must be 1, representing the embedding layer dimension.<br>Set this parameter based on the actual server configuration.|
 |name|str|Mandatory|Name of the sparse table, which can only contain numbers, letters, underscores (_), and periods (.). The value can contain 1 to 100 characters.<br>The sparse table name must be unique.|
 |emb_initializer|TensorFlow initializer|Mandatory|Generator for initial values of the embedding layer.|
 |device_vocabulary_size|int|Optional|Number of embedding layers on the device. The default value is 1. The value ranges from 1 to 1 billion. If this value exceeds 25,600,000, ensure sufficient memory and drive space, enable on-chip memory dynamic expansion, or reduce `dim` of the sparse table. Set this parameter based on the actual server configuration.<br>If DDR/SSD storage is enabled (that is, `host_vocabulary_size` is not 0), `device_vocabulary_size` must be greater than or equal to the number of keys after two consecutive batches are deduplicated. The on-chip memory must store at least two batches of data, as it acts only as a cache in this case.|
-|host_vocabulary_size|int|Optional|Number of embedding layers for DDR storage on the host side. The default value is 0. The value ranges from 0 to 1 billion. <li>A value of 0 indicates that host-side DDR is disabled. If SSD storage is not enabled, ensure that the DDR can store all data.</li><li>A non-zero value enables the feature. In this case, disable on-chip memory dynamic expansion (`use_dynamic_expansion=False`). By default, the system uses the dynamic expansion mode for DDR memory. If `host_vocabulary_size` is greater than 100 million, ensure sufficient memory and drive space, or reduce `dim` of the sparse table. </li>In dynamic expansion mode (when `use_dynamic_expansion=True`), on-chip memory is the sole storage by default, and this variable is set to 0 Out-of-memory (OOM) errors occur if the size exceeds the single-machine memory. Set this parameter based on the actual server configuration.|
-|ssd_vocabulary_size|int|Optional|Enables the SSD storage feature for embedding data. The default value is `0`, indicating that the feature is disabled. To enable this feature, set this value to greater than 0 and ensure `host_vocabulary_size` is also greater than 0. The value ranges from 0 to 1 billion.<br>In dynamic expansion mode (when `use_dynamic_expansion=True`), on-chip memory is the sole storage by default, and this variable is set to 0 Set this parameter based on the actual server configuration.|
+|host_vocabulary_size|int|Optional|Number of embedding layers for DDR storage on the host side. The default value is 0. The value ranges from 0 to 1 billion. <li>A value of 0 indicates that host-side DDR is disabled. If SSD storage is not enabled, ensure that the DDR can store all data.</li><li>A non-zero value enables the feature. In this case, disable on-chip memory dynamic expansion (`use_dynamic_expansion=False`). By default, the system uses the dynamic expansion mode for DDR memory. If `host_vocabulary_size` is greater than 100 million, ensure sufficient memory and drive space, or reduce `dim` of the sparse table. </li>In dynamic expansion mode (when `use_dynamic_expansion=True`), on-chip memory is the sole storage by default, and this variable is set to 0. Out-of-memory (OOM) errors occur if the size exceeds the single-machine memory. Set this parameter based on the actual server configuration.|
+|ssd_vocabulary_size|int|Optional|Enables the SSD storage feature for embedding data. The default value is `0`, indicating that the feature is disabled. To enable this feature, set this value to greater than 0 and ensure `host_vocabulary_size` is also greater than 0. The value ranges from 0 to 1 billion.<br>In dynamic expansion mode (when `use_dynamic_expansion=True`), on-chip memory is the sole storage by default, and this variable is set to 0. Set this parameter based on the actual server configuration.|
 |ssd_data_path|<li>list[str]</li><li>Tuple[str]</li>|Optional|The default value is the path where the current script is located. <li>If the parameter is an empty list, the default SSD storage path is the directory of the current script. </li><li>If the list is not empty and paths are valid, data is stored in the corresponding paths sequentially. </li><li>If a drive has insufficient space, the system attempts the next path until an exception is thrown when all drives are full.</li>|
 |is_save|bool|Optional|Specifies whether to save embedding data. The default value is `True`.<br>Range:<li>`True`: Saves embedding data. </li><li>`False`: Does not save embedding data.</li>|
 |is_dp|bool|Optional|Specifies whether to enable data parallelism (DP) for the sparse table. The default value is `False`.<br>Enabling DP mode (`is_dp=True`) configures the table for data parallelism. You are advised to enable this when using small tables (approximately 10 GB), the NPU side is an end-to-end bottleneck, and the NPU ALL2ALL communication volume for the sparse table is less than 16 MB. This can improve performance by about 15% in sparse communication.<br>Note: Mixing DP and model parallelism (MP) modes for resumable training does not affect functionality or accuracy but is not recommended.|
@@ -44,7 +44,7 @@ def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1
 >> - The DP mode or lazy Adam fusion operator mode is not supported.
 >> - If all tables require padding keys, set the static shape mode in the initialization interface, such as `init(use_dynamic=False)`. In this case, ensure `drop_remainder=True` in the model script, for example, `dataset = dataset.batch(batch_size, drop_remainder=True)`.
 >
->- When enabling DDR/SSD mode, ensure that the [automatic graph modification](../appendix.md#automatic-graph-modification) mode is also enabled.
+>- When enabling DDR/SSD mode, ensure that the [automatic graph modification../09_appendix/appendix.md#automatic-graph-modification mode is also enabled.
 >- If the on-chip memory dynamic expansion solution is used (that is, `use_dynamic_expansion=True` is set for the [`init`](initialization_and_deinitialization_of_the_training_framework.md#init) interface), the `host_vocabulary_size` and `ssd_vocabulary_size` parameters are set to 0 and do not take effect. You can also leave them blank.
 >- If the on-chip memory dynamic expansion solution is not used, the storage mode is determined by whether `host_vocabulary_size` and `ssd_vocabulary_size` are 0.
 >- When `host_vocabulary_size` is 0, host-side DDR is disabled. All embedding tables must either simultaneously use host-side DDR or not use it. That is, the `host_vocabulary_size` parameter for all tables **must be 0 at the same time** or **not be 0 at the same time**. Otherwise, an error occurs during parameter validation, as shown below:
@@ -61,8 +61,8 @@ def create_table(key_dtype, dim, name, emb_initializer, device_vocabulary_size=1
 
     |Method|Function|Prototype|Parameters|Returns|
     |--|--|--|--|--|
-    |`size`|Obtains the size of the sparse table.|` def size() `|None|<li>Success: The size of the sparse table is returned. </li><li>Failure: An exception is thrown.</li>|
-    |`capacity`|Obtains the capacity of the sparse table.|` def capacity() `|None|<li>Success: The capacity of the sparse table is returned. </li><li>Failure: An exception is thrown.</li>|
+    |`size`|Obtains the size of the sparse table.|`def size() -> int:`|None|<li>Success: The size of the sparse table is returned. </li><li>Failure: An exception is thrown.</li>|
+    |`capacity`|Obtains the capacity of the sparse table.|` def capacity() -> int: `|None|<li>Success: The capacity of the sparse table is returned. </li><li>Failure: An exception is thrown.</li>|
 
 - Failure: An exception is thrown.
 
@@ -77,8 +77,8 @@ sparse_hashtable = create_table(key_dtype=tf.int32,
                                 emb_initializer=tf.truncated_normal_initializer(),
                                 device_vocabulary_size=24_000_000 * 8,
                                 host_vocabulary_size=0)
-table_size = sparse_hashtable.size()      # Get the used size of the returned sparse table.
-table_capacity = sparse_hashtable.capacity()   # Get the capacity of the returned sparse table.
+table_size = sparse_hashtable.size()      # Get the used size of the returned sparse table
+table_capacity = sparse_hashtable.capacity()   # Get the capacity of the returned sparse table
 ```
 
 **References**
@@ -95,7 +95,7 @@ Currently, only single-lookup for single tables and multi-lookup for single tabl
 
 The tf.SparseTensor data type is not currently supported. If you use tf.SparseTensor, convert it to tf.Tensor. Example code:
 
-```bash
+```python
 # Example code
 sparse_ids = tf.SparseTensor(indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
 dense_ids = tf.sparse.to_dense(sparse_ids, default_value=0)
@@ -105,7 +105,7 @@ embedding = sparse_lookup(sparse_hashtable, dense_ids)
 **Function Prototype**
 
 ```python
-def sparse_lookup(hashtable, ids, send_count, is_train=True, name=None, modify_graph=False, batch=None, access_and_evict_config=None, is_grad=True, serving_default_value, **kwargs)
+def sparse_lookup(hashtable, ids, send_count, is_train=True, name=None, modify_graph=False, batch=None, access_and_evict_config=None, is_grad=True, serving_default_value=None, **kwargs):
 ```
 
 **Parameters**
@@ -113,17 +113,17 @@ def sparse_lookup(hashtable, ids, send_count, is_train=True, name=None, modify_g
 |Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
 |hashtable|BaseSparseEmbedding|Mandatory|Sparse table to be queried.|
-|ids|FeatureSpec/tf.Tensor|Mandatory|Lookup keys. The parameter type varies depending on the functional mode as follows: <li>In non-automatic graph modification mode, the `ids` parameter type is FeatureSpec. </li><li>In automatic graph modification mode, the `ids` parameter type is tf.Tensor.</li>|
+|ids|FeatureSpec/tf.Tensor|Mandatory|Lookup keys. The parameter type varies depending on the functional mode as follows: <li>In non-automatic graph modification mode, the `ids` parameter type is `FeatureSpec`. </li><li>In automatic graph modification mode, the `ids` parameter type is tf.Tensor.</li>|
 |send_count|int|Mandatory when static shape is enabled|Specifies the send count for All2All communication. The value range is [1, 2147483647].<br>This parameter is not required when dynamic shape is enabled. You can pass `None`. The default value is `None`.|
 |is_train|bool|Mandatory|Specifies whether training mode is active. The default value is `True`.<br>Value range: <li>`True`: training mode </li><li>`False`: evaluation or prediction mode</li>|
 |name|str|Optional|Creates a name for this lookup operation. The string can contain 1 to 255 characters. The default value is `None`.|
 |modify_graph|bool|Optional|Switch for the automatic graph modification feature, which optimizes the model graph before creating a `Session` instance. The default value is `False`.<br>Value range: <li>`True`: Enables the automatic graph modification feature. </li><li>`False`: Disables the automatic graph modification feature.</li>|
-|batch|dict{str:tf.Tensor}|Optional|Iterator for the dataset.<br>When `ids` uses the FeatureSpec type and dynamic shape is active, pass the `batch` parameter. The key is the feature name, and the value is the result after `get_next()` is called on the corresponding `tf.Dataset`. The default value is `None`.|
+|batch|dict{str:tf.Tensor}|Optional|Iterator for the dataset.<br>When `ids` uses the `FeatureSpec` type and dynamic shape is active, pass the `batch` parameter. The key is the feature name, and the value is the result after `get_next()` is called on the corresponding `tf.Dataset`. The default value is `None`.|
 |access_and_evict_config|dict{str:int}|Optional|Used when feature admission and eviction are enabled in automatic graph modification mode. This dictionary consists of three key-value pairs with keys `access_threshold`, `eviction_threshold`, and `faae_coefficient`.<br>The default value for `access_threshold` and `eviction_threshold` is `None`, and the default value for `faae_coefficient` is 1. <li>The values of `access_threshold` and `eviction_threshold` are the corresponding thresholds. </li><li>The value of `faae_coefficient` is the feature admission coefficient.</li>|
 |is_grad|bool|Optional|Specifies whether gradient updates are required for this lookup. The default value is `True`.<br>Value range:<li>`True`: Gradient updates are required. </li><li>`False`: Gradient updates are not required.</li>|
 |serving_default_value|tf.Tensor|Optional|Default embedding value for non-admitted features during training or new features during prediction. If not specified, the default value is `None`.|
 
-**\*\*kwargs parameters**
+**`**kwargs` Parameters**
 
 |Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
@@ -135,7 +135,6 @@ def sparse_lookup(hashtable, ids, send_count, is_train=True, name=None, modify_g
 >
 >- The `feature_spec_name_ids_dict`, `multi_lookup`, and `lookup_ids` parameters in `**kwargs` are for internal use. You are advised not to pass these parameters through `kwargs`.
 >- If you pass other undocumented parameters through `kwargs`, Rec SDK TensorFlow will not use them internally.
->
 
 **Returns**
 
@@ -169,7 +168,7 @@ Gets the parameter variables for dense layers and sparse layers in the model.
 **Function Prototype**
 
 ```python
-def get_dense_and_sparse_variable()
+def get_dense_and_sparse_variable():
 ```
 
 **Returns**
@@ -230,13 +229,13 @@ For the interface calling process and examples, see [Migration and Training](../
 
 **Description**
 
-Sets whether to load a previously trained model.
+Gets whether to load a previously trained model.
 
 **Function Prototype**
 
 ```python
 @property
- def if_load(self)
+def if_load(self):
 ```
 
 **Returns**

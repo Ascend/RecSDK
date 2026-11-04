@@ -4,11 +4,11 @@
 
 Rec SDK Torch is provided as a wheel package. The system history records installation and uninstallation logs.
 
-**Viewing installation and uninstallation history**
+**Viewing Installation and Uninstallation History**
 
 When you log out of the system or exit a container (Rec SDK Torch is typically installed and run in a container), the system saves the command history to the `~/.bash_history` file. You can check the `.bash_history` file directly to find Rec SDK Torch installation and uninstallation records.
 
-**Modifying the number of saved history records**
+**Modifying the Number of Saved History Records**
 
 In Linux systems, the `history` command typically saves the latest 1,000 commands by default. To modify the number of saved commands, for example, to keep only 200 commands, modify the `HISTSIZE` environment variable in the `/etc/profile` file. Use the following methods:
 
@@ -25,11 +25,13 @@ In Linux systems, the `history` command typically saves the latest 1,000 command
 
 After the modification, run `source /etc/profile` to make the environment variable take effect.
 
-**Modifying timestamps in the command history file**
+**Modifying Timestamps in the Command History File**
 
 To record timestamps in the command history file, add the following configuration to `/etc/profile`:
 
-**HISTTIMEFORMAT='%F %T '**
+```bash
+HISTTIMEFORMAT='%F %T '
+```
 
 After adding the configuration, run `source /etc/profile` to make the environment variable take effect. After timestamps are added, the `history` command result is as follows:
 
@@ -40,10 +42,10 @@ After adding the configuration, run `source /etc/profile` to make the environmen
 2025-08-18 10:10:17 history | grep "pip3 install"
 ```
 
-In addition, to record command history in a custom file, set the `HISTFILE` environment variable in `/etc/profile`, and run source /etc/profile for the change to take effect. For example:
+In addition, to record command history in a custom file, set the `HISTFILE` environment variable in `/etc/profile`, and run `source /etc/profile` for the change to take effect. For example:
 
 ```bash
-HISTDIR=~/log/RecSDK_Torch   # Configure the file for saving command history.
+HISTDIR=~/log/RecSDK_Torch   # Configure the file for saving command history
 HISTFILE="$HISTDIR/RecSDK.log"
 mkdir -p $HISTDIR
 chmod 750 $HISTDIR
@@ -54,8 +56,8 @@ if [ -z $USER_IP ]
 then
   USER_IP=`hostname`
 fi
-export HISTTIMEFORMAT="%F %T $USER_IP:`whoami` "    # command history display format: time, IP address, username, command
-PROMPT_COMMAND=' { date "+%Y-%m-%d %T - $(history 1 | { read x cmd; echo "$cmd"; })"; } >> $HISTFILE'    # Write the command history to the configured file in real time.
+export HISTTIMEFORMAT="%F %T $USER_IP:`whoami` "    # Command history display format: time, IP address, username, command
+PROMPT_COMMAND=' { date "+%Y-%m-%d %T - $(history 1 | { read x cmd; echo "$cmd"; })"; } >> $HISTFILE'    # Write the command history to the configured file in real time
 ```
 
 The log file path is `~/log/RecSDK_Torch`. Ensure that the drive space is sufficient and the log file permissions are set to 640.

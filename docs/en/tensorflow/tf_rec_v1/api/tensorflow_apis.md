@@ -2,12 +2,11 @@
 
 ## Description
 
-This section describes the Rec SDK TensorFlow APIs modified based on the TensorFlow framework patches. For more information about native TensorFlow APIs, visit the official TensorFlow website. For details about the support of the Ascend AI Processor for TensorFlow APIs, see the official documents [TensorFlow 1.15](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/API/tfadapter1x/tfmigr1_tfadapi_0131.html) and [TensorFlow 2.6](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/API/tfadapter2x/tfmigr2_tfadapi_0029.html).
+This section describes the Rec SDK TensorFlow APIs modified based on the TensorFlow framework patches. For more information about native TensorFlow APIs, visit the TensorFlow official website. For details about the support of the Ascend AI Processor for TensorFlow APIs, see the official documents [TensorFlow 1.15](https://www.hiascend.com/document/detail/en/TensorFlowCommunity/850/API/tfadapter1x/tfmigr1_tfadapi_0131.html) and [TensorFlow 2.6](https://www.hiascend.com/document/detail/en/TensorFlowCommunity/850/API/tfadapter2x/tfmigr2_tfadapi_0029.html).
 
 >[!NOTICE]
 >
 >For open-source and third-party software that you integrate, track vulnerabilities and issues in the community and fix them in a timely manner. If the native TensorFlow methods involved in this chapter have vulnerabilities, refer to the security suggestions in the official TensorFlow community for mitigation and remediation.
->
 
 ## `tf.compat.v1.train.Saver.save`
 
@@ -26,7 +25,7 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 |Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
 |sess|Session|Mandatory|Session in which the model is saved.|
-|save_path|str|Mandatory|Path to save the model. Local file systems and HDFS file systems are supported. The path can contain 1 to 1024 characters. <li>When you use HDFS paths to save data, the log `hdfsWrite: FSDataOutputStream#write error` is printed. This log does not affect data saving and can be ignored. </li><li>When you use HDFS for multi-node training, use the same HDFS path as the saving path. </li><li>In multi-card training, `save_path` does not need to include card ID parameters. Results from multi-card training are automatically merged and saved in `save_path`. During subsequent model loading for multi-card training, parameters belonging to the current card are also automatically loaded.</li>|
+|save_path|str|Mandatory|Path to save the model. Local file systems and HDFS file systems are supported. The path can contain 1 to 1024 characters. <li>When you use HDFS paths to save data, the log `hdfsWrite: FSDataOutputStream#write error` is printed. This log does not affect data saving and can be ignored. </li><li>When you use HDFS for multi-node training, use the same HDFS path as the saving path. </li><li>In multi-device training, `save_path` does not need to include device ID parameters. Results from multi-device training are automatically merged and saved in `save_path`. During subsequent model loading for multi-device training, parameters belonging to the current device are also automatically loaded.</li>|
 |global_step|int, np.int64|Optional|Training steps added to the checkpoint filename, defaulting to `None`. The value range is [0, 2147483647].|
 |latest_filename|str|Optional|Optional name for the protocol buffer file that contains the list of the latest checkpoints, defaulting to `None`. The length range is [1, 50].|
 |meta_graph_suffix|str|Optional|Suffix for the MetaGraphDef file, defaulting to `meta`. The length range is [1, 50].|
@@ -47,16 +46,17 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 For specific usage, see the little demo in the [Rec SDK](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run_mode.py) repository. The following provides a workflow example.
 
 ```python
-# 1. Import required libraries.
+# 1. Import required libraries
 import tensorflow as tf
-from mx_rec.util.initialize import init, get_rank_id
-# 2. Build the computational graph.
+from mx_rec.util.initialize import init
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_id
+# 2. Build the computational graph
 # ...
-# 3. Create a saver.
+# 3. Create a saver
 saver = tf.compat.v1.train.Saver()
-# 4. Obtain the rank ID.
+# 4. Obtain the rank ID
 rank_id = get_rank_id()
-# 5. Set the training steps for model saving.
+# 5. Set the training steps for model saving
 global_step = 200
 with tf.compat.v1.Session() as sess:
     saver.save(sess, f"./saved-model/model-{rank_id}", global_step=global_step)
@@ -83,7 +83,7 @@ def restore(self, sess, save_path)
 |Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
 |sess|Session|Mandatory|TensorFlow Session in which the model is imported.|
-|save_path|str|Mandatory|<li>Path of the saved model checkpoint file. </li><li>Local file systems and HDFS file systems are supported. The path can contain 1 to 1024 characters. </li><li>In multi-card training, `save_path` can be set to the same loading path (where the results of multi-card training are saved), and each card automatically loads the parameters belonging to it.</li><br>Currently, the maximum size for a single loaded file is 500 GB. Concurrent reading may cause out-of-memory (OOM).|
+|save_path|str|Mandatory|<li>Path of the saved model checkpoint file. </li><li>Local file systems and HDFS file systems are supported. The path can contain 1 to 1024 characters. </li><li>In multi-device training, `save_path` can be set to the same loading path (where the results of multi-device training are saved), and each device automatically loads the parameters belonging to it.</li><br>Currently, the maximum size for a single loaded file is 500 GB. Concurrent reading may cause out-of-memory (OOM).|
 
 **Returns**
 
@@ -95,14 +95,15 @@ def restore(self, sess, save_path)
 For specific usage, see the little demo in the [Rec SDK](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run_mode.py) repository. The following provides a workflow example.
 
 ```python
-# 1. Import required libraries.
+# 1. Import required libraries
 import tensorflow as tf
-from mx_rec.util.initialize import init, get_rank_id
-# 2. Build the computational graph.
+from mx_rec.util.initialize import init
+from rec_sdk_common.communication.hccl.hccl_info import get_rank_id
+# 2. Build the computational graph
 # ...
-# 3. Create a saver.
+# 3. Create a saver
 saver = tf.compat.v1.train.Saver()
-# 4. Obtain the rank ID.
+# 4. Obtain the rank ID
 rank_id = get_rank_id()
 # 5. Set the training steps for model loading. For example:
 latest_step = 200
@@ -145,12 +146,12 @@ def run(self, fetches, feed_dict=None, options=None, run_metadata=None)
 The following provides a workflow example.
 
 ```python
-# 1. Import required libraries.
+# 1. Import required libraries
 import tensorflow as tf
 from mx_rec.util.initialize import init
-# 2. Build the computational graph.
+# 2. Build the computational graph
 # ...
-# 3. Call the API for training.
+# 3. Call the API for training
 with tf.compat.v1.Session() as sess:
-     sess.run([train_ops])      # train_ops is the training operator constructed in the computational graph.
+     sess.run([train_ops])      # train_ops is the training operator constructed in the computational graph
 ```

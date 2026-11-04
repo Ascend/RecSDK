@@ -12,7 +12,7 @@ def create_hash_optimizer(learning_rate=0.001, initial_accumulator_value=0.9, us
 
 **Parameters**
 
-|**Parameter**|**Type**|**Mandatory/Optional**|**Description**|
+|Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
 |learning_rate|float or tf.Tensor|Optional|Learning rate. The default value is 0.001. The value range is [0.0, 10.0].|
 |initial_accumulator_value|float|Optional|Initial value for the accumulator. The value range is (0.0, 1.0]. The default value is 0.9.|
@@ -42,15 +42,15 @@ def create_hash_optimizer(learning_rate, use_locking=False, name="Ftrl", **kwarg
 
 **Parameters**
 
-|**Parameter**|**Type**|**Mandatory/Optional**|**Description**|
+|Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
 |learning_rate|float or tf.Tensor|Mandatory|Learning rate. The value range is [0.0, 10.0].|
 |use_locking|bool|Optional|Prevents concurrent updates to variables in the optimizer. The default value is `False`. The value can be `True` or `False`.|
-|name|string|Optional|Name of the optimizer. The default value is Ftrl. The name can contain 1 to 200 characters.|
+|name|string|Optional|Name of the optimizer. The default value is `Ftrl`. The name can contain 1 to 200 characters.|
 
-**\*\*kwargs parameters**
+**`**kwargs` Parameters**
 
-|**Parameter**|**Type**|**Mandatory/Optional**|**Description**|
+|Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
 |learning_rate_power|float|Optional|Controls the decrease of the learning rate during training. The default value is -0.5. The value range is [-2147483647.0, 0.0].|
 |initial_accumulator_value|float|Optional|Initial value for the accumulator. The default value is 0.1. The value range is (0.0, 1.0].|
@@ -74,7 +74,7 @@ from mx_rec.optimizers.ftrl import create_hash_optimizer
 hashtable_optimizer = create_hash_optimizer(0.001)
 ```
 
-## SGD
+## `SGD`
 
 Customized SGD optimizer.
 
@@ -86,7 +86,7 @@ def create_hash_optimizer(learning_rate, use_locking=False, name="GradientDescen
 
 **Parameters**
 
-|**Parameter**|**Type**|**Mandatory/Optional**|**Description**|
+|Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
 |learning_rate|float or tf.Tensor|Mandatory|Learning rate. The value range is [0.0, 10.0].|
 |use_locking|bool|Optional|Prevents concurrent updates to variables in the optimizer. The default value is `False`. The value can be `True` or `False`.|
@@ -117,7 +117,7 @@ def create_hash_optimizer_by_addr(learning_rate, weight_decay=0.0001, use_lockin
 
 **Parameters**
 
-|**Parameter**|**Type**|**Mandatory/Optional**|**Description**|
+|Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
 |learning_rate|float or tf.Tensor|Mandatory|Learning rate. The value range is [0.0, 10.0].|
 |weight_decay|float|Optional|Weight decay. The default value is 0.0001. The value range is [0.0, 1.0].|
@@ -135,7 +135,7 @@ from mx_rec.optimizers.gradient_descent_by_addr import create_hash_optimizer_by_
 hashtable_optimizer = create_hash_optimizer_by_addr(0.001)
 ```
 
-## LazyAdam
+## `LazyAdam`
 
 Customized LazyAdam optimizer.
 
@@ -147,7 +147,7 @@ def create_hash_optimizer(learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1
 
 **Parameters**
 
-|**Parameter**|**Type**|**Mandatory/Optional**| **Description**                                                                                                                                                                                                                                                                              |
+|Parameter|Type|Mandatory/Optional| Description                                                                                                                                                                                                                                                                              |
 |--|--|--|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 |learning_rate|float or tf.Tensor|Optional| Learning rate. The default value is 0.001. The value range is [0.0, 10.0].                                                                                                                                                                                                                                                     |
 |beta1|float|Optional| Exponential decay rate for the first moment estimates. The default value is 0.9. The value range is (0.0, 1.0).                                                                                                                                                                                                                                                |
@@ -179,7 +179,7 @@ def create_hash_optimizer_by_address(learning_rate=0.001, beta1=0.9, beta2=0.999
 
 **Parameters**
 
-|**Parameter**|**Type**|**Mandatory/Optional**|**Description**|
+|Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
 |learning_rate|float or tf.Tensor|Optional|Learning rate. The default value is 0.001. The value range is [0.0, 10.0].|
 |beta1|float|Optional|Exponential decay rate for the first moment estimates. The default value is 0.9. The value range is (0.0, 1.0).|
@@ -210,7 +210,7 @@ def create_hash_optimizer_by_address(learning_rate=0.001, initial_accumulator_va
 
 **Parameters**
 
-|**Parameter**|**Type**|**Mandatory/Optional**|**Description**|
+|Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
 |learning_rate|float or tf.Tensor|Optional|Learning rate. The default value is 0.001. The value range is [0.0, 10.0].|
 |initial_accumulator_value|float|Optional|Initial value for the accumulator. The default value is 0.9. The value range is (0.0, 1.0].|

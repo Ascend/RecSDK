@@ -87,7 +87,7 @@ The key steps are as follows:
 4. Perform backward gradient calculations.
 
     ```python
-    local_grads = tf.gradients(loss, train_emb_list)  # local_embedding
+    local_grads = tf.gradients(loss, train_emb_list)  # Local embedding
     ```
 
 5. Update the backward sparse table.
@@ -109,7 +109,7 @@ Before enabling the dynamic shape function, install the ops operator package. Fo
 
 **Process Introduction**
 
-If you want to use dynamic shapes in the Rec SDK TensorFlow training framework, set the "use_dynamic" parameter of the [`init`](./api/initialization_and_deinitialization_of_the_training_framework.md#init) API to `True` when you initialize the framework.
+If you want to use dynamic shapes in the Rec SDK TensorFlow training framework, set the `use_dynamic` parameter of the [`init`](./api/initialization_and_deinitialization_of_the_training_framework.md#init) API to `True` when you initialize the framework.
 
 **Sample Code**
 
@@ -123,8 +123,7 @@ init(use_mpi, rank_id=rank_id, rank_size=rank_size, train_steps=train_steps, eva
 
 This section describes how to train in automatic graph modification mode. For the overall process, see [Figure 1](#fig1066992151914).
 
-**Figure 1** Process for automatic graph modification
-<a id="fig1066992151914"></a>
+**Figure 1** Process for automatic graph modification<a id="fig1066992151914"></a>
 ![](../../figures/tf_rec_v1/process-for-automatic-graph-modification.png "Process for automatic graph modification")
 
 The normal training process usually includes data processing, sparse table creation, lookup, and training startup. Automatic graph modification follows the same process, except that you only need to set the `modify_graph` parameter to `True` in the lookup API, and you must call the automatic graph modification API before training starts. The key steps are the lookup operation and the call to the automatic graph modification API.
@@ -192,7 +191,7 @@ The normal training process usually includes data processing, sparse table creat
         ```python
         from mx_rec.graph.modifier import GraphModifierHook
 
-        est.train(input_fn=lambda: input_fn(), hooks=[GraphModifierHook()])   # est is the created NPUEstimator object.
+        est.train(input_fn=lambda: input_fn(), hooks=[GraphModifierHook()])   # est is the created NPUEstimator object
         ```
 
 ### Feature Admission and Eviction
@@ -263,13 +262,13 @@ This section describes how to use feature admission and eviction for training. I
         sess.run(set_threshold_op)
     ```
 
-### `Hot\_Embedding`
+### `Hot_Embedding`
 
 Hot_Embedding is enabled by default and does not require configuration.
 
 **Sample Code**
 
-This feature is enabled automatically and does not require configuration. To make sure it is enabled successfully, you need to enable the high-performance mode for the GatherV2 operator. Use the following method:
+This feature is enabled automatically and does not require configuration. To make sure it is enabled successfully, you need to enable the high-performance mode for the `GatherV2` operator. Use the following method:
 
 1. Pass the `op_impl_mode.ini` configuration item to `Session`. The code is as follows:
 
@@ -278,12 +277,12 @@ This feature is enabled automatically and does not require configuration. To mak
     session_config = tf.compat.v1.ConfigProto(allow_soft_placement=False, log_device_placement=False)
     session_config.gpu_options.allow_growth = True
     custom_op = session_config.graph_options.rewrite_options.custom_optimizers.add()
-    # 1. Pass the operator configuration file path to the configuration item.
+    # 1. Pass the operator configuration file path to the configuration item
     custom_op.parameter_map["op_precision_mode"].s = tf.compat.as_bytes("op_impl_mode.ini")
-    # 2. Build the graph.
-    # 3. Pass the config to sess initialization.
+    # 2. Build the graph
+    # 3. Pass the config to sess initialization
     with tf.compat.v1.Session(config=sess_config) as sess:
-    # 4. Train.
+    # 4. Train
     ```
 
 2. Create the `op_impl_mode.ini` file in the model path with the following content:
@@ -326,11 +325,11 @@ est = NPUEstimator(
 |Parameter|Type|Description|
 |--|--|--|
 |ckpt_to_initialize_from|str(path)|Specifies the checkpoint from which initialization starts.|
-|vars_to_warm_start|str/regular expression/list[str]/list[variables]|Specifies the variables from which initialization starts. Dense-layer variables follow native TensorFlow behavior. Embedding parameters support regular expressions, a string of table name, and a list of table names.|
+|vars_to_warm_start|str/regular expression/list[str]/list[variables]|Specifies the variables from which initialization starts. Dense-layer variables follow native TensorFlow behavior. Embedding parameters support regular expressions, a table name string, and a list of table names.|
 |var_name_to_vocab_info|dict|Specifies vocabulary information for restoring the embedding matrix.|
 |var_name_to_prev_var_name|dict|Stores the mapping between variable names and the variable names in the WarmStart path. <div class="note"><span class="notetitle">Note</span><div class="notebody">Embedding table names do not currently support name mapping.</div></div>|
 
-Example 2: The model loads all parameters from the `warm_start_1` path, then loads the Embedding tables `user_table` and `item_table` from the `warm_start_2` path and replaces the sparse table results that were already loaded from the `warm_start_1` path. The model loads the `mlp_layer_w` parameter from the `warm_start_3` path and replaces the result loaded from `warm_start_1`.
+Example 2: The model loads all parameters from the `warm_start_1` path, then loads the embedding tables `user_table` and `item_table` from the `warm_start_2` path and replaces the sparse table results that were already loaded from the `warm_start_1` path. The model loads the `mlp_layer_w` parameter from the `warm_start_3` path and replaces the result loaded from `warm_start_1`.
 
 ```python
 import tensorflow as tf
@@ -358,8 +357,8 @@ warm_settings=tf.estimator.WarmStartSettings(
 
 |Parameter|Type|Description|
 |--|--|--|
-|ckpt_to_initialize_from|List(str(path))|Type|
-|vars_to_warm_start|List(str/regular expression/list[str]/list[variables])|Specifies the variables from which initialization starts.<br>Dense-layer variables follow native TensorFlow behavior. Embedding parameters support regular expressions, a string of table name, and a list of table names.|
+|ckpt_to_initialize_from|List(str(path))|Specifies the checkpoint from which initialization starts.|
+|vars_to_warm_start|List(str/regular expression/list[str]/list[variables])|Specifies the variables from which initialization starts.<br>Dense-layer variables follow native TensorFlow behavior. Embedding parameters support regular expressions, a table name string, and a list of table names.|
 |var_name_to_vocab_info|List(dict)|Specifies vocabulary information for restoring the embedding matrix.|
 |var_name_to_prev_var_name|List(dict)|Stores the mapping between variable names and the variable names in the WarmStart path.<br>Name mapping for embedding tables is currently not supported.|
 
@@ -372,7 +371,7 @@ If you want to use the incremental model saving and loading feature in the Rec S
 - `is_incremental_checkpoint=True`: enables incremental model saving and loading.
 - `save_checkpoint_due_time=xx`: saves the full model every *xx* seconds.
 - `save_delta_checkpoints_secs=xx`: saves the incremental model every *xx* seconds.
-- `restore_model_version=xx`: specifies the model at the xx step to load. If you do not pass this parameter, the latest model is loaded. If you do not need to load a model, you can leave this parameter unset.
+- `restore_model_version=xx`: specifies the model at the *xx* step to load. If you do not pass this parameter, the latest model is loaded. If you do not need to load a model, you can leave this parameter unset.
 
 **Sample Code**
 
@@ -380,7 +379,7 @@ The following is an example:
 
 ```python
 from mx_rec.util.initialize import init
-# set init
+# Set init
 init(train_steps=args.train_steps,
      eval_steps=args.eval_steps,
       save_steps=args.save_checkpoints_steps,

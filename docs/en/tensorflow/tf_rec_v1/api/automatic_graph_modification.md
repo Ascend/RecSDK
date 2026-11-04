@@ -30,12 +30,12 @@ ConfigInitializer.get_instance().train_params_config.get_initializer(is_training
 import tensorflow as tf
 from mx_rec.util.initialize import ConfigInitializer
 from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
-# For training, automatic graph modification must be enabled.
-# In training mode, automatic graph modification must be performed after gradients are calculated.
-# (The implementation details of gradient calculation are omitted.)
+# For training, automatic graph modification must be enabled
+# In training mode, automatic graph modification must be performed after gradients are calculated
+# (The implementation details of gradient calculation are omitted)
 modify_graph_and_start_emb_cache(dump_graph=True)
 with tf.compat.v1.Session() as sess:
-    # Ensure that the modify_graph_and_start_emb_cache() interface has been called.
+    # Ensure that the modify_graph_and_start_emb_cache() interface has been called
     initializer = ConfigInitializer.get_instance().train_params_config.get_initializer(True)
     sess.run(initializer)
 ```

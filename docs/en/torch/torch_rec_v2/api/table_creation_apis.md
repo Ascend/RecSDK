@@ -14,14 +14,23 @@ Input to `EmbeddingCollection`. Use it to configure table size, `dim`, data type
 ```python
 @dataclass
 class EmbeddingConfig:
-    def __init__(**kwargs):
+    num_embeddings: int
+    embedding_dim: int
+    name: str
+    data_type: torchrec.types.DataType = torchrec.types.DataType.FP32
+    feature_names: List[str]
+    weight_init_max: float = None
+    weight_init_min: float = None
+    num_embeddings_post_pruning: int = None
+    init_fn: Callable = None
+    need_pos: bool = False
 ```
 
 **Parameters**
 
 |Parameter|Type|Mandatory/Optional|Description|
 |--|--|----|--|
-|num_embeddings|int|Mandatory|Number of rows in the sparse table. The value ranges from 1 to 1 billion. The minimum value must be greater than or equal to the number of used cards.|
+|num_embeddings|int|Mandatory|Number of rows in the sparse table. The value ranges from 1 to 10^9. The minimum value must be greater than or equal to the number of used devices.|
 |embedding_dim|int|Mandatory|Number of columns in the sparse table. The value range is [8, 4096]. The value must be a multiple of 8.|
 |name|str|Mandatory|Name of the sparse table. The value can contain only numbers, letters, and underscores (_). The length of the value must be in the range of [1,4096].|
 |data_type|torchrec.types.DataType|Optional|Data type of the sparse table. Only the default value `DataType.FP32` is supported.|
@@ -29,7 +38,7 @@ class EmbeddingConfig:
 |weight_init_max|float|Optional|Maximum value for weight initialization. Only the default value `None` is supported.|
 |weight_init_min|float|Optional|Minimum value for weight initialization. Only the default value `None` is supported.|
 |num_embeddings_post_pruning|int|Optional|Number of sparse tables after inference pruning. Only the default value `None` is supported.|
-|init_fn|Callable|Optional|Initialization function. A function of the `nn.Parameter` type can be passed. You need to ensure that the function is correct. The default value is `None`.|
+|init_fn|Callable|Optional|Embedding weight initialization function. It receives a weight parameter of the `nn.Parameter` type and initializes the weights in place within the function. You need to ensure that the function is correct. The default value is `None`.|
 |need_pos|bool|Optional|Position weight. Only the default value `False` is supported.|
 
 **Example**

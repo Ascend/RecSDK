@@ -15,7 +15,9 @@ This section provides a small demo that guides you through building a model with
 |logger.py|Log module definition|
 |README.md|Dataset download and demo model running instructions|
 
-## Interface Call Introduction
+## Introduction to Main Steps of Model Building
+
+For the parameter meanings and constraints of the interfaces mentioned in this document, see [Interface Description](./api/README.md).
 
 The following steps omit implementation details. For the complete code, see [Rec SDK Torch Little Demo Sample](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/little_demo). The key steps are as follows:
 
@@ -54,7 +56,7 @@ The following steps omit implementation details. For the complete code, see [Rec
     device = torch.device(f"npu:{local_rank}")
     ```
 
-3. Defining the model structure.
+3. Define the model structure.
 
     Build a model that includes an `EmbeddingCollection`.
 
@@ -100,7 +102,7 @@ The following steps omit implementation details. For the complete code, see [Rec
     ```python
     # model.py
     def get_planner(device, eb_configs, batch_size, training):
-        ···
+        ...
         return DynamicEmbeddingShardingPlanner(
             eb_configs=eb_configs,
             topology=topology,
@@ -117,7 +119,7 @@ The following steps omit implementation details. For the complete code, see [Rec
     ```python
     # model.py
     def apply_dmp(model, args, training, device):
-        ···
+        ...
         plan = planner.collective_plan(model, [sharder], dist.GroupMember.WORLD)
         return DistributedModelParallel(
             module=model,
@@ -131,27 +133,40 @@ The following steps omit implementation details. For the complete code, see [Rec
 
     Save the dense model weights and dynamic embedding data.
     Use dedicated APIs for sparse weights and optimizer state.
+
+    ```python
+    # API calls
+    from dynamic_emb.distributed.dump_load import DynamicEmbDump
+    from dynamic_emb.distributed.dump_load import DynamicEmbLoad
+    ```
+
     - Saving: `DynamicEmbDump(save_dir, model, optim=True)`
     - Loading: `DynamicEmbLoad(save_dir, model, optim=True)`
 
 ## Model Training Startup
 
-Model training depends on a container environment. You can quickly start the container and train the model using a prebuilt container image. You can also manually install dependencies and deploy the software in the container image environment.
+Model training depends on a container environment. You can quickly start the container and run model training using a prebuilt container image. You can also manually install dependencies and deploy the software in the container image environment.
 
 ### Option 1: Starting Model Training Using an Existing Container Image
 
 1. Obtain an existing runtime image, start the container, and enter it.
 See [OVERVIEW](../../../../docker/OVERVIEW.zh.md) for instructions on starting the container from the prebuilt image and entering it.
 
+    The software versions in the preceding image are as follows:
+
+    |Software|PyTorch|TorchNPU|TorchRec|fbgemm_gpu|dynamic_emb|
+    |--|--|--|--|--|--|
+    |Version|2.7.1|2.7.1|1.2.0+npu|1.2.0|25.09|
+
 2. Configure the environment in the container.
 
     Run the following commands to configure the environment in the container:
 
     ```bash
-    # Activate the Python virtual environment.
+    # Set the CANN version
+    source /usr/local/set_cann_env.sh a5 # Switch to and enable the Ascend 950 Toolkit and related environment variables
+    # Activate the Python virtual environment
     source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
-    # Set the CANN version.
-    bash /usr/local/set_cann_env.sh A5
     ```
 
 3. Start model training.
@@ -165,7 +180,7 @@ See [OVERVIEW](../../../../docker/OVERVIEW.zh.md) for instructions on starting t
     Download the MovieLens-1M dataset and extract it into the `ml-1m` folder in the current directory.
     Dataset link: [MovieLens-1M](https://files.grouplens.org/datasets/movielens/ml-1m.zip)
 
-    The downloaded file is named `ml-1m.zip`. Decompress it. By default, the sample model uses `./ml-1m` as the data path. To change the path, specify the `--data_path` parameter in the `run.sh` script.
+    The downloaded file is named `ml-1m.zip`. Decompress it. By default, the sample model uses `./ml-1m` as the data path. To change the path, specify the `--data_path` parameter in the `run.sh` script, for example, `--data_path ./dataset/ml-1m`.
 
     Run the model script:
 
@@ -181,8 +196,10 @@ See [OVERVIEW](../../../../docker/OVERVIEW.zh.md) for instructions on starting t
     torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=1 main.py --load --dump "$@"
     ```
 
+    When the model finishes running, `Demo done.` is displayed.
+
 ### Option 2: Manually Preparing the Running Environment and Starting Model Training
 
-1. See the [Install Rec SDK Torch](./recsdk_torch_installation_guide.md#section182972951211) section to prepare the container environment, then start and enter the container.
+1. See the [Install Rec SDK Torch](recsdk_torch_installation_guide.md#section182972951211) section to prepare the container environment, then start and enter the container.
 2. Download the [Rec SDK Torch Little Demo Sample](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/little_demo) code.
 3. Start model training as in option 1.

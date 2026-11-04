@@ -32,7 +32,7 @@ Depending on the base image, the dependencies to be downloaded vary.
 
 1. When using the Rec SDK training image from AscendHub as the base image, you only need to download the latest CANN, tf-plugin, and Rec SDK installation packages of the latest matching version from the [Ascend Community](https://www.hiascend.com/developer/download/community/result?module=sdk+cann). Download the CANN and Rec SDK of the matching version from the following links:
 
-    <https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann>
+    <https://www.hiascend.com/en/developer/software/mindsdk/download>
 
     <https://www.hiascend.com/developer/download/community/result?module=tf+cann>
 
@@ -69,7 +69,7 @@ Depending on the base image, the dependencies to be downloaded vary.
     The Rec SDK version package released on the Ascend community (<https://www.hiascend.com/developer/download/community/result?module=sdk+cann>) matches the CANN version. Therefore, you need to download Rec SDK, CANN, and tf-plugin of the matching version from the community.
     You can download the Rec SDK and CANN of the matching version from the following links:
 
-    <https://www.hiascend.com/zh/developer/download/community/result?module=sdk+cann>
+    <https://www.hiascend.com/en/developer/software/mindsdk/download>
 
     <https://www.hiascend.com/developer/download/community/result?module=tf+cann>
 

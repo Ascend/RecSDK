@@ -13,12 +13,12 @@ This document introduces the concepts of performance, performance tools, and met
 
 Align the following key metrics:
 
-- Single-card and multi-card scenarios: In single-card scenario verification, partition CPU resources in Docker according to the customer configuration for verification. In multi-card scenarios, CPU-bound issues may occur. During early debugging, confirm that CPU resources meet requirements.
+- Single-device and multi-device scenarios: In single-device scenario verification, partition CPU resources in Docker according to the customer configuration for verification. In multi-device scenarios, CPU-bound issues may occur. During early debugging, confirm that CPU resources meet requirements.
 - Latency requirements: Confirm whether a fixed or variable value is required, and confirm the requirement standards for low-load and high-load scenarios.
 - Batch size distribution: Confirm whether a fixed or dynamic value is required and the batch size distribution.
 - Queries per second (QPS): The number of requests is the total number of requests within an interval. QPS = requests per second (req/sec).
 - Throughput: It is the maximum amount of sample data that the network model can process per unit time, for example, 1 s. Throughput = QPS × batch size.
-- Data types: float16, float32, and other types.
+- Data types: `float16`, `float32`, and other types
 
 ### Introduction to Performance Tuning Tools
 
@@ -26,7 +26,7 @@ Align the following key metrics:
 
 ##### PyTorch-Specific Performance Profiling
 
-For PyTorch, you are advised to use the profiling interface. After profiling, the tool automatically parses the performance data. For details, see **msprof common profiling commands** in the *CANN Performance Tuning Tool User Guide*.
+For PyTorch, you are advised to use the profiling interface. After profiling, the tool automatically parses the performance data. For details, see `msprof` common profiling commands in the *CANN Performance Tuning Tool User Guide*.
 
 The following is a complete example:
 
@@ -52,7 +52,7 @@ def main():
     print(output.shape)
     print(output.device)
     print(output)
-    # perf code
+    # Perf code
     experimental_config = torch_npu.profiler._ExperimentalConfig(
         export_type=[
             torch_npu.profiler.ExportType.Text,
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     main()
 ```
 
-##### Performance profiling for TensorFlow and PyTorch
+##### Performance Profiling for TensorFlow and PyTorch
 
 In TensorFlow, no interface can be called directly. You must use the `msprof` command for profiling. Use dynamic profiling to control the volume of collected data. For details, see **Dynamic Profiling of Performance Data** in the *CANN Performance Tuning Tool User Guide*.
 
@@ -117,8 +117,8 @@ inputs_x = inputs_x.astype(np.int64)
 inputs_y = np.random.rand(*right_shape)
 inputs_y = inputs_y.astype(np.int64)
 with tf.compat.v1.Session(config=session_config) as sess:
-  for i in range(100000):
-    result = sess.run(equal_ret, feed_dict={x:inputs_x, y:inputs_y})
+    for i in range(100000):
+        result = sess.run(equal_ret, feed_dict={x:inputs_x, y:inputs_y})
 
 print(result)
 ```
@@ -140,7 +140,7 @@ print(result)
 
 2. After the data is collected, parse it manually. Enter the directory collected in the preceding step (usually a directory with a timestamp) and run the following commands to parse the data:
 
-    ```cpp
+    ```bash
     // Enable parsing and output profiling to the current directory.
     msprof --parse=on --output=./
     // Enable export and save the results in CSV format to the current directory.
@@ -152,7 +152,7 @@ print(result)
 
 #### Graph Engine Dump
 
-Execution graph analysis must be based on the graph optimized by the graph engine (GE), so you must dump it by configuring the relevant environment variables.
+Execution graph analysis must be based on the graph optimized by the graph engine (GE). Therefore, you must dump it by configuring the relevant environment variables.
 
 The environment variables involved are `DUMP_GE_GRAPH`, `DUMP_GRAPH_LEVEL`, and `DUMP_GRAPH_PATH`. For details, see **Graph Compilation** in the *CANN Environment Variable Reference*.
 
@@ -160,7 +160,7 @@ Common configurations are `DUMP_GE_GRAPH=2` and `DUMP_GRAPH_LEVEL=2`.
 
 In the dumped graph folder, several `.pbtxt` and `.pb` files are generated in sequence after each stage of the graph optimization process completes. For example, in `ge_onnx_00000101_graph_0_Build.pbtxt`, `00000101` is the sequence number. The `0` in `graph_0` represents the rank ID, which is always 0 in recommendation inference scenarios. The build graph here corresponds to the graph in the execution stage. Analyze the optimization space through profiling and the network structure corresponding to this graph.
 
-[msIT Tool](https://gitcode.com/Ascend/msit/blob/master/msit/docs/graph/README.md): Dump the GE graph, and use the msit graph function of the tool to scan for repeated structures. For substructures that appear many times and account for a large proportion, consider manually writing fused passes and fused operators for optimization. The tool also has a subgraph extraction function. For example, in scenarios where the graph is too large to open, you can extract a subgraph for analysis. A third-party network visualization tool is recommended: [netron.app](https://netron.app/).
+[msIT Tool](https://atomgit.com/Ascend/msit/blob/master/msit/docs/graph/README.md): Dump the GE graph, and use the `msit` graph function of the tool to scan for repeated structures. For substructures that appear many times and account for a large proportion, consider manually writing fused passes and fused operators for optimization. The tool also has a subgraph extraction function. For example, in scenarios where the graph is too large to open, you can extract a subgraph for analysis. A third-party network visualization tool is recommended: [netron.app](https://netron.app/).
 
 ## Performance Optimization Analysis
 
@@ -178,8 +178,8 @@ The software stack involved is primarily PyTorch and TensorFlow. In these two sc
 
 When a customer model is started, the specific use of the TensorFlow or PyTorch technology stack usually depends on the customer's needs. The choice of the bring-up software stack should be based on the customer's inference framework process.
 
-- For the TensorFlow framework, the customer usually provides a .pb file. The model can be run according to the customer's software stack. You can refer to the community demo ([TF Inference Sample Reference](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/82RC1alpha002/migration/tfmigr1/atlastfserv_26_0006.html)).
-- For the PyTorch route, you can use the TorchAir suite for inference. Refer to the community demo ([TorchAir Inference Sample](https://www.hiascend.com/document/detail/zh/Pytorch/710/modthirdparty/torchairuseguide/torchair_00005.html)).
+- For the TensorFlow framework, the customer usually provides a `.pb` file. The model can be run according to the customer's software stack. You can refer to the community demo ([TF Inference Sample Reference](https://www.hiascend.com/document/detail/en/TensorFlowCommunity/82RC1alpha002/migration/tfmigr1/atlastfserv_26_0006.html)).
+- For the PyTorch route, you can use the TorchAir suite for inference. Refer to the community demo ([TorchAir Inference Sample](https://www.hiascend.com/document/detail/en/Pytorch/710/modthirdparty/torchairuseguide/torchair_00005.html)).
 - For the ecosystem route, use the Inductor + Triton process. After completing the bring-up, you can initially observe the performance baseline and compare it with the target, while referring to the profiling methods in previous sections for subsequent analysis.
 
 ### Different Bottlenecks
@@ -199,7 +199,7 @@ Program performance is dominated by the execution time of the computing cores (k
 2. For example, filtering `AI_CORE` here calculates the utilization of `CUBE`.
 3. Sort by start time. Calculating the difference between the first and last timestamps gives the total time for the entire segment.
 4. The total number of `CUBE` cycles is the sum of `aic_total_cycles`.
-5. Utilization = ③/(②/1,000,000 × 20 × 1,650 × 1,000,000). The unit of ② is µs, so it is divided by 1,000,000 to convert to s. 20 is the number of AI Cores on the specific chip. 1,650 is the frequency of the current chip in MHz/s, so it is multiplied by 1,000,000.
+5. Utilization = ③/(②/1,000,000 × 20 × 1,650 × 1,000,000). The unit of ② is µs. Therefore, it is divided by 1,000,000 to convert to s. 20 is the number of AI Cores on the specific chip. 1,650 is the frequency of the current chip in MHz. Therefore, it is multiplied by 1,000,000.
 
     The utilization calculated here is 78.9% of the overall Cube utilization.
 
@@ -209,11 +209,11 @@ Optimization methods in Cube/Vector-bound scenarios:
 
 - Graph optimization, such as `torch.compile` or TensorFlow XLA.
 - Operator fusion to reduce operator launch overhead and intermediate reading/writing.
-- Data types, such as reducing from float32 to HF32. For the same data, the computing workload decreases (this may affect accuracy, so perform accuracy testing). Note that the HF32 data type only takes effect for Conv and Matmul operators.
+- Data types, such as reducing from `float32` to `HF32`. For the same data, the computing workload decreases (this may affect accuracy. Therefore, perform accuracy testing). Note that the `HF32` data type only takes effect for `Conv` and `Matmul` operators.
 
 #### Host
 
-**Analysis process**
+**Analysis Process**
 
 When opening the profiling timeline file through the `chrome://tracing/` page, you can see operator dispatch similar to the following.
 
@@ -223,7 +223,7 @@ As shown in the figure, there are many "bubbles" on the device, and the computin
 
 This situation is generally seen in dynamic graph scenarios or single-operator dispatch scenarios, where processing must complete on the host before a single operator is dispatched, and the operator execution time is less than the host-side processing time.
 
-For host-side computational workload, export data through the native TensorFlow Profiler to check the proportion of host and device time and judge by CPU utilization. After hybrid computing is enabled (refer to: [www.hiascend.com](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/82RC1alpha003/migration/tfmigr1/tfmigr1_000074.html)), the system automatically keeps operators that cannot be executed on the device to be executed on the host. You can also specify certain operators not to offload to the device, leading to higher host calculation volume. Use the native TensorFlow Profiler to capture the performance of the entire session run (refer to [www.tensorflow.org](https://www.tensorflow.org/guide/profiler#overview_page)) and analyze the proportion of host-side and device-side time.
+For host-side computational workload, export data through the native TensorFlow Profiler to check the proportion of host and device time and judge by CPU utilization. After hybrid computing is enabled (refer to: [www.hiascend.com](https://www.hiascend.com/document/detail/en/TensorFlowCommunity/82RC1alpha003/migration/tfmigr1/tfmigr1_000074.html)), the system automatically keeps operators that cannot be executed on the device to be executed on the host. You can also specify certain operators not to offload to the device, leading to higher host calculation volume. Use the native TensorFlow Profiler to capture the performance of the entire session run (refer to [www.tensorflow.org](https://www.tensorflow.org/guide/profiler#overview_page)) and analyze the proportion of host-side and device-side time.
 
 **Solutions**
 
@@ -242,17 +242,17 @@ The time consumed by PCIe in the timeline file is shown as `model@inputcopy` in 
 
 ![](figures/performance_tuning/image_0000002414375865.png)
 
-Actual rate indicators are summarized in the `pcie_*.csv` file through summary information. For details, see [www.hiascend.com](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/devaids/Profiling/atlasprofiling_16_0012.html). The relevant variable is `--sys-interconnection-profiling`. For example, `Tx_p_avg` in the figure is the input data, with an average rate of 99.628 MB/s.
+Actual rate indicators are summarized in the `pcie_*.csv` file through summary information. For details, see [www.hiascend.com](https://www.hiascend.com/document/detail/en/canncommercial/82RC1/devaids/Profiling/atlasprofiling_16_0012.html). The relevant variable is `--sys-interconnection-profiling`. For example, `Tx_p_avg` in the figure is the input data, with an average rate of 99.628 MB/s.
 
 ![](figures/performance_tuning/image_0000002380656658.png)
 
-Theoretical data calculation: Assuming PCIe 5.0, the bidirectional transmission rate of each PCIe lane is close to 8 GB/s. A card typically has an x4 interface, so the theoretical maximum rate is close to 32 GB/s. The actual rate varies according to the size of the transmitted file. Generally, a maximum of 80% of the theoretical bandwidth can be reached. The actual bandwidth is strongly related to the shape and size of the sent data.
+Theoretical data calculation: Assuming PCIe 5.0, the bidirectional transmission rate of each PCIe lane is close to 8 GB/s. A device typically has an x4 interface. Therefore, the theoretical maximum rate is close to 32 GB/s. The actual rate varies according to the size of the transmitted file. Generally, a maximum of 80% of the theoretical bandwidth can be reached. The actual bandwidth is strongly related to the shape and size of the sent data.
 
-**Analysis direction**
+**Analysis Direction**
 
-1. Determine how many cards correspond to one CPU and whether time consumption caused by PCIe contention can be reduced through operations such as NUMA node binding.
+1. Determine how many devices correspond to one CPU and whether time consumption caused by PCIe contention can be reduced through operations such as NUMA node binding.
 2. Increase the batch size to reduce the proportion of PCIe transmission header overhead.
-3. Data format: Reducing from float32 to float16 can also effectively solve the issue. Ensure that accuracy meets the requirement or is acceptable to the customer.
+3. Data format: Reducing from `float32` to `float16` can also effectively solve the issue. Ensure that accuracy meets the requirement or is acceptable to the customer.
 4. Accumulate data on the host first, converting small data transmissions into large ones. The GE framework has this function. If the customer calls the `aclrt` interface, they must implement it themselves.
 
 #### Memory Access
@@ -263,13 +263,13 @@ This section mainly targets memory input and output of Vector or Cube operators,
 
     ![](figures/performance_tuning/image_0000002380816530.png)
 
-    As shown in the preceding figure, the input data volume is 20,000/48 × 2 × 8 = 6.5 KB. 48 indicates that data is distributed to 48 cores, 2 indicates two shapes of 20,000, 8 indicates `int64`, and `mte2` time is 1051 µs, so the calculated bandwidth is 0.005 GB/s. This bandwidth is far below the theoretical bandwidth and is problematic.
+    As shown in the preceding figure, the input data volume is 20,000/48 × 2 × 8 = 6.5 KB. 48 indicates that data is distributed to 48 cores, 2 indicates two shapes of 20,000, 8 indicates `int64`, and `mte2` time is 1051 µs. Therefore, the calculated bandwidth is 0.005 GB/s. This bandwidth is far below the theoretical bandwidth and is problematic.
 
 2. Directly judge whether the `aiv_mte2_ratio` field in the profiling file exceeds 0.8. If many operators exceed 0.8, this part must be optimized, as shown in the figure.
 
     ![](figures/performance_tuning/image_0000002414256021.png)
 
-**Analysis direction**
+**Analysis Direction**
 
 1. Analyze whether the time consumption is reasonable.
 2. Vector operator fusion can effectively reduce the amount of data to be copied, releasing memory access pressure.
@@ -281,7 +281,7 @@ This section mainly targets memory input and output of Vector or Cube operators,
 
 A customer allocates a fixed percentage of traffic from a large pool to a cluster. A certain number of NPUs in this cluster handle these requests. The goal is to reduce the number of NPUs in the cluster while ensuring that request latency does not exceed the threshold.
 
-**Analysis process**
+**Analysis Process**
 
 Local test data -> step 1:
 
@@ -305,7 +305,7 @@ Based on local test performance, we can choose a maximum batch size level of 16 
 
 Online batch size performance tuning -> step 3:
 
-Actual data shows that during peak traffic, NPU latency deteriorates severely. Latency increases as traffic increases, so utilization is suspected.
+Actual data shows that during peak traffic, NPU latency deteriorates severely. Latency increases as traffic increases. Therefore, utilization is suspected.
 
 Comparing local test data in the 12/24 core partitioning scenario, NPU processing for a request with a batch size of 20 is as follows.
 
@@ -322,13 +322,13 @@ After the maximum batch size is changed, actual average online latency showed no
 
 For a coarse ranking model, TP99 latency under low load must be reduced to within 5 ms while maintaining core limits (Cube: 7 cores, Vector: 10 cores) to ensure performance in high-load scenarios.
 
-**Analysis process**
+**Analysis Process**
 
 Profiling:
 
 Since the goal is to optimize low-pressure latency, profiling is performed serially. Run the model for inference, then use `msprof --dynamic=on --pid=9527 --output=/home/projects/output --model-execution=on --runtime-api=on --aicpu=on` for dynamic profiling. For details, see [msProf](#msprof).
 
-Bring-up: In the scenario without optimization (only operator mode configuration, `GatherV2` high performance, Cube HF32 enabled), a single `modelExecute` takes 51 ms, which is 10 times the target.
+Bring-up: In the scenario without optimization (only operator mode configuration, `GatherV2` high performance, Cube `HF32` enabled), a single `modelExecute` takes 51 ms, which is 10 times the target.
 
 ![](figures/performance_tuning/image_0000002414256025.png)
 
@@ -344,7 +344,7 @@ Bring-up: In the scenario without optimization (only operator mode configuration
 
     ![](figures/performance_tuning/image_0000002417307965.png)
 
-    This substructure introduces the `Where` operator, so subsequent operator shapes are not fixed, introducing dynamic subgraphs. Since `Where` is a type-3 operator (the output shape is not fixed), the dynamic graph must return shape information to the host after `Where` execution before subsequent shape derivation. This leads to high `task_wait` time.
+    This substructure introduces the `Where` operator. Therefore, subsequent operator shapes are not fixed, introducing dynamic subgraphs. Since `Where` is a type-3 operator (the output shape is not fixed), the dynamic graph must return shape information to the host after `Where` execution before subsequent shape derivation. This leads to high `task_wait` time.
 
     Execution logic analysis shows that this substructure extends the `Gather` logic to return an all-zero vector for index < 0. Based on repeated data analysis, the input carries long segments of padded zeros. Implementing a custom `Gather` operator and loading part of the table into UB solves the dynamic subgraph, core limiting, and performance issues.
 
@@ -356,7 +356,7 @@ After solving these issues through custom operators, collect profiling data agai
 
 ![](figures/performance_tuning/image_0000002414256029.png)
 
-Operators not replaced by `DefaultGather` are not in that dynamic structure. However, for a `Gather` operator with a sequence length of 4,000, theoretical analysis shows that it should not take more than 180 µs. The actual issue is caused by the `GatherV2` high-performance mode in the full-load scenario. For a table shape of 400 x 50, performance improves greatly after full loading.
+Operators not replaced by `DefaultGather` are not in that dynamic structure. However, for a `Gather` operator with a sequence length of 4,000, theoretical analysis shows that it should not take more than 180 µs. The actual issue is caused by the `GatherV2` high-performance mode in the full-load scenario. For a table shape of 400 × 50, performance improves greatly after full loading.
 
 A custom `Gather` operator is used here to cover this scenario (synchronous operator optimization requirement).
 
@@ -368,7 +368,7 @@ After the remaining `Gather` operators are replaced with `CustomGather` (full-lo
 
 Analyzing bottlenecks: the top ones are `TopK` and `Equal`. The underlying `TopK` operator does not support SIMT and is implemented through complex algorithms on Vector, leading to long latency. There is no optimization space in the operator itself. However, the `TopK` input contains padded zeros. If effective length is passed to `TopK`, average execution time can be significantly reduced (little impact on TP99 but affects maximum QPS). This depends on upper-layer framework changes and is not implemented here.
 
-For the `Equal` operator, with shapes (1 x 4000) and (400 x 1), execution takes over 230 µs, far from the theoretical performance of Vector operators. This is caused by the Int64 implementation. Testing shows that an Int32 `Equal` with the same shapes takes less than 30 µs. Int64 should not take an order of magnitude more time. For this dual-broadcast scenario, an Int64 implementation of `Equal` was designed, reducing latency to around 75 µs.
+For the `Equal` operator, with shapes (1 × 4000) and (400 × 1), execution takes over 230 µs, far from the theoretical performance of Vector operators. This is caused by the `Int64` implementation. Testing shows that an `Int32` `Equal` with the same shapes takes less than 30 µs. `Int64` should not take an order of magnitude more time. For this dual-broadcast scenario, an `Int64` implementation of `Equal` was designed, reducing latency to around 75 µs.
 
 AICPU operators such as `Unique` and `Where` were also found.
 
@@ -376,7 +376,7 @@ Operators depend on upper-layer graph splitting, which is controlled by the user
 
 ![](figures/performance_tuning/image_0000002380656670.png)
 
-For this kind of `BatchMatMul`, replacing the calculation logic with `2, 400, 300 * 2, 300, 16` also improves performance.
+For this kind of `BatchMatMul`, replacing the calculation logic with `2, 400, 300 × 2, 300, 16` also improves performance.
 
 ![](figures/performance_tuning/image_0000002380816542.png)
 
@@ -396,33 +396,33 @@ Due to SIMD, the performance of AICPU operators on the NPU is generally poor. Th
 
 Currently, these are implemented through manual identification and modification of customer model code, requiring customer cooperation.
 
-**Specific cases**
+**Specific Cases**
 
 **Case 1:**
 
-For `TopK`, int32/int64 values can only be executed on AICPU. If the type is fp32, there is an AI Vector implementation. If int32/int64-to-fp32 conversion is possible without significant precision loss (loss value < 2^24), `TopK` with integer indexes can be converted to `cast(int32->fp32/int64)` + `TopK(fp32)` + `cast(fp32->int32/int64)` through a custom pass.
+For `TopK`, if the value is of the `int32`/`int64` type, it can only be executed on AICPU. However, if the value is of the `fp32` type, there is an AI Vector implementation. Based on the actual user scenario, if `int32`/`int64`-to-`fp32` conversion is feasible without precision loss (values < 2^24), you can use a custom pass to convert `TopK` with `int32` indexes (`int64` is handled similarly) to `cast(int32->fp32)` + `TopK(fp32)` + `cast(fp32->int32)`.
 
 **Case 2:**
 
-For AICPU operators on the NPU without Vector implementations, if upper-layer operators are hard to offload to the CPU, consider graph modification so AICPU operators do not depend on NPU operators. As shown in the figure, the `Gather` operator that `Bucketize` depends on has indexes from a large NPU subgraph. This subgraph cannot be entirely offloaded. To offload `Bucketize` to the CPU, analyze that it only directly depends on `Gather`. As an index-type operator, `Gather` can have `Bucketize` performed on its table rather than its results (assuming table size is not much greater than output size). Moving `Bucketize` above the table branch of `Gather` shows that the `Squeeze` operator has no sequential dependency with `Bucketize`, so `Bucketize` can be moved above the input to be executed on the CPU.
+For AICPU operators on the NPU without Vector implementations, if upper-layer operators are hard to offload to the CPU, consider graph modification so AICPU operators do not depend on NPU operators. As shown in the figure, the `Gather` operator that `Bucketize` depends on has indexes from a large NPU subgraph. This subgraph cannot be entirely offloaded. To offload `Bucketize` to the CPU, analyze that it only directly depends on `Gather`. As an index-type operator, `Gather` can have `Bucketize` performed on its table rather than its results (assuming table size is not much greater than output size). Moving `Bucketize` above the table branch of `Gather` shows that the `Squeeze` operator has no sequential dependency with `Bucketize`. Therefore, `Bucketize` can be moved above the input to be executed on the CPU.
 
 ![](figures/performance_tuning/image_0000002417288229.png)
 
 ### Custom Passes
 
-**Specific cases**
+**Specific Cases**
 
 **Case 1: `BatchMatMul` + `Tile`**
 
 The `BatchMatMul` operator has broadcast logic. If surrounding operators implement the same logic, they can be eliminated to improve performance. Deleting the `Tile` operator provides:
 
 1. Time saved from the `Tile` operator itself.
-2. Saved memory access (128 × 8 × 300 × 32 × 4 B= 37.5 MB) introduced by `Tile`, which affects cache hit rates of other instances.
+2. Saved memory access (128 × 8 × 300 × 32 × 4 B = 37.5 MB) introduced by `Tile`, which affects cache hit rates of other instances.
 3. Faster `mte` speed for the `BatchMatMul` operator as broadcasting is more efficient.
 
     ![](figures/performance_tuning/image_0000002383734476.png)
 
-**Case 2: homogeneous `concat`**
+**Case 2: Homogeneous `concat`**
 
 In this scenario, using `concat` during graph construction implements the same function as `Tile`. However, the data input volume for `Tile` is only 1/240 of `concat`. If the tail axis is not aligned, `concat` also suffers performance loss.
 
@@ -446,25 +446,25 @@ Swapping the execution order of `Tile` and `concat` reduces read memory access f
 
 If performance issues cannot be avoided by optimizing structures through passes, manual optimization of operators is required. To ensure generalization, hand-written operators often require different tiling branches for different shapes, which involves large amounts of code. When optimizing models, excessive time spent may not meet user needs. Therefore, implementing optimization branches for specific network structures based on prior model knowledge is the optimal strategy.
 
-**Specific cases**
+**Specific Cases**
 
-**Case 1: `TopK` with effective data length**
+**Case 1: `TopK` with Effective Data Length**
 
 `TopK` is used in recommendation inference (for example, the TWINS model). Even if `TopK` is optimized to the Vector core (the `cast` scheme), performance is poor for very long sequence lengths. In addition, due to hardware reasons, `TopK` algorithm performance on NPUs struggles to match that on GPUs. Therefore, optimization of the custom `TopK` operator needs to be analyzed at the model level. From the model perspective, `TopK` input parameters come from a padded sequence. Not all data participates in `TopK`. Effective data is only about 10% on average. Based on this prior condition, implementing a custom `TopK` operator with an effective length input parameter can reduce operator time by 90% on average.
 
-**Case 2: Custom `FloorMod` operator**
+**Case 2: Custom `FloorMod` Operator**
 
-In the model, certain features are bucketed through `FloorMod`. The logic is that index 0 is mapped directly to 0, while other indexes are bucketed by computing their modulo value plus 1, which is then passed to the `Gather` operator. Since NPU hardware lacks native support for int64 operations, the `FloorMod` operator resorts to scalar instructions when handling int64 types, causing significant performance degradation with large input volumes. While converting int64 to dual int32 operations is theoretically possible, it introduces substantial complexity in computation logic and sign bit manipulation. However, leveraging the structural constraints of this design, specifically the requirement that indexes be positive for `Gather` to function, a key optimization can be made. Since `FloorMod` is only used for indexing in `Gather` operations, the divisor, or number of buckets, does not need to be stored as int64. The underlying `fmod` and division instructions natively support only fp32 and fp16. Analysis shows that converting the divisor to fp32 incurs no precision loss for values up to 2^24-1, approximately 16.77 million, which exceeds practical requirements. Algorithm constraints typically limit bucket counts to 2^21-1 for performance optimization, a threshold sufficient for most real-world applications. Therefore, the operator can be designed to support int64/fp32 operations, leveraging existing vectorized implementations that circumvent the scalar instruction bottleneck.
+In the model, certain features are bucketed through `FloorMod`. The logic is that index 0 is mapped directly to 0, while other indexes are bucketed by computing their modulo value plus 1, which is then passed to the `Gather` operator. Since NPU hardware lacks native support for `int64` operations, the `FloorMod` operator resorts to scalar instructions when handling `int64` types, causing significant performance degradation with large input volumes. While converting `int64` to dual `int32` operations is theoretically possible, it introduces substantial complexity in computation logic and sign bit manipulation. However, leveraging the structural constraints of this design, specifically the requirement that indexes be positive for `Gather` to function, a key optimization can be made. Since `FloorMod` is only used for indexing in `Gather` operations, the divisor, or number of buckets, does not need to be stored as `int64`. The underlying `fmod` and division instructions natively support only `fp32` and `fp16`. Analysis shows that converting the divisor to `fp32` incurs no precision loss for values up to 2^24-1, approximately 16.77 million, which exceeds practical requirements. Algorithm constraints typically limit bucket counts to 2^21-1 for performance optimization, a threshold sufficient for most real-world applications. Therefore, the operator can be designed to support `int64`/`fp32` operations, leveraging existing vectorized implementations that circumvent the scalar instruction bottleneck.
 
 ![](figures/performance_tuning/image_0000002383735928.png)
 
-**Case 3: Custom `Gather` operator**
+**Case 3: Custom `Gather` Operator**
 
 For features with default values, a structure converts indexes < 0 to zero vectors and indexes > 0 to embeddings. The `Where` operator acts as an AICPU operator, and the structure executes it as a dynamic subgraph, resulting in poor performance. Integrating this logic into the `Gather` operator, judging index values inside the operator and moving zero vectors or embedding values, reduces overall time by 3 orders of magnitude.
 
 ![](figures/performance_tuning/image_0000002383576056.png)
 
-### Multi-stream
+### Multi-Stream
 
 **Background**
 
@@ -476,9 +476,9 @@ Recommendation inference models often feature many operators with small shapes. 
 2. Without core partitioning, multi-stream processing may suffer from severe compute resource queuing. Whether to combine multi-stream with core partitioning should be determined based on actual data.
 3. The number of streams should be tuned according to actual throughput characteristics of the model. While more streams increase NPU utilization and boost overall throughput, exceeding an optimal threshold introduces cross-stream cache invalidation effects, which can reduce overall throughput performance.
 
-**Specific cases**
+**Specific Cases**
 
-- TensorFlow demo: Refer to [GitCode.com](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/rec_infer/README.md) for enabling multi-stream functionality.
+- TensorFlow demo: Refer to [AtomGit.com](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/rec_infer/README.md) for enabling multi-stream functionality.
 - PyTorch demo: Since the PyTorch community lacks direct multi-stream support, use multi-processing for inference.
 
 ### Core Partitioning
@@ -501,12 +501,12 @@ The benefits of core limiting are as follows:
 
 In single-stream scenarios, inference latency following core partitioning typically shows degradation compared to cases without core partitioning. For latency-sensitive applications, carefully control the extent of latency degradation based on latency requirements.
 
-**Specific cases**
+**Specific Cases**
 
-- TensorFlow demo: For modification instructions, see [Session Configuration Parameters](https://www.hiascend.com/document/detail/zh/TensorFlowCommercial/800/API/tfadapter1x/tfmigr1_tfadapi_0020.html) in the TensorFlow Adapter Interface (1.x) documentation to configure the `aicore_num` parameter.
+- TensorFlow demo: For modification instructions, see [Session Configuration Parameters](https://www.hiascend.com/document/detail/en/TensorFlowCommercial/800/API/tfadapter1x/tfmigr1_tfadapi_0020.html) in the *TensorFlow Adapter Interface (1.x)* documentation to configure the `aicore_num` parameter.
 - PyTorch demo: This feature is not supported currently.
 
-### Batch size Optimization
+### Batch Size Optimization
 
 **Background**
 
@@ -518,7 +518,7 @@ For certain small operators, increasing batch size can reduce the proportion of 
 2. The cache hit rate will decline.
 3. The batch size is typically dictated by the customer's service requirements. While you can test performance improvements with larger batch sizes in local benchmarking scripts, production performance may differ. Since batch size can vary and padding may be necessary in production environments, real-world optimal performance may not match local test results.
 
-**Specific cases**
+**Specific Cases**
 
 The table shows real model data where throughput increases with the batch size.
 
@@ -541,7 +541,7 @@ Using the Recsys-gr generative recommendation model as an example, end-to-end tr
 
 The core difference between the two runtime environments lies in the CPU architecture specifications and clock frequency. End-to-end performance degrades severely in the low-frequency Arm environment. Therefore, a host-bound bottleneck is initially identified.
 
-**Optimization methods**
+**Optimization Methods**
 
 Host-bound issues are mainly caused by two factors: operator dispatch latency and excessive CPU compute load. You can tune performance through the following methods:
 
@@ -549,7 +549,7 @@ Host-bound issues are mainly caused by two factors: operator dispatch latency an
 
 Bind the training main process and data loading process to specific CPU cores to avoid frequent cross-core migration and context switching. This greatly reduces system scheduling overhead, accelerates host-side operator scheduling and task dispatch, and reduces NPU idle waiting time.
 
-#### Enable Huge Pages
+#### Enabling Huge Pages
 
 Enable the system huge page mechanism to reduce memory page table address translation overhead and page fault interruption overhead. This improves host memory access bandwidth, accelerates CPU memory allocation and data copy speed between the host and the NPU, and reduces host-side memory and communication time.
 
@@ -557,9 +557,9 @@ Enable the system huge page mechanism to reduce memory page table address transl
 
 Disable CPU power-saving frequency scaling policies, lock the CPU at a high clock frequency, and enable performance scheduling mode. This improves single-core CPU performance and speeds up host tasks such as serial operator scheduling and logical preprocessing, allowing CPU task dispatch to keep pace with NPU computation.
 
-For detailed analysis, optimization methods, and cases for host-bound issues, see [How to Locate and Resolve Host Bound Issues](https://www.hiascend.com/document/detail/zh/mindstudio/2600/practicalcases/GeneralPerformanceIssue/MindStudio/26.0.0/cases/general_performance_issue_troubleshooting_guide/solution_to_top3.md?framework=mindspore).
+For detailed analysis, optimization methods, and cases for host-bound issues, see [How to Locate and Resolve Host Bound Issues](https://www.hiascend.com/document/detail/en/mindstudio/2600/practicalcases/GeneralPerformanceIssue/MindStudio/26.0.0/cases/general_performance_issue_troubleshooting_guide/solution_to_top3.md?framework=mindspore).
 
-For performance tuning based on the Recsys-gr model, see the [Recsys-gr Performance Tuning Example](./torch/torch_rec_v2/migration_and_training.md) section.
+For performance tuning based on the Recsys-gr model, see [Recsys-gr Performance Tuning Example](./torch/torch_rec_v2/migration_and_training.md).
 
 ### Device Side
 
@@ -567,7 +567,7 @@ For performance tuning based on the Recsys-gr model, see the [Recsys-gr Performa
 
 In training and inference scenarios, the host can quickly complete task dispatch, while the NPU, or device side, handles core execution work such as operator computation and tensor operations. If device-side computation time is far greater than host-side task dispatch time, NPU compute resources remain fully loaded, the computation chain becomes blocked, and device-side bottlenecks become the core performance issue.
 
-**Optimization methods**
+**Optimization Methods**
 
 Operator performance issues require specialized analysis tools and code optimization techniques. Collect profiling data for the model and compare metrics such as computation time and memory usage for different operators. You can optimize device-side operators through the following methods:
 
@@ -579,15 +579,15 @@ Replace PyTorch native general-purpose operators with NPU-specific affinity oper
 
 Merge multiple consecutive fine-grained operators into one fused operator to reduce NPU kernel invocation overhead and memory read/write overhead for intermediate tensors. This simplifies the computation flow and avoids wasting NPU compute resources.
 
-For detailed operator optimization strategies and cases, see [NPU Affinity Adaptation Optimization](https://www.hiascend.com/document/detail/zh/Pytorch/2600/ptmoddevg/trainingmigrguide/FrameworkPTAdapter/26.0.0/zh/pytorch_model_migration_fine_tuning/overall_optimization_strategy.md) and [Operator Performance Issue Optimization Solution](https://www.hiascend.com/document/detail/zh/mindstudio/2600/practicalcases/GeneralPerformanceIssue/MindStudio/26.0.0/cases/general_performance_issue_troubleshooting_guide/solution_to_top2.md).
+For detailed operator optimization strategies and cases, see [NPU Affinity Adaptation Optimization](https://www.hiascend.com/document/detail/en/Pytorch/2600/ptmoddevg/trainingmigrguide/FrameworkPTAdapter/26.0.0/en/pytorch_model_migration_fine_tuning/overall_optimization_strategy.md) and [Operator Performance Issue Optimization Solution](https://www.hiascend.com/document/detail/en/mindstudio/2600/practicalcases/GeneralPerformanceIssue/MindStudio/26.0.0/cases/general_performance_issue_troubleshooting_guide/solution_to_top2.md).
 
 ### Communication
 
 **Background**
 
-In multi-card distributed training scenarios, the collective communication time spent on gradient aggregation, parameter synchronization, and data exchange between NPU cards accounts for too much of the total time and far exceeds the compute time of a single card. All cards end up waiting for communication to complete, and overall training throughput is dragged down by the communication stage. This is a communication bottleneck.
+In multi-device distributed training scenarios, the collective communication time spent on gradient aggregation, parameter synchronization, and data exchange between NPUs accounts for too much of the total time and far exceeds the compute time of a single device. All devices end up waiting for communication to complete, and overall training throughput is dragged down by the communication stage. This is a communication bottleneck.
 
-**Optimization methods**
+**Optimization Methods**
 
 Communication bottlenecks must be solved through distributed scheduling, HCCL communication library tuning, and load balancing. By adjusting execution logic and communication strategies, you can eliminate synchronization waiting time. The main optimization methods are as follows:
 
@@ -597,15 +597,15 @@ Break the serial execution model of computation and communication. Through gradi
 
 #### HCCL Communication Library Tuning
 
-Tune parameters of the HCCL communication library and adjust features such as link and NIC configuration and buffer size to improve data transfer bandwidth and synchronization efficiency across multiple machines and cards, reducing collective communication latency.
+Tune parameters of the HCCL communication library and adjust features such as link and NIC configuration and buffer size to improve data transfer bandwidth and synchronization efficiency across multiple machines and devices, reducing collective communication latency.
 
-#### Fast and Slow Card Issue Resolution
+#### Fast and Slow Device Issue Resolution
 
-A fast card is a card that finishes its computation task first in the cluster. A slow card finishes its computation task more slowly in the cluster. Different cards finish tasks at different times, which causes fast cards to wait for slow cards and degrades the performance of the entire cluster.
+A fast device is a device that finishes its computation task first in the cluster. A slow device finishes its computation task more slowly in the cluster. Different devices finish tasks at different times, which causes fast devices to wait for slow devices and degrades the performance of the entire cluster.
 
-For fast and slow card issues caused by NPU card performance differences and uneven node load in the cluster, use hardware resource isolation, load-balanced data sharding, and unified scheduling of cards with the same specifications to equalize iteration time across cards. This removes synchronization blocking caused by fast cards waiting for slow cards and avoids the barrel effect.
+For fast and slow device issues caused by NPU performance differences and uneven node load in the cluster, use hardware resource isolation, load-balanced data sharding, and unified scheduling of devices with the same specifications to equalize iteration time across devices. This removes synchronization blocking caused by fast devices waiting for slow devices and avoids the barrel effect.
 
-For detailed communication optimization issues and cases, see [Communication Issue Optimization Solution](https://www.hiascend.com/document/detail/zh/mindstudio/2600/practicalcases/GeneralPerformanceIssue/MindStudio/26.0.0/cases/general_performance_issue_troubleshooting_guide/solution_to_top1.md) and [Communication Optimization](https://www.hiascend.com/document/detail/zh/Pytorch/2600/ptmoddevg/trainingmigrguide/FrameworkPTAdapter/26.0.0/zh/pytorch_model_migration_fine_tuning/communication_basics_overview.md).
+For detailed communication optimization issues and cases, see [Communication Issue Optimization Solution](https://www.hiascend.com/document/detail/en/mindstudio/2600/practicalcases/GeneralPerformanceIssue/MindStudio/26.0.0/cases/general_performance_issue_troubleshooting_guide/solution_to_top1.md) and [Communication Optimization](https://www.hiascend.com/document/detail/en/Pytorch/2600/ptmoddevg/trainingmigrguide/FrameworkPTAdapter/26.0.0/en/pytorch_model_migration_fine_tuning/communication_basics_overview.md).
 
 ### Throughput
 
@@ -613,7 +613,7 @@ For detailed communication optimization issues and cases, see [Communication Iss
 
 In recommendation inference scenarios, model inference efficiency is limited by instance resource contention and insufficient scheduling density. The number of inference tasks that can be processed per unit time, or throughput, is low. Overall inference performance cannot be fully unleashed, making this a key bottleneck for efficient inference services.
 
-**Optimization methods**
+**Optimization Methods**
 
 Throughput bottlenecks must be solved through resource scheduling, hardware core limiting, and batch scheduling strategies. By allocating resources properly and improving scheduling density, you can maximize throughput. The main optimization methods are as follows:
 
@@ -621,12 +621,12 @@ Throughput bottlenecks must be solved through resource scheduling, hardware core
 
 Deploy multiple inference instances to make full use of idle hardware resources, improve the parallel processing capability of inference tasks, break through the processing limit of a single instance, directly expand the number of inference tasks that can be handled per unit time, and improve overall throughput.
 
-#### AI Core Core Limiting (Core Partitioning)
+#### AI Core Limiting (Core Partitioning)
 
 For hardware resource contention that often occurs during multi-instance parallelism, control the allocation of AI Core resources to avoid resource preemption conflicts between instances. This ensures stable operation of each inference instance, effectively improves throughput, and reduces inference latency.
 
-#### Optimize Scheduling Density
+#### Optimizing Scheduling Density
 
 Increase the inference batch size appropriately to improve task scheduling density, reduce scheduling gap overhead, fully leverage hardware compute power, and improve throughput while balancing throughput and latency within a controllable range.
 
-For detailed throughput optimization issues and cases, see [Inference Tuning Cases](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/programug/graphdevg/atlasag_25_0101.html).
+For detailed throughput optimization issues and cases, see [Inference Tuning Cases](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/900/programug/graphdevg/atlasag_25_0101.html).

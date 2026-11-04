@@ -38,7 +38,7 @@ For the interface calling process and examples, see [Migration and Training](../
 
 ## `KeyedJaggedTensor` (TorchRec)
 
-### `from\_jt\_dict`
+### `from_jt_dict`
 
 >[!NOTE]
 >The APIs in this class are TorchRec open-source APIs, not external Rec SDK Torch APIs. This section describes the parameter ranges supported by the TorchRec API when you use Rec SDK Torch.

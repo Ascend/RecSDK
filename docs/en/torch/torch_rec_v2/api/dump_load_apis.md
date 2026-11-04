@@ -46,6 +46,43 @@ DynamicEmbDump(
 
 For the call flow and examples of this interface, see [Migration and Training](../migration_and_training.md).
 
+## Shared Notes for `set_score` and `get_score`
+
+**Scope<a name="section_set_get_score_scope"></a>**
+
+`set_score` and `get_score` traverse the model to automatically identify **sharded modules** (`ShardedDynamicEmbeddingCollection`/`ShardedDynamicEmbeddingBagCollection`) and read and write scores only for the **dynamic embedding tables** in them.
+
+If the `model` passed in also contains the following modules, the interfaces **silently skip** them without processing them and do **not** issue a separate warning for them:
+
+- Embedding modules that have not been processed by a sharder and remain the native TorchRec `EmbeddingCollection`/`EmbeddingBagCollection`.
+- Other submodules that have been wrapped by `DistributedModelParallel` but do not belong to the sharded module types described above.
+- **Static embedding tables** (non-dynamic tables) configured in sharded modules, which do not appear in the return value of `get_score`.
+
+The interfaces issue warnings only in the following cases: the model contains **no** sharded modules or dynamic embedding tables at all, or the collection path specified in dictionary mode of `set_score` does **not** exist in the model. Therefore, when some embeddings in the model are sharded while others are not, the unsharded parts are ignored and you may not notice this.
+
+**Usage Suggestions<a name="section_set_get_score_usage"></a>**
+
+1. **Pass the complete sharded model**: Pass the complete `model` wrapped by `DistributedModelParallel(...)` to the interface. Do not pass the `EmbeddingCollection` before sharding, and do not pass only a local submodule inside DMP.
+2. **Verify the collection paths before calling**: Before the first use, call `get_score(model)` to confirm that the outer keys of the returned dictionary (`module_path`, for example `model.embedding`) cover all embedding collections on the service side that need to participate in score management. If an expected collection does not appear in the return value, the collection has not been sharded or is not configured as a dynamic table.
+3. **Keep dictionary mode consistent with the paths**: When `set_score` uses `Dict[str, Dict[str, int]]`, the outer key must exactly match the `module_path` returned by `get_score`. The inner key is the name of the dynamic embedding table in the corresponding collection.
+4. **Avoid mixing unsharded embeddings**: If the service needs to use the same score or incremental export for multiple tables, ensure that these tables are all included in sharded modules through `DynamicEmbeddingCollectionSharder` (or the corresponding Bag Sharder). Do not keep some tables in the unsharded `EmbeddingCollection`.
+
+**Self-Check Example<a name="section_set_get_score_check"></a>**
+
+```python
+expected_paths = {"model.user_ec", "model.item_ec"}
+
+score_info = get_score(model)
+if score_info is None:
+    raise RuntimeError("No operable sharded dynamic embedding collection found in the model")
+
+missing = expected_paths - set(score_info.keys())
+if missing:
+    raise RuntimeError(
+        f"The following collections are not included in sharded modules and cannot be processed by set_score/get_score: {missing}"
+    )
+```
+
 ## `set_score`
 
 **Description**
@@ -65,24 +102,24 @@ def set_score(
 
 |Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
-|model|nn.Module|Mandatory|Model object that contains dynamic embedding tables.|
-|table_score|Union[int, Dict[str, Dict[str, int]]]|Mandatory|Score-setting strategy. If an `int` is passed, the system sets the same score for all dynamic embedding tables. If a `Dict[str, Dict[str, int]]` is passed, the outer key is the embedding collection path in the model, the inner key is the table name, and the value is the score.|
+|model|nn.Module|Mandatory|Model object that contains dynamic embedding tables. It must be the complete model wrapped by `DistributedModelParallel`, and the embedding collections to be operated on in the model must have been sharded. For details, see [Shared Notes for `set_score` and `get_score`](#section_set_get_score_scope).|
+|table_score|Union[int, Dict[str, Dict[str, int]]]|Mandatory|Score-setting strategy. If an `int` is passed, the system sets the same score for all dynamic embedding tables. If a `Dict[str, Dict[str, int]]` is passed, the outer key is the embedding collection path in the model (`module_path`), the inner key is the table name, and the value is the score.|
 
 **Example**
 
 ```python
 from dynamic_emb import set_score
 
-# Set the same score for all dynamic embedding tables.
+# Set the same score for all dynamic embedding tables
 set_score(model, 100)
 
-# Set scores separately by collection and table name.
+# Set scores separately by collection and table name
 set_score(
     model,
     {
         "model.embedding": {
             "user_table": 100,
-            "item_table": 200,
+            "item_table": 200
         }
     },
 )
@@ -106,13 +143,13 @@ def get_score(
 
 |Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
-|model|nn.Module|Mandatory|Model object that contains dynamic embedding tables.|
+|model|nn.Module|Mandatory|Model object that contains dynamic embedding tables. It must be the complete model wrapped by `DistributedModelParallel`. The return value contains only the dynamic embedding tables in sharded modules. For details, see [Shared Notes for `set_score` and `get_score`](#section_set_get_score_scope).|
 
 **Returns**
 
 |Return Value Type|Description|
 |--|--|
-|Optional[Dict[str, Dict[str, int]]]|Returns the score dictionary on success. If the model contains no dynamic embedding collections or dynamic embedding tables, returns `None` and issues a warning.|
+|Optional[Dict[str, Dict[str, int]]]|Returns the score dictionary on success. The outer key is the `module_path` of the sharded module, and the inner part is the mapping from table names to scores. The return value **contains only** the dynamic embedding tables in sharded modules. Unsharded embedding modules do not appear in the return value. If the model contains no sharded modules or dynamic embedding tables at all, the system returns `None` and issues a warning.|
 
 **Example**
 
@@ -149,7 +186,7 @@ def DynamicEmbLoad(
 |path|str|Mandatory|Main directory path for loading files.|
 |model|nn.Module|Mandatory|Model object that contains dynamic embedding tables.|
 |table_names|Optional[Dict[str, List[str]]]|Optional|Embedding collection names to load and the corresponding lists of dynamic embedding tables. If the value is `None`, all dynamic embedding tables that are found are loaded.|
-|optim|Optional[bool]|Optional|Indicates whether to load the optimizer state. The default value is `False`.|
+|optim|bool|Optional|Indicates whether to load the optimizer state. The default value is `False`.|
 |pg|dist.ProcessGroup|Optional|Process group used to control the communication scope during loading. The default is the global `WORLD` group.|
 
 **Example**
@@ -173,7 +210,7 @@ For the call flow and examples of this interface, see [Migration and Training](.
 
 Incrementally exports eligible index-embedding key-value pairs from the dynamic embedding tables in a model based on the score threshold. It exports only the entries whose **score is greater than or equal to the threshold** and returns the exported keys, values, and the current score of each table for the next incremental export or `set_score`.
 
-The interface automatically detects `ShardedDynamicEmbeddingCollection` in the model. In distributed scenarios, you can use `pg` to specify the communication process group. In multi-GPU scenarios, the matching results on each rank's local shard are aggregated through collective communication and then returned.
+The interface automatically detects `ShardedDynamicEmbeddingCollection` in the model. In distributed scenarios, you can use `pg` to specify the communication process group. In multi-device scenarios, the matching results on the local shard of each rank are aggregated through collective communication and then returned.
 
 **Function Prototype**
 
@@ -223,13 +260,13 @@ from dynamic_emb.distributed.incremental_dump import (
     incremental_dump,
 )
 
-# 1. Read the current score of each table. This step is optional.
+# 1. Read the current score of each table. This step is optional
 score_info = get_score(model)
 assert score_info is not None
-prefix_path = "model"  # Embedding collection path in the model.
+prefix_path = "model"  # Embedding collection path in the model
 undump_score = score_info[prefix_path]
 
-# 2. After training for several steps, use the previous score as the threshold for incremental export.
+# 2. After training for several steps, use the previous score as the threshold for incremental export
 ret_tensors, ret_scores = incremental_dump(
     model,
     {prefix_path: undump_score},
@@ -237,7 +274,7 @@ ret_tensors, ret_scores = incremental_dump(
 )
 undump_score = ret_scores[prefix_path]
 
-# 3. Verification: The indexes accessed in this forward pass should appear in the exported keys.
+# 3. Verification: The indexes accessed in this forward pass should appear in the exported keys
 for table_name, indices in unique_indices_per_table.items():
     dumped_keys = set(ret_tensors[prefix_path][table_name][0].tolist())
     assert indices.issubset(dumped_keys)

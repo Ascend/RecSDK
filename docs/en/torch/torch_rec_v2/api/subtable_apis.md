@@ -13,16 +13,24 @@ Stores distributed parameters.
 
 ```python
 class ShardingEnv:
-    def __init__(**kwargs):
-def from_process_group(cls, pg: dist.ProcessGroup) -> "ShardingEnv":
+    def __init__(
+        self,
+        world_size: int,
+        rank: int,
+        pg: dist.ProcessGroup,
+        output_dtensor: bool = False,
+    ) -> None:
+
+    @classmethod
+    def from_process_group(cls, pg: dist.ProcessGroup) -> "ShardingEnv":
 ```
 
 **Parameters**
 
 |Parameter|Type|Mandatory/Optional|Description|
 |--|--|----|--|
-|world_size|int|Mandatory|Number of cards to use. The value range is [1, 8].|
-|rank|int|Mandatory|Current card number. The value range is [0, world_size-1].|
+|world_size|int|Mandatory|Number of devices to use. The value range is [1, 8].|
+|rank|int|Mandatory|Current device number. The value range is [0, `world_size`-1].|
 |pg|dist.ProcessGroup|Mandatory|Distributed communication link. Only links with the `hccl` or `gloo` backend are supported. <div class="notice"><span class="noticetitle">Note</span><div class="notebody">In PyTorch, the backend name of `hccl` is `custom`.</div></div>|
 |output_dtensor|bool|Optional|Only the default value `False` is supported.|
 
@@ -59,7 +67,7 @@ class Topology:
 
 |Parameter|Type|Mandatory/Optional| Description                                               |
 |--|--|--|---------------------------------------------------|
-|world_size|int|Mandatory| Number of cards to use. The value range is [1, 8].                                 |
+|world_size|int|Mandatory| Number of devices to use. The value range is [1, 8].                                 |
 |compute_device|str|Mandatory| Device name. When you use an NPU device, set this to `"npu"`.                   |
 |hbm_cap|int|Optional| When you use an NPU device, only the default value `None` is supported.                            |
 |ddr_cap|int|Optional| When you use an NPU device, only the default value `None` is supported.                            |
@@ -69,15 +77,15 @@ class Topology:
 |hbm_to_ddr_mem_bw|float|Optional| When you use an NPU device, only the default value `(32 * 1024 * 1024 * 1024 / 1000)` is supported.|
 |intra_host_bw|float|Optional| When you use an NPU device, only the default value `(600 * 1024 * 1024 * 1024 / 1000)` is supported.|
 |inter_host_bw|float|Optional| When you use an NPU device, only the default value `(12.5 * 1024 * 1024 * 1024 / 1000)` is supported.|
-|bwd_compute_multiplier|float|Optional| When you use an NPU device, only the default value `2` is supported.                               |
+|bwd_compute_multiplier|float|Optional| When you use an NPU device, only the default value 2 is supported.                               |
 |custom_topology_data|torchrec.distribute.planner.types.CustomTopologyData|Optional| When you use an NPU device, only the default value `None` is supported.                            |
-|weighted_feature_bwd_compute_multiplier|float|Optional| When you use an NPU device, only the default value `1` is supported.                               |
-|uneven_sharding_perf_multiplier|float|Optional| When you use an NPU device, only the default value `1` is supported.                               |
+|weighted_feature_bwd_compute_multiplier|float|Optional| When you use an NPU device, only the default value 1 is supported.                               |
+|uneven_sharding_perf_multiplier|float|Optional| When you use an NPU device, only the default value 1 is supported.                               |
 
 **Example**
 
 ```python
-from torchrec.distributed.planner import Topology,
+from torchrec.distributed.planner import Topology
 topo = Topology(world_size=world_size, compute_device="npu")
 ```
 
@@ -113,6 +121,48 @@ from dynamic_emb.distributed.embedding import DynamicEmbeddingCollectionSharder
 eb_sharder = DynamicEmbeddingCollectionSharder(
     fused_params=fused_params,
     use_index_dedup=False,
+)
+```
+
+**References**
+
+For the interface calling process and examples, see [Migration and Training](../migration_and_training.md).
+
+## `DynamicEmbeddingBagCollectionSharder`
+
+**Description**
+
+An embedding table sharder that inherits from `EmbeddingBagCollectionSharder` of TorchRec. It works exactly the same as the native class. This API shards `EmbeddingBagCollection` (pooled embedding) and connects it to dynamic embedding tables through `ShardedDynamicEmbeddingBagCollection`. In the row-wise sharding scenario, it uses `RwPooledDynamicEmbeddingSharding` to complete distributed pooled lookup.
+
+**Function Prototype**
+
+```python
+class DynamicEmbeddingBagCollectionSharder(EmbeddingBagCollectionSharder):
+    def __init__(**kwargs):
+    def shard(
+        self,
+        module: EmbeddingBagCollection,
+        params: Dict[str, ParameterSharding],
+        env: ShardingEnv,
+        device: Optional[torch.device] = None,
+        module_fqn: Optional[str] = None,
+    ) -> ShardedDynamicEmbeddingBagCollection:
+```
+
+**Parameters**
+
+|Parameter|Type|Mandatory/Optional|Description|
+|--|--|--|--|
+|fused_params|Optional[Dict[str, Any]]|Optional|Parameters used to configure fused embedding operations, such as optimizer state and learning rate. The default value is `None`.|
+|qcomm_codecs_registry|Optional[Dict[str, QuantizedCommCodecs]]|Optional|Registry used to register quantized communication codecs. Quantized communication can reduce communication volume. The default value is `None`.|
+
+**Example**
+
+```python
+from dynamic_emb.distributed.embeddingbag import DynamicEmbeddingBagCollectionSharder
+
+eb_sharder = DynamicEmbeddingBagCollectionSharder(
+    fused_params=fused_params,
 )
 ```
 
@@ -158,10 +208,11 @@ class DynamicEmbParameterConstraints(ParameterConstraints):
 **Example**
 
 ```python
+from torchrec.distributed.planner.types import ShardingType
 from dynamic_emb.distributed.planner.types import DynamicEmbParameterConstraints
 constraints = {
     "table0": DynamicEmbParameterConstraints(
-        sharding_types=[ShardingType.ROW_WISE.value],
+        sharding_type=[ShardingType.ROW_WISE.value],
         compute_kernels=["fused"],
         dynamicemb_options=DynamicEmbTableOptions(),
     ),
@@ -193,7 +244,7 @@ class DynamicEmbTableOptions(_ContextOptions):
 |initializer_args|DynamicEmbInitializerArgs|Optional|Parameters used to initialize dynamic embedding vectors in training mode. The default value is a `DynamicEmbInitializerArgs` instance. See the value range of `DynamicEmbInitializerArgs`.|
 |eval_initializer_args|DynamicEmbInitializerArgs|Optional|Parameters used to initialize dynamic embedding vectors in evaluation mode. The default value is a `DynamicEmbInitializerArgs` instance, and only `DynamicEmbInitializerMode.CONSTANT` is supported.|
 |caching|bool|Optional|Indicates whether to enable cache mode. Only the default value `False` is supported.|
-|init_capacity|Optional[int]|Optional|Initial table capacity on a single NPU. If this parameter is not set, the default value is the sharded `max_capacity`. If you set it, the value is rounded up to the next power of two. The value range is [0,MAX_INT32). Ensure that the memory usage fits your environment.|
+|init_capacity|Optional[int]|Optional|Initial table capacity on a single NPU. If this parameter is not set, the default value is the sharded `max_capacity`. If you set it, the value is rounded up to the next power of two. As the table load factor rises, the table capacity is gradually expanded to twice its original size through the rehash mechanism until the maximum capacity (`max_capacity`) is reached. Note: This parameter configures a single key-value table for each process rank.|
 |max_load_factor|float|Optional|Maximum load factor that triggers rehash. The default value is 0.5. The value range is (0.0,1.0).|
 |score_strategy|DynamicEmbScoreStrategy|Optional|Score assigned to each key for eviction. The default value is `DynamicEmbScoreStrategy.TIMESTAMP`. Currently, `DynamicEmbScoreStrategy.CUSTOMIZED` is not supported.|
 |bucket_capacity|int|Optional|Capacity of each bucket in HKV. The default value is 128. If you set this parameter, the value is rounded up to the next power of two. When a bucket is full, the key with the lowest score in the bucket is evicted and its slot is used for the new key. A larger bucket capacity makes score-based eviction more accurate, but it also affects performance. The value range is [16,1024]. Ensure that the memory usage fits your environment.|
@@ -205,6 +256,7 @@ class DynamicEmbTableOptions(_ContextOptions):
 **Example**
 
 ```python
+from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import EmbOptimType
 from dynamic_emb.distributed.dynamicemb_config import (
     DynamicEmbTableOptions,
     DynamicEmbInitializerArgs,
@@ -352,13 +404,20 @@ class EmbOptimType(enum.Enum):
 
 |Parameter|Type| Mandatory/Optional| Description                                                            |
 |--|--|-------|----------------------------------------------------------------|
-|ADAM|str|-|Adam optimizer for embedding tables.|
-|ADAMW|str|-|AdamW optimizer for embedding tables.|
+|ADAM|str|-|Adam optimizer for embedding tables. The enum value is `"adam"`.|
+|SGD|str|-|SGD optimizer for embedding tables. The enum value is `"sgd"`.|
+|EXACT_SGD|str|-|Exact SGD optimizer for embedding tables. The enum value is `"exact_sgd"`.|
+|EXACT_ADAGRAD|str|-|Exact AdaGrad optimizer for embedding tables. The enum value is `"exact_adagrad"`.|
+|EXACT_ROWWISE_ADAGRAD|str|-|Exact row-wise AdaGrad optimizer for embedding tables. The enum value is `"exact_row_wise_adagrad"`.|
+|NONE|str|-|No embedding table optimizer is used. The enum value is `"none"`.|
 
 **Example**
 
 ```python
-from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import
+import torch
+from dynamic_emb.distributed.optimizers.base_dynamicemb_optimizer import EmbOptimType
+from dynamic_emb.distributed.dynamicemb_config import DynamicEmbTableOptions
+
 table_options = [
     DynamicEmbTableOptions(
         index_type=torch.int64,
@@ -389,7 +448,7 @@ class DynamicEmbeddingEnumerator(EmbeddingEnumerator):
 
 |Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
-|topology|Topology|Mandatory|Topology of GPU and host memory, used to optimize distributed or cross-device memory access. See the value range of `Topology`.|
+|topology|Topology|Mandatory|Topology of accelerator and host memory, used to optimize distributed or cross-device memory access. See the value range of `Topology`.|
 |batch_size|Optional[int]|Optional|Training batch size. The behavior is the same as the parameter with the same name in TorchRec. The default value is 512. The value range is [1,1000000].|
 |constraints|Optional[Dict[str, DynamicEmbParameterConstraints]]|Optional|Dictionary of constraint configurations for dynamic embedding table parameters, with the parameter name as the key and the corresponding constraint object as the value. Use this to define initialization, caching policy, capacity, and so on. The default value is `None`. See the value range of `DynamicEmbParameterConstraints`.|
 |estimator|Optional[Union[ShardEstimator, List[ShardEstimator]]]|Optional|Estimator used to estimate sharding size. One or more estimators are supported, and the behavior is the same as in TorchRec. Only the default value `None` is supported.|
@@ -429,7 +488,7 @@ class DynamicEmbeddingShardingPlanner:
 |--|--|--|--|
 |eb_configs|List[BaseEmbeddingConfig]|Mandatory|List of all embedding table configurations in the TorchRec model, used for dynamic embedding planning. Currently, only `EmbeddingConfig` is supported. See the value range of `EmbeddingConfig`.|
 |constraints|Dict[str, DynamicEmbParameterConstraints]|Mandatory|Dictionary of constraint configurations for each embedding table, with the table name as the key and the constraint object as the value. See the value range of `DynamicEmbParameterConstraints`.|
-|topology|Optional[Topology]|Optional|Topology of GPU and host memory. If the value is `None`, the default topology is used. See the value range of `Topology`.|
+|topology|Optional[Topology]|Optional|Topology of accelerator and host memory. If the value is `None`, the default topology is used. See the value range of `Topology`.|
 |batch_size|Optional[int]|Optional|Training batch size. If the value is `None`, the default value 512 is used. The value range is [1,1000000].|
 |enumerator|Optional[Enumerator]|Optional|Enumerator used for sharding. If the value is `None`, the default enumerator is used. The default value is `None`.|
 |storage_reservation|Optional[StorageReservation]|Optional|Storage reservation information used to reserve part of the memory during planning. Only the default value `None` is supported.|
@@ -462,7 +521,7 @@ For the interface calling process and examples, see [Migration and Training](../
 
 **Description**
 
-An enumeration class for the safe-check mode of embedding table index insertion. When a dynamic embedding table has a small capacity, a single feature with a large number of indexes may cause the hash table to fail to insert indexes. After you enable safe checks, you can observe such cases, including the number of failed insertions and the number of indexes that fail each time, so you can determine whether the capacity of the dynamic embedding table is too low.
+An enumeration class for the safe-check mode of embedding table index insertion. When a dynamic embedding table has a small capacity, a single feature with a large number of indexes may cause the hash table to fail to insert indexes. After you enable safe checks, you can observe such cases, including the number of failed insertions and the number of indexes that fail each time. Therefore, you can determine whether the capacity of the dynamic embedding table is too low.
 
 **Function Prototype**
 
