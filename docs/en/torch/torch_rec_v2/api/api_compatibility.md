@@ -6,18 +6,20 @@
 
 #### Overview
 
-This section describes the support and restrictions of the APIs (native to TorchRec 1.2.0) on the Ascend NPU. For details about how to use the APIs, see the [TorchRec community documentation](https://meta-pytorch.org/torchrec/api.html). The support and restrictions are classified into the following types:
+This section describes the support and restrictions of the APIs (native to TorchRec 1.2.0) on the Ascend NPU. For details about how to use the APIs, see the [TorchRec community documentation](https://meta-pytorch.org/torchrec/api.html). The support and restrictions are as follows:
 
 - If an API is supported and `Restriction` is left blank, the support for this API is the same as that for the native API.
 - If an API is supported and `Restriction` is specified, the support for the API is inconsistent with that for the native API. Pay attention to the support on the Ascend NPU.
 - If an API is not supported and `Restriction` is left blank, the API is not supported on the Ascend NPU.
 - Some APIs exist in the [TorchRec community documentation](https://meta-pytorch.org/torchrec/api.html) but do not appear in this document. These APIs are not part of TorchRec 1.2.0. Note that the APIs in the TorchRec community documentation are for the latest TorchRec version, not TorchRec 1.2.0.
 
+Note: For the NPU-adapted torchrec 1.2.0, see [torchrec_npu v1.2.0](https://gitcode.com/Ascend/RecSDK/tree/develop/third_party/torchrec/v1.2.0).
+
 #### `torchrec.sparse.jagged_tensor.JaggedTensor`
 
 | API                              | Supported| Restriction                                             |
 | ------------------------------------------ | -------- | ------------------------------------------------------- |
-| torchrec.sparse.jagged_tensor.JaggedTensor | Yes      | The `to_padded_dense` and `to_padded_dense_weights` methods are not fully supported yet.|
+| torchrec.sparse.jagged_tensor.JaggedTensor | Yes      | -                                                       |
 | JaggedTensor.device                        | Yes      | -                                                       |
 | JaggedTensor.empty                         | Yes      | -                                                       |
 | JaggedTensor.from_dense                    | Yes      | -                                                       |
@@ -30,8 +32,8 @@ This section describes the support and restrictions of the APIs (native to Torch
 | JaggedTensor.to                            | Yes      | -                                                       |
 | JaggedTensor.to_dense                      | Yes      | -                                                       |
 | JaggedTensor.to_dense_weights              | Yes      | -                                                       |
-| JaggedTensor.to_padded_dense               | Yes      | The `fbgemm` operator `jagged_to_padded_dense` is partially supported.               |
-| JaggedTensor.to_padded_dense_weights       | Yes      | The `fbgemm` operator `jagged_to_padded_dense` is partially supported.               |
+| JaggedTensor.to_padded_dense               | Yes      | -                                                       |
+| JaggedTensor.to_padded_dense_weights       | Yes      | -                                                       |
 | JaggedTensor.values                        | Yes      | -                                                       |
 | JaggedTensor.weights                       | Yes      | -                                                       |
 | JaggedTensor.weights_or_none               | Yes      | -                                                       |
@@ -94,19 +96,6 @@ This section describes the support and restrictions of the APIs (native to Torch
 | KeyedTensor.to_dict                       | Yes      | -          |
 | KeyedTensor.values                        | Yes      | -          |
 
-#### `torchrec.modules.embedding_configs.EmbeddingBagConfig`
-
-| API                                              | Supported| Restriction|
-| ----------------------------------------------------- | -------- | ---------- |
-| torchrec.modules.embedding_configs.EmbeddingBagConfig | Yes      | -          |
-| EmbeddingBagConfig.polling                            | Yes      | -          |
-
-#### `torchrec.modules.embedding_configs.EmbeddingConfig`
-
-| API                                           | Supported| Restriction|
-| -------------------------------------------------- | -------- | ---------- |
-| torchrec.modules.embedding_configs.EmbeddingConfig | Yes      | -          |
-
 #### `torchrec.modules.embedding_configs.BaseEmbeddingConfig`
 
 | API                                               | Supported| Restriction|
@@ -123,14 +112,27 @@ This section describes the support and restrictions of the APIs (native to Torch
 | BaseEmbeddingConfig.init_fn                            | Yes      | -          |
 | BaseEmbeddingConfig.need_pos                           | Yes      | -          |
 
+#### `torchrec.modules.embedding_configs.EmbeddingBagConfig`
+
+| API                                              | Supported| Restriction|
+| ----------------------------------------------------- | -------- | ---------- |
+| torchrec.modules.embedding_configs.EmbeddingBagConfig | Yes      | Inherits `BaseEmbeddingConfig` |
+| EmbeddingBagConfig.pooling                            | Yes      | -          |
+
+#### `torchrec.modules.embedding_configs.EmbeddingConfig`
+
+| API                                           | Supported| Restriction|
+| -------------------------------------------------- | -------- | ---------- |
+| torchrec.modules.embedding_configs.EmbeddingConfig | Yes      | Inherits `BaseEmbeddingConfig` |
+
 #### `torchrec.modules.embedding_modules.EmbeddingBagCollection`
 
 | API                                                  | Supported| Restriction                             |
 | --------------------------------------------------------- | -------- | --------------------------------------- |
-| torchrec.modules.embedding_modules.EmbeddingBagCollection | Yes      | The `forward` method is not fully supported yet.                |
+| torchrec.modules.embedding_modules.EmbeddingBagCollection | Yes      | -                                                       |
 | EmbeddingBagCollection.device                             | Yes      | -                                       |
 | EmbeddingBagCollection.embedding_bag_configs              | Yes      | -                                       |
-| EmbeddingBagCollection.forward                            | Yes      | The `fbgemm` operator `group_index_select_dim0` is not supported.|
+| EmbeddingBagCollection.forward                            | Yes      | -                                                       |
 | EmbeddingBagCollection.is_weighted                        | Yes      | -                                       |
 | EmbeddingBagCollection.reset_parameters                   | Yes      | -                                       |
 
@@ -226,7 +228,7 @@ This section describes the support and restrictions of the APIs (native to Torch
 
 | API                                            | Supported| Restriction|
 | --------------------------------------------------- | -------- | ---------- |
-| torchrec.inference.modules.quantize_inference_model | No      | -          |
+| torchrec.inference.modules.quantize_inference_model | Yes      | -          |
 
 #### `torchrec.inference.modules.shard_quant_model`
 
@@ -240,19 +242,19 @@ This section describes the support and restrictions of the APIs (native to Torch
 
 #### Overview
 
-This section describes the support and restriction of the APIs (native to DynamicEmb v25.09) on the Ascend NPU. For details about how to use the APIs, see the [DynamicEmb community documentation](https://github.com/NVIDIA/recsys-examples/blob/v25.09/corelib/dynamicemb/DynamicEmb_APIs.md). The support and restrictions are classified into the following types:
+This section describes the support and restrictions of the APIs (native to DynamicEmb v25.09) on the Ascend NPU. For details about how to use the APIs, see the [DynamicEmb community documentation](https://github.com/NVIDIA/recsys-examples/blob/v25.09/corelib/dynamicemb/DynamicEmb_APIs.md). The support and restrictions are classified into the following types:
 
 - If an API is supported and `Restriction` is left blank, the support for this API is the same as that for the native API.
-- If an API is supported and `Restrictions` is specified, the support for the API is inconsistent with that for the native API. Pay attention to the support on the Ascend NPU.
+- If an API is supported and `Restriction` is specified, the support for the API is inconsistent with that for the native API. Pay attention to the support on the Ascend NPU.
 - If an API is not supported and `Restriction` is left blank, the API is not supported on the Ascend NPU.
 
 #### `DynamicEmbParameterConstraints`
 
 | API                                          | Supported| Restriction                                         |
 | ------------------------------------------------- | -------- | --------------------------------------------------- |
-| DynamicEmbParameterConstraints                    | Yes      | The `caching`, `score_strategy`, and `external_storage` scenarios are not supported.|
+| DynamicEmbParameterConstraints                    | Yes      | -          |
 | DynamicEmbParameterConstraints.use_dynamicemb     | Yes      | -                                                   |
-| DynamicEmbParameterConstraints.dynamicemb_options | Yes      | The `caching`, `score_strategy`, and `external_storage` scenarios are not supported.|
+| DynamicEmbParameterConstraints.dynamicemb_options | Yes      | -          |
 
 #### `DynamicEmbeddingEnumerator`
 
@@ -274,6 +276,13 @@ This section describes the support and restriction of the APIs (native to Dynami
 | --------------------------------------- | -------- | ---------- |
 | DynamicEmbeddingCollectionSharder       | Yes      | -          |
 | DynamicEmbeddingCollectionSharder.shard | Yes      | -          |
+
+#### `DynamicEmbeddingBagCollectionSharder`
+
+| API                                        | Supported| Restriction|
+| ------------------------------------------- | -------- | ---------- |
+| DynamicEmbeddingBagCollectionSharder        | Yes      | -          |
+| DynamicEmbeddingBagCollectionSharder.shard  | Yes      | -          |
 
 #### `DynamicEmbCheckMode`
 
@@ -325,14 +334,14 @@ This section describes the support and restriction of the APIs (native to Dynami
 | DynamicEmbTableOptions.training              | Yes      | -          |
 | DynamicEmbTableOptions.initializer_args      | Yes      | -          |
 | DynamicEmbTableOptions.eval_initializer_args | Yes      | -          |
-| DynamicEmbTableOptions.caching               | No      | -          |
+| DynamicEmbTableOptions.caching               | Yes      | -          |
 | DynamicEmbTableOptions.init_capacity         | Yes      | -          |
 | DynamicEmbTableOptions.max_load_factor       | Yes      | -          |
-| DynamicEmbTableOptions.score_strategy        | No      | -          |
+| DynamicEmbTableOptions.score_strategy        | Yes      | -          |
 | DynamicEmbTableOptions.bucket_capacity       | Yes      | -          |
 | DynamicEmbTableOptions.safe_check_mode       | Yes      | -          |
 | DynamicEmbTableOptions.global_hbm_for_values | Yes      | -          |
-| DynamicEmbTableOptions.external_storage      | No      | -          |
+| DynamicEmbTableOptions.external_storage      | Yes      | -          |
 | DynamicEmbTableOptions.index_type            | Yes      | -          |
 
 #### `DynamicEmbDump`
@@ -361,7 +370,7 @@ This section describes the support and restriction of the APIs (native to Dynami
 
 | API         | Supported| Restriction|
 | ---------------- | -------- | ---------- |
-| incremental_dump | No      | -          |
+| incremental_dump | Yes      | -          |
 
 #### `get_score`
 

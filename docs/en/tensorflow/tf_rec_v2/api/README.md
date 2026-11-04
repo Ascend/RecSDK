@@ -1,4 +1,4 @@
-# API
+# API Documentation Summary
 
 - [API Description](api_description.md)
 - [Initialization of the Training Framework](initialization_of_the_training_framework.md)

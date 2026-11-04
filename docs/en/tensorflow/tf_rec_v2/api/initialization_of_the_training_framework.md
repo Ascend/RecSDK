@@ -34,29 +34,29 @@ The following is an example of the initialization configuration file (.toml form
 
 ```toml
 [mxrec]
-# Only ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL') are allowed.
+# Only ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL') are allowed
 log_level = "INFO"
 # If use_ranktable is true, the environment variable "RANK_TABLE_FILE" will be read; if it is false, the configuration
-# of "mxrec.cm-node-info" in the toml file will be read.
+# of "mxrec.cm-node-info" in the toml file will be read
 use_ranktable = true
 
 [mxrec.cm-node-info]
-# Used to configure the listening host ip of the master node.
+# Used to configure the listening host ip of the master node
 cm_chief_ip = "127.0.0.1"
-# Used to configure the listening port of the master node.
+# Used to configure the listening port of the master node
 cm_chief_port = 60001
 # Used to specify the logical id of the device for collecting cluster information of the server side
-# within the master node.
+# within the master node
 cm_chief_device = 0
-# Used to configure the network card ip used for information exchange between the current devices and the master node.
+# Used to configure the network card ip used for information exchange between the current devices and the master node
 cm_worker_ip = "127.0.0.1"
-# Used to configure the number of devices for this business communication domain.
+# Used to configure the number of devices for this business communication domain
 cm_worker_size = 1
 
 [model]
-# Support "train_and_evaluate", "load_and_train", "predict".
+# Support "train_and_evaluate", "load_and_train", "predict"
 mode = "train_and_evaluate"
-# Set to true for precision alignment mode.
+# Set to true for precision alignment mode
 deterministic = false
 
 saved_path = "saved_model"
@@ -73,4 +73,4 @@ num_server = 1
 
 >[!NOTE]
 >
->- The content under the `[mxrec]` field is mandatory. For details about the `[mxrec.cm-node-info]` field, see <https://www.hiascend.com/document/detail/zh/canncommercial/850/commlib/hcclug/hcclug_000070.html>.
+>- The content under the `[mxrec]` field is mandatory. For details about the `[mxrec.cm-node-info]` field, see <https://www.hiascend.com/document/detail/en/canncommercial/850/commlib/hcclug/hcclug_000070.html>.

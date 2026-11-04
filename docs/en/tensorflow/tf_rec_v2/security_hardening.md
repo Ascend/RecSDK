@@ -4,13 +4,13 @@
 
 ### File Permissions
 
-When you use an API to read a file, ensure that you own the file and that its permissions are no more permissive than `640`. This helps prevent privilege escalation and similar security issues.
+When you use an API to read a file, ensure that you own the file and that its permissions are no more permissive than 640. This helps prevent privilege escalation and similar security issues.
 
 Software code or programs downloaded from external sources may pose risks. You must guarantee the security of their functions.
 
 ### Hadoop Installation Permissions
 
-If you need to use the Hadoop distributed file system, after installation, set the permissions on `libhdfs.so` in the installation directory to no more than `640`. This prevents tampering with the shared object package and reduces the risk of command injection.
+If you need to use the Hadoop distributed file system, after installation, set the permissions on `libhdfs.so` in the installation directory to no more than 640. This prevents tampering with the shared object package and reduces the risk of command injection.
 
 ## Hardening Precautions
 
@@ -24,9 +24,9 @@ After installing the OS, if common users are configured, you can add `ALWAYS_SET
 
 ### Setting umask
 
-Set the host umask to `027` or more restrictive on the host and in containers to enhance file security.
+Set the host umask to 027 or more restrictive on the host and in containers to enhance file security.
 
-To set umask to `027`:
+To set umask to 027:
 
 1. Log in as `root` and edit `/etc/profile`.
 
@@ -53,7 +53,7 @@ Monitor ports listening on all interfaces and identify unnecessary ports for imm
 
 ### Anti-DoS Protection
 
-Protect the system against Denial of Service (DoS) attacks by implementing IP address restriction and rate limiting. Recommended methods include using the Linux iptables firewall and optimizing sysctl parameters. For details, see related documents.
+Protect the system against Denial of Service (DoS) attacks by implementing IP address restriction and rate limiting. Recommended methods include using the Linux iptables firewall and optimizing `sysctl` parameters. For details, see related documents.
 
 ### Prevention of MPI Listening on `0.0.0.0`
 
@@ -63,7 +63,6 @@ Protect the system against Denial of Service (DoS) attacks by implementing IP ad
 
     - Add firewall rules.
 
-        ```bash
         ```shell
         iptables -D INPUT -p tcp -j ${rule_name}
         iptables -F ${rule_name}
@@ -75,7 +74,6 @@ Protect the system against Denial of Service (DoS) attacks by implementing IP ad
 
     - Clear firewall rules.
 
-        ```bash
         ```shell
         iptables -D INPUT -p tcp -j ${rule_name}
         iptables -F ${rule_name}

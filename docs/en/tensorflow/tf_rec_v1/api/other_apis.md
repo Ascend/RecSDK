@@ -1,6 +1,6 @@
 # Other APIs
 
-## version
+## `version`
 
 **Description**
 
@@ -36,11 +36,11 @@ Modifies or retrieves the name of a hash table collection.
 **Function Prototype**
 
 ```python
-# Get the hash table collection name.
+# Get the hash table collection name
 @property
 def ascend_global_hashtable_collection(self):
     return self._ascend_global_hashtable_collection
-# Modify the hash table collection name.
+# Modify the hash table collection name
 @ascend_global_hashtable_collection.setter
 def ascend_global_hashtable_collection(self, name):
     self._ascend_global_hashtable_collection = name
@@ -59,16 +59,16 @@ def ascend_global_hashtable_collection(self, name):
 
 **Example**
 
-```bash
-# Get the hash table collection name.
+```python
+# Get the hash table collection name
 from mx_rec.util.initialize import ConfigInitializer
 hashtable_collection = ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection
-# Modify the hash table collection name.
+# Modify the hash table collection name
 from mx_rec.util.initialize import ConfigInitializer
 ConfigInitializer.get_instance().train_params_config.ascend_global_hashtable_collection = "test"
 ```
 
-## `get\_rank\_id`
+## `get_rank_id`
 
 **Description**
 
@@ -148,9 +148,10 @@ host_pipeline_ops = import_host_pipeline_ops()
 
 **Introduction to the `set_threshold` Operator**
 
+<a name="table191438421290"></a>
 <table><tbody><tr id="row181439428296"><th class="firstcol" valign="top" width="13.98%" id="mcps1.1.3.1.1"><p id="p1144642112915">Name</p>
 </th>
-<td class="cellrowborder" valign="top" width="86.02%" headers="mcps1.1.3.1.1 "><p id="p160744914308">set_threshold</p>
+<td class="cellrowborder" valign="top" width="86.02%" headers="mcps1.1.3.1.1 "><p id="p160744914308"><code>set_threshold</code></p>
 </td>
 </tr>
 <tr id="row6144242202912"><th class="firstcol" valign="top" width="13.98%" id="mcps1.1.3.2.1"><p id="p1214414202911">Function</p>
@@ -160,12 +161,12 @@ host_pipeline_ops = import_host_pipeline_ops()
 </tr>
 <tr id="row11441042102913"><th class="firstcol" valign="top" width="13.98%" id="mcps1.1.3.3.1"><p id="p9144124217290">Parameters</p>
 </th>
-<td class="cellrowborder" valign="top" width="86.02%" headers="mcps1.1.3.3.1 "><ul id="ul1065662883114"><li>The first input parameter is a top-level tf.Tensor in the TensorFlow context. </li><li>emb_name: List[str]: Feature tables that require admission threshold modification. </li><li>ids_name: List[str]: Legacy parameter for compatibility reasons that currently has no effect.</li></ul>
+<td class="cellrowborder" valign="top" width="86.02%" headers="mcps1.1.3.3.1 "><ul id="ul1065662883114"><li>The first input parameter is a top-level <code>tf.Tensor</code> in the TensorFlow context. </li><li><code>emb_name</code>: List[str]: feature tables that require admission threshold modification </li><li><code>ids_name</code>: List[str]: legacy parameter for compatibility reasons that currently has no effect</li></ul>
 </td>
 </tr>
 <tr id="row183421350113111"><th class="firstcol" valign="top" width="13.98%" id="mcps1.1.3.4.1"><p id="p1534235018317">Constraints</p>
 </th>
-<td class="cellrowborder" valign="top" width="86.02%" headers="mcps1.1.3.4.1 "><p id="p1034245020313">If the first input parameter of set_threshold is "0", the corresponding embedding table is changed to a non-accumulation mode. In this mode, the admission threshold remains unchanged, but feature counting no longer accumulates, and historical values are used.</p>
+<td class="cellrowborder" valign="top" width="86.02%" headers="mcps1.1.3.4.1 "><p id="p1034245020313">If the first input parameter of <code>set_threshold</code> is "0", the corresponding embedding table is changed to a non-accumulation mode. In this mode, the admission threshold remains unchanged, but feature counting no longer accumulates, and historical values are used.</p>
 </td>
 </tr>
 </tbody>

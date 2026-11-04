@@ -6,7 +6,7 @@
 
 Customized AdamW optimizer, which is used to calculate and update the gradients of sparse tables (NPU implementation).
 
-### `\_\_init\_\_`
+### `__init__`
 
 **Description**
 
@@ -48,10 +48,10 @@ def __init__(
 import mxrec
 import tensorflow as tf
 
-# MxRec init.
+# MxRec init
 mxrec.init("toml_path")
 
-# Create an embedding table.
+# Create an embedding table
 table = mxrec.get_embedding_table(
     name="example_name",
     dimension=8,
@@ -63,9 +63,9 @@ table = mxrec.get_embedding_table(
 
 init_hashtable_op = mxrec.get_init_hashtable_op()
 
-# The loss of model.
+# The loss of the model
 loss = ...
-sparse_optimizer = mxrec.AdamWoptimizer(learning_rate=0.01)
+sparse_optimizer = mxrec.AdamWOptimizer(learning_rate=0.01)
 sparse_embeddings = mxrec.get_sparse_embedding()
 sparse_grads = tf.gradients(loss, sparse_embeddings)
 train_ops = sparse_optimizer.apply_gradients(zip(sparse_grads, sparse_embeddings))

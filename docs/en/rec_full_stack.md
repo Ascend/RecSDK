@@ -14,6 +14,33 @@ Figure 1 Product architecture
 
 ![Recommendation full stack](./figures/rec_full_stack/recommendation-full-stack.png)
 
+**Architecture Diagram Description:**
+
+1.Hardware layer
+
+- Ascend hardware: Provides underlying computing power, including the Ascend A2, A3, and Atlas 950 products.
+
+2.CANN software stack
+
+- Basic operators: Supports operator development languages and libraries such as Ascend C, CATLASS, and Triton.
+- Automatic compilation and optimization: Provides automatic operator fusion capabilities such as AutoFuse and Inductor to improve computing efficiency.
+
+3.AI framework and adaptation layer
+
+- AI frameworks: Compatible with mainstream industry frameworks such as PyTorch and TensorFlow.
+- Framework adaptation: Implements seamless migration and running of models on the Ascend platform through PyTorch-Adapter (PT-Adapter) and TensorFlow-Adapter (TF-Adapter).
+
+4.Application layer
+
+- Rec SDK: Provides recommendation frameworks such as `torch_rec_v1`/`torch_rec_v2` and `tf_rec_v1`/`tf_rec_v2` for recommendation system scenarios.
+- Key acceleration components:
+  - HierarchicalKV-ascend: a high-performance key-value storage acceleration library for recommendation systems
+  - FBGEMM-ascend: a high-performance matrix computation acceleration library
+
+5.Development tools
+
+- MindStudio: Provides an end-to-end toolchain for development, debugging, and tuning.
+
 ### Product Value
 
 Table 1 Product value
@@ -40,15 +67,15 @@ Table 2 Core components of the recommendation solution
 
 #### Rec SDK
 
-[Rec SDK](https://gitcode.com/Ascend/RecSDK) offers an SDK for search, recommendation, and advertising services in the Internet market. It offers a framework for these services based on the Ascend platform to meet related model training requirements, thus supporting large-scale SRA scenarios and facilitating efficient training of models for such scenarios.
+[Rec SDK](https://atomgit.com/Ascend/RecSDK) offers an SDK for search, recommendation, and advertising services in the Internet market. It offers a framework for these services based on the Ascend platform to meet related model training requirements, thus supporting large-scale SRA scenarios and facilitating efficient training of models for such scenarios.
 
 Rec SDK provides the following features:
 
-- Basic model training functions: Rec SDK supports single-node, single-card training and multi-node, multi-card distributed training.
+- Basic model training functions: Rec SDK supports single-node, single-device training and multi-node, multi-device distributed training.
 
 - Recommendation-specific functions: Based on the sparse table solution, Rec SDK provides essential functions such as feature saving and loading, feature admission, and feature eviction.
 
-- Large-scale sparse table functions: Rec SDK supports multi-level storage across accelerator card memory, host memory, and host drive. It also supports multi-node storage and dynamic scaling, with capacities exceeding 10 TB.
+- Large-scale sparse table functions: Rec SDK supports multi-level storage across accelerator device memory, host memory, and host drive. It also supports multi-node storage and dynamic scaling, with capacities exceeding 10 TB.
 
 Rec SDK consists of multiple components, including internal components such as `tf_rec_v1`, `tf_rec_v2`, `torch_rec_v1`, `torch_rec_v2`, and `rec_ops`, as shown in Table 3.
 
@@ -58,19 +85,19 @@ Table 3 Rec SDK components
 | ------------ | ------------------ | -------- | ------------ | ------------------------------------------------------------ |
 | tf_rec_v1    | TensorFlow         | Non-fully-offloaded| Sparse recommendation framework| Non-fully-offloaded sparse recommendation framework based on TensorFlow, adapted for NPU devices, supporting Atlas A2/A3/A5 devices.|
 | tf_rec_v2    | TensorFlow         | Fully-offloaded  | Sparse recommendation framework| Fully-offloaded sparse recommendation framework based on TensorFlow, adapted for NPU devices, supporting only Atlas A5 devices.|
-| torch_rec_v1 | PyTorch + TorchRec | Non-fully-offloaded| Sparse recommendation framework| Open-source sparse recommendation framework based on PyTorch and [TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0) for to NPU devices with partial offloading, supporting Atlas A2/A3/A5 devices.|
-| torch_rec_v2 | PyTorch + TorchRec | Fully-offloaded  | Sparse recommendation framework| Open-source sparse recommendation framework based on PyTorch, [DynamicEmb](https://github.com/NVIDIA/recsys-examples/tree/v25.09), and [TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0) for to NPU devices with full offloading, supporting only Atlas A5 devices.|
+| torch_rec_v1 | PyTorch + TorchRec | Non-fully-offloaded| Sparse recommendation framework| Open-source sparse recommendation framework based on PyTorch and [TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0) for NPU devices with partial offloading, supporting Atlas A2/A3/A5 devices.|
+| torch_rec_v2 | PyTorch + TorchRec | Fully-offloaded  | Sparse recommendation framework| Open-source sparse recommendation framework based on PyTorch, [DynamicEmb](https://github.com/NVIDIA/recsys-examples/tree/v25.09), and [TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0) for NPU devices with full offloading, supporting only Atlas A5 devices.|
 | rec_ops      | -                  | -        | Operators        | Custom operator set developed based on Ascend C for recommendation scenarios, supporting Atlas A2/A3/A5 devices.|
 
 Key Terminology
 
-- Non-fully-offloaded: A hybrid mode in which sparse table hash mapping, deduplication, and bucketization operations run on the CPU, while the remaining computing tasks run on the NPU
+- Non-fully-offloaded: a hybrid mode in which sparse table hash mapping, deduplication, and bucketization operations run on the CPU, while the remaining computing tasks run on the NPU
 
-- Fully-offloaded: A mode where all computing tasks are offloaded to the NPU for better compatibility
+- Fully-offloaded: a mode where all computing tasks are offloaded to the NPU for better compatibility
 
 #### fbgemm-ascend
 
-[fbgemm-ascend](https://gitcode.com/Ascend/fbgemm-ascend) is the operator implementation of FBGEMM operators on the Ascend NPU platform. It provides high-performance sparse and dense operators through `torch.ops.fbgemm.*`, helping recommendation, search, and other scenarios achieve a training experience on Ascend devices that matches GPUs. Its goal is to incorporate new capabilities from the [FBGEMM](https://link.gitcode.com/?target=https%3A%2F%2Fgithub.com%2Fpytorch%2FFBGEMM&from=https%3A%2F%2Fgitcode.com%2FAscend%2Ffbgemm-ascend&lang=zh&theme=white) community and perform deep optimization for Ascend AI Core.
+[fbgemm-ascend](https://atomgit.com/Ascend/fbgemm-ascend) is the operator implementation of FBGEMM operators on the Ascend NPU platform. It provides high-performance sparse and dense operators through `torch.ops.fbgemm.*`, helping recommendation, search, and other scenarios achieve a training experience on Ascend devices that matches GPUs. Its goal is to incorporate new capabilities from the [FBGEMM](https://github.com/pytorch/FBGEMM) community and perform deep optimization for Ascend AI Core.
 
 Core features:
 
@@ -82,7 +109,7 @@ Core features:
 
 #### HierarchicalKV-ascend
 
-[HierarchicalKV-ascend](https://gitcode.com/Ascend/HierarchicalKV-ascend) (HKV) is the operator implementation of [HierarchicalKV](https://github.com/NVIDIA-Merlin/HierarchicalKV/commit/bbe2ee1858b6e54bccf9106e9f3c2d8c1c5d248c) on the Ascend NPU platform. It is a high-performance KV storage acceleration library for recommendation systems. In recommendation systems, HKV provides large-capacity, high-performance create, read, update, and delete capabilities for dynamic embedding tables.
+[HierarchicalKV-ascend](https://atomgit.com/Ascend/HierarchicalKV-ascend) (HKV) is the operator implementation of [open-source HierarchicalKV](https://github.com/NVIDIA-Merlin/HierarchicalKV/commit/bbe2ee1858b6e54bccf9106e9f3c2d8c1c5d248c) on the Ascend NPU platform. It is a high-performance KV storage acceleration library for recommendation systems. In recommendation systems, HKV provides large-capacity, high-performance create, read, update, and delete capabilities for dynamic embedding tables.
 
 Core features:
 
@@ -98,18 +125,18 @@ Internal collaboration
 
 - Rec SDK internal components: The four framework components `tf_rec_v1`, `tf_rec_v2`, `torch_rec_v1`, and `torch_rec_v2` are independent of one another. They adapt separately to the TensorFlow and PyTorch ecosystems and satisfy different algorithm framework requirements. `rec_ops`, as a shared operator set, provides basic operator capabilities for each framework component.
 
-- Synergy between fbgemm-ascend and Rec SDK: `torch_rec_v1` and `torch_rec_v2` are based on the open-source [TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0) framework, and the embedding operator implementation of TorchRec reuses FBGEMM. Therefore, `fbgemm-ascend`, as the operator implementation on the Ascend platform, provides the two PyTorch framework components with high-performance embedding queries, fused operators, and other core computing capabilities through the `torch.ops.fbgemm.*` API.
+- Synergy between fbgemm-ascend and Rec SDK: `torch_rec_v1` and `torch_rec_v2` are based on the open-source [TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0) framework, and the embedding operator implementation of TorchRec reuses FBGEMM. Therefore, fbgemm-ascend, as the operator implementation on the Ascend platform, provides the two PyTorch framework components with high-performance embedding queries, fused operators, and other core computing capabilities through the `torch.ops.fbgemm.*` API.
 
-- Synergy between HierarchicalKV-ascend and Rec SDK: `torch_rec_v2` is based on the open-source [TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0) and [DynamicEmb](https://github.com/NVIDIA/recsys-examples/tree/v25.09) frameworks. `HierarchicalKV-ascend`, as the underlying KV storage engine of DynamicEmb, provides high-performance create, read, update, and delete capabilities for large-scale sparse features and supports dynamic expansion within on-chip memory and customizable eviction policies.
+- Synergy between HierarchicalKV-ascend and Rec SDK: `torch_rec_v2` is based on the open-source [TorchRec](https://github.com/meta-pytorch/torchrec/tree/release/v1.2.0) and [DynamicEmb](https://github.com/NVIDIA/recsys-examples/tree/v25.09) frameworks. HierarchicalKV-ascend, as the underlying KV storage engine of DynamicEmb, provides high-performance create, read, update, and delete capabilities for large-scale sparse features and supports dynamic expansion within on-chip memory and customizable eviction policies.
 
 Synergy diagram
 
-Table 4. Component synergy
+Table 4 Component synergy
 
 | Component                   | Application Location                      | Synergy Method                                                    |
 | ----------------------- | ------------------------------ | ------------------------------------------------------------ |
-| `fbgemm-ascend`         | `torch_rec_v1`, `torch_rec_v2`| As the underlying operator library, it provides embedding computation capabilities through the `torch.ops.fbgemm.*` API.|
-| `HierarchicalKV-ascend` | `torch_rec_v2`                 | As the underlying KV storage layer of DynamicEmb, it provides large-capacity embedding storage and access capabilities.|
+| fbgemm-ascend         | torch_rec_v1, torch_rec_v2| As the underlying operator library, it provides embedding computation capabilities through the `torch.ops.fbgemm.*` API.|
+| HierarchicalKV-ascend | torch_rec_v2                 | As the underlying KV storage layer of DynamicEmb, it provides large-capacity embedding storage and access capabilities.|
 
 Independent use capability
 
@@ -129,32 +156,32 @@ Table 5 Peripheral components
 
 | Category        | Component                                                                                                                             | Function                                                                                                                                                  | Role in the Recommendation Solution                                          |
 | :----------- |:--------------------------------------------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------| :----------------------------------------------------------- |
-| Operator development| [Ascend C](https://www.hiascend.com/document-scene/zh/devScene/operatordev/index.html)                                          | A programming language for operators on Ascend AI Processors. It supports the C/C++ standard specifications and provides multi-layer interface abstraction and automatic parallel computing.                                                                                                          | Supports efficient development of `rec_ops` and custom operators.                         |
-|              | [CATLASS](https://gitcode.com/cann/catlass)                   | A high-performance template library for matrix multiplication operators. It provides templated implementations and performance optimization modules for GEMM operators. In addition, when Inductor-Ascend encounters matrix multiplication operators, CATLASS can generate high-performance kernels through templates and use an autotuning mechanism to automatically select the optimal tiling configuration.                              | Accelerates the large volume of matrix computations in recommendation models and provides benchmark performance templates for matrix multiplication operators.|
-|              | [Triton-Ascend](https://gitcode.com/Ascend/triton-ascend)                                                                       | A Triton compilation framework based on the Ascend platform. It supports compiling operators written in Python into efficient NPU kernels. In addition, Triton-Ascend is a key backend in the PyTorch backend compilation chain on the Ascend platform. It receives Triton DSL code generated by Inductor-Ascend and ultimately compiles and optimizes machine code that runs efficiently on Ascend hardware.| Supports operator compilation optimization in dynamic shape scenarios and expands the flexibility of recommendation models.     |
-| Operator fusion| [AutoFuse](https://www.hiascend.com/document/detail/zh/canncommercial/850/graph/autofuse/autofuse_1_0001.html)                  | An automatic fusion framework based on Ascend C. It automatically identifies fusion ranges and generates fused operator code.                                                                                                                   | Reduces memory movement between vector computations in recommendation networks, alleviates memory-bound issues, and improves execution performance.|
-|              | [Inductor-Ascend](https://gitcode.com/Ascend/pytorch/blob/v2.7.1/torch_npu/_inductor/docs/overview/overview.md)                 | Building on the capabilities of the community PyTorch Inductor, Inductor-Ascend provides affinity improvements and optimizations for Ascend hardware. Its aims to provide an Ascend-friendly `torch.compile` graph-mode backend, generate Ascend-friendly Triton DSL, support Triton-based operator fusion, and support dynamic shapes.       | Works with `torch_rec_v1` or `torch_rec_v2` to support automatic compilation and optimization of PyTorch models.      |
-| Framework adaptation| [PyTorch-Adapter](https://www.hiascend.com/document/detail/zh/Pytorch/730/productoverview/docs/zh/overview/product_overview.md) | The Ascend adaptation layer for the PyTorch framework, which enables PyTorch models to run on Ascend devices.                                                                                                                   | Supports `torch_rec_v1`/`torch_rec_v2` running on NPUs.                          |
-|              | [TensorFlow-Adapter](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/index/index.html)                      | The Ascend adaptation layer for the TensorFlow framework, which enables TensorFlow models to run on Ascend devices.                                                                                                             | Supports `tf_rec_v1`/`tf_rec_v2` running on NPUs.                             |
+| Operator development| [Ascend C](https://www.hiascend.com/document-scene/en/devScene/operatordev/index.html)                                          | A programming language for operators on Ascend AI Processors. It supports the C/C++ standard specifications and provides multi-layer interface abstraction and automatic parallel computing.                                                                                                          | Supports efficient development of `rec_ops` and custom operators.                         |
+|              | [CATLASS](https://atomgit.com/cann/catlass)                   | A high-performance template library for matrix multiplication operators. It provides templated implementations and performance optimization modules for GEMM operators. In addition, when Inductor-Ascend encounters matrix multiplication operators, CATLASS can generate high-performance kernels through templates and use an autotuning mechanism to automatically select the optimal tiling configuration.                              | Accelerates the large volume of matrix computations in recommendation models and provides benchmark performance templates for matrix multiplication operators.|
+|              | [Triton-Ascend](https://atomgit.com/Ascend/triton-ascend)                                                                       | A Triton compilation framework based on the Ascend platform. It supports compiling operators written in Python into efficient NPU kernels. In addition, Triton-Ascend is a key backend in the PyTorch backend compilation chain on the Ascend platform. It receives Triton DSL code generated by Inductor-Ascend and ultimately compiles and optimizes machine code that runs efficiently on Ascend hardware.| Supports operator compilation optimization in dynamic shape scenarios and expands the flexibility of recommendation models.     |
+| Operator fusion| [AutoFuse](https://www.hiascend.com/document/detail/en/canncommercial/850/graph/autofuse/autofuse_1_0001.html)                  | An automatic fusion framework based on Ascend C. It automatically identifies fusion ranges and generates fused operator code.                                                                                                                   | Reduces memory movement between vector computations in recommendation networks, alleviates memory-bound issues, and improves execution performance.|
+|              | [Inductor-Ascend](https://atomgit.com/Ascend/pytorch/blob/v2.7.1/torch_npu/_inductor/docs/overview/overview.md)                 | Building on the capabilities of the community PyTorch Inductor, Inductor-Ascend provides affinity improvements and optimizations for Ascend hardware. It aims to provide an Ascend-friendly `torch.compile` graph-mode backend, generate Ascend-friendly Triton DSL, support Triton-based operator fusion, and support dynamic shapes.       | Works with `torch_rec_v1` or `torch_rec_v2` to support automatic compilation and optimization of PyTorch models.      |
+| Framework adaptation| [PyTorch-Adapter](https://www.hiascend.com/document/detail/en/Pytorch/730/productoverview/docs/en/overview/product_overview.md) | The Ascend adaptation layer for the PyTorch framework, which enables PyTorch models to run on Ascend devices.                                                                                                                   | Supports `torch_rec_v1`/`torch_rec_v2` running on NPUs.                          |
+|              | [TensorFlow-Adapter](https://www.hiascend.com/document/detail/en/TensorFlowCommunity/850/index/index.html)                      | The Ascend adaptation layer for the TensorFlow framework, which enables TensorFlow models to run on Ascend devices.                                                                                                             | Supports `tf_rec_v1`/`tf_rec_v2` running on NPUs.                             |
 | Hardware enablement| [CANN](https://www.hiascend.com/cann)                                                                                           | The Ascend heterogeneous compute architecture, which provides foundational capabilities for model inference and training.                                                                                                                               | The base software stack for all upper-layer components, providing core capabilities such as chip enablement, operator libraries, and graph compilation.|
 
 #### Peripheral Component Capabilities
 
 With the support of the preceding components, the recommendation solution provides the following key capabilities:
 
-- Operator development: Based on [Ascend C](https://www.hiascend.com/document-scene/zh/devScene/operatordev/index.html), [CATLASS](https://gitcode.com/cann/catlass), and [Triton-Ascend](https://gitcode.com/Ascend/triton-ascend), it supports flexible development and customization from standard operators to high-performance matrix multiplication operators.
+- Operator development: Based on [Ascend C](https://www.hiascend.com/document-scene/en/devScene/operatordev/index.html), [CATLASS](https://atomgit.com/cann/catlass), and [Triton-Ascend](https://atomgit.com/Ascend/triton-ascend), it supports flexible development and customization from standard operators to high-performance matrix multiplication operators.
 
-- Automatic operator fusion: Through [AutoFuse](https://www.hiascend.com/document/detail/zh/canncommercial/850/graph/autofuse/autofuse_1_0001.html) and [Inductor-Ascend](https://www.hiascend.com/document/detail/zh/Pytorch/730/ptmoddevg/Frameworkfeatures/docs/zh/framework_feature_guide_pytorch/pytorch_compilation_mode.md), it automatically identifies fusion opportunities and generates fused operators, reduces memory movement, and unlocks Ascend computing power.
+- Automatic operator fusion: Through [AutoFuse](https://www.hiascend.com/document/detail/en/canncommercial/850/graph/autofuse/autofuse_1_0001.html) and [Inductor-Ascend](https://www.hiascend.com/document/detail/en/Pytorch/730/ptmoddevg/Frameworkfeatures/docs/en/framework_feature_guide_pytorch/pytorch_compilation_mode.md), it automatically identifies fusion opportunities and generates fused operators, reduces memory movement, and unlocks Ascend computing power.
 
 - Sample demonstrations: Complete examples of operator development and model migration are provided to help users get started quickly.
 
-- Model migration: With [PyTorch-Adapter](https://www.hiascend.com/document/detail/zh/Pytorch/730/productoverview/docs/zh/overview/product_overview.md) and [TensorFlow-Adapter](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/index/index.html), it quickly migrates existing TensorFlow and PyTorch models to the Ascend platform.
+- Model migration: With [PyTorch-Adapter](https://www.hiascend.com/document/detail/en/Pytorch/730/productoverview/docs/en/overview/product_overview.md) and [TensorFlow-Adapter](https://www.hiascend.com/document/detail/en/TensorFlowCommunity/850/index/index.html), it quickly migrates existing TensorFlow and PyTorch models to the Ascend platform.
 
-- Model development: You can use the high-level APIs of [Rec SDK](https://gitcode.com/Ascend/RecSDK) to quickly build recommendation model training tasks.
+- Model development: You can use the high-level APIs of [Rec SDK](https://atomgit.com/Ascend/RecSDK) to quickly build recommendation model training tasks.
 
-- Performance analysis and tuning: Based on CANN [performance analysis tools](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta2/devaids/Profiling/atlasprofiling_16_0144.html), such as msProf, it identifies model execution bottlenecks and guides performance tuning.
+- Performance analysis and tuning: Based on CANN [performance analysis tools](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/900beta2/devaids/Profiling/atlasprofiling_16_0144.html), such as msProf, it identifies model execution bottlenecks and guides performance tuning.
 
-- Accuracy analysis: You can use the CANN [accuracy debugging tool](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta2/devaids/ModelAccuracyAnalyzer/atlasaccuracy_16_1000.html) to verify accuracy consistency before and after model migration.
+- Accuracy analysis: You can use the CANN [accuracy debugging tool](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/900beta2/devaids/ModelAccuracyAnalyzer/atlasaccuracy_16_1000.html) to verify accuracy consistency before and after model migration.
 
 #### Dependency Description
 
@@ -162,10 +189,22 @@ The relationship between the peripheral components and the core components (Rec 
 
 - CANN, as the base software stack, provides underlying computing support and the runtime environment for all components.
 
-- PyTorch-Adapter and TensorFlow-Adapter support torch_rec_v1/torch_rec_v2 and tf_rec_v1/tf_rec_v2, respectively, running on Ascend devices.
+- PyTorch-Adapter and TensorFlow-Adapter support `torch_rec_v1`/`torch_rec_v2` and `tf_rec_v1`/`tf_rec_v2`, respectively, running on Ascend devices.
 
-- Inductor-Ascend works with torch_rec_v1/torch_rec_v2 to implement automatic compilation and performance optimization for PyTorch models.
+- Inductor-Ascend works with `torch_rec_v1`/`torch_rec_v2` to implement automatic compilation and performance optimization for PyTorch models.
 
 - AutoFuse performs automatic fusion optimization for recommendation networks during graph compilation, and users do not need to know the fusion details.
 
-- Ascend C, CATLASS, and Triton-Ascend provide a programming framework and template library for the custom operator development of rec_ops.
+- Ascend C, CATLASS, and Triton-Ascend provide a programming framework and template library for the custom operator development of `rec_ops`.
+
+## Glossary
+
+| Term | Definition |
+| ---- | ---------- |
+| On-chip memory | A type of high-performance DRAM.|
+| Embedding | Embedding is the process of mapping discrete, high-dimensional data (such as words, sentences, and image pixels) into a low-dimensional, dense continuous vector space. The generated vector is called the embedding vector of the data. |
+| Sparse feature | Sparse features are a fundamental and important concept in machine learning and data mining. Unlike dense features, sparse features take a value of 0 (or are empty or false) in most cases and have non-zero (or non-empty) values only in a few cases. |
+| Feature admission | The decision process of determining, before model training or inference, whether a feature that has never appeared before (such as the ID of a newly listed product or a newly registered user) is worth adding to the embedding dictionary of the model. |
+| Feature eviction | The mechanism of deleting features that already exist in the embedding table but have become invalid (such as out-of-season product IDs) during continuous model training or periodic scheduling, to release storage and computing resources. |
+| FBGEMM | Facebook General Matrix Multiplication (FBGEMM) is a high-performance, low-precision numerical computing library open-sourced by Meta (formerly Facebook). |
+| HKV | The open-source HierarchicalKV (HKV) is a high-performance GPU hash table library designed and open-sourced by NVIDIA. |

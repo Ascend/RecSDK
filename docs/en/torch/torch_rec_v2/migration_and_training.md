@@ -6,6 +6,14 @@
 
 Follow the steps in [Quick Start](./quick_start.md) to build and train a model.
 
+For details about the meanings and constraints of the parameters of the related interfaces mentioned below, see [API List](./api/README.md).
+
+The software versions used in migration and training are as follows:
+
+|Software|PyTorch|TorchNPU|torchrec|fbgemm_gpu|dynamic_emb|
+|--|--|--|--|--|--|
+|Version|2.7.1|2.7.1|1.2.0+npu|1.2.0|25.09|
+
 **Migrating from Open-Source TorchRec**
 
 If you have already built a network with TorchRec, replace the APIs according to the mapping in [Table 1](#table16435142101913).
@@ -32,8 +40,8 @@ API example:
     from torchrec.distributed.model_parallel import get_default_sharders
 
     class TestModel(torch.nn.Module):
-        def __init__(self, *):
-            self.ec = EmbeddingCollection(···)
+        def __init__(self, *args, **kwargs):
+            self.ec = EmbeddingCollection(...)
 
         def forward(self, batch):
             pass
@@ -47,13 +55,13 @@ API example:
         data_loader = DataLoader(
             dataset,
         )
-        test_model = TestModel(TABLE_NAMES, FEAT_NAMES, EMBED_DIMS ,NUM_EMBEDS)
+        test_model = TestModel(TABLE_NAMES, FEAT_NAMES, EMBED_DIMS, NUM_EMBEDS)
         ...
 
         sharder = get_default_sharders()
-        planner = EmbeddingShardingPlanner(···)
+        planner = EmbeddingShardingPlanner(...)
 
-        sharding_plan = planner.collective_plan(···)
+        sharding_plan = planner.collective_plan(...)
         ...
         Optimizer creation
         ...
@@ -65,6 +73,10 @@ API example:
 - Rec SDK Torch example
 
     ```python
+    import torch
+    import torch.nn
+    import torch.distributed as dist
+    from torchrec.distributed.embedding import EmbeddingCollection
     from torchrec.distributed.planner.types import Topology, ShardingType
     from dynamic_emb import (
         DynamicEmbeddingCollectionSharder,
@@ -78,9 +90,9 @@ API example:
     ...
 
     class TestModel(torch.nn.Module):
-        def __init__(self, *):
-            self.ec = EmbeddingCollection()
-        def forward(self, *):
+        def __init__(self, *args, **kwargs):
+            self.ec = EmbeddingCollection(...)
+        def forward(self, *args, **kwargs):
             pass
     def invoke_main():
         rank, world_size = get_distribute_env()
@@ -113,15 +125,15 @@ API example:
                 feature_names=[feature_names],
                 data_type=DataType.FP32,
             ),
-            ···
+            ...
         ]
-        # Set sharding constraints.
+        # Set sharding constraints
         constraints = {}
         for eb_config in eb_configs:
-            constraints[eb_config.name] = DynamicEmbParameterConstraints(···)
+            constraints[eb_config.name] = DynamicEmbParameterConstraints(...)
 
-        # Create the sharder and planner.
-        topology = Topology(···)
+        # Create the sharder and planner
+        topology = Topology(...)
         sharder = DynamicEmbeddingCollectionSharder(
             fused_params=fused_params,
             use_index_dedup=True,
@@ -133,23 +145,26 @@ API example:
             batch_size=batch_size,
         )
 
-        plan = planner.collective_plan(···)
+        plan = planner.collective_plan(...)
         ...
-        Optimizer creation
+        # Optimizer creation
         ...
-        # Save the model.
+        # Save the model
         torch.save(model.state_dict(), "model_dense.pt")
-        # Save the dynamic sparse table.
+        # Save the dynamic sparse table
         DynamicEmbDump(save_dir, model, optim=True)
+        ...
+        # Load the dynamic sparse table
+        DynamicEmbLoad(save_dir, model, optim=True)
     ```
 
 ## Rec SDK Torch Migration Examples
 
-### Recsys-gr Model Adaptation
+### Recsys-GR Model Adaptation
 
-Rec SDK Torch supports the migration and adaptation of open-source Torch recommendation models. This section describes the main modifications required to migrate the open-source Recsys-gr model to the Rec SDK Torch framework and provides a performance tuning example based on Recsys-gr. For the complete code adaptation, see the following link:
+Rec SDK Torch supports the migration and adaptation of open-source Torch recommendation models. This section describes the main modifications required to migrate the open-source Recsys-GR model to the Rec SDK Torch framework and provides a performance tuning example based on Recsys-GR. For the complete code adaptation and the supporting software versions, see the following link:
 
-[Rec SDK Torch Recsys-gr Example](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr)
+[Rec SDK Torch Recsys-GR Example](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr)
 
 #### Main Migration Changes
 
@@ -170,15 +185,15 @@ The namespace changes. Replace CUDA APIs with NPU APIs. For example, change `tor
 Extend the `NetworkArgs` class by adding NPU adaptation parameters and expanding support for `kernel_backend`.
 
 ```python
-# Add NPU backend support.
+# Add NPU backend support
 layer_type: str = "fused"
-···
+...
 assert self.kernel_backend.lower() in ["cutlass", "triton", "pytorch", "npu_fused"]
 assert self.layer_type.lower() in ["fused", "native"]
-···
+...
 elif network_args.kernel_backend == "npu_fused":
     kernel_backend = KernelBackend.NPU_FUSED
-···
+...
 ```
 
 ##### 3. Replacing `dynamic_emb` APIs
@@ -194,20 +209,20 @@ from dynamic_emb import (
     DynamicEmbeddingShardingPlanner,
     DynamicEmbeddingCollectionSharder,
 )
-···
+...
 # Sparse table configuration APIs
 from dynamic_emb.distributed.dynamicemb_config import DynamicEmbEvictStrategy
 from dynamic_emb import DynamicEmbCheckMode, DynamicEmbInitializerArgs, DynamicEmbInitializerMode
-···
+...
 ```
 
 ##### 4. Adapting Operators
 
-Convert CUDA operators implemented with Triton and Cutlass to native PyTorch implementations or Rec SDK service operators. The operator implementations are in the `example/hstu/ops` directory.
+Convert CUDA operators implemented with Triton and Cutlass to native PyTorch implementations or RecSDK service operators. The operator implementations are in the `example/hstu/ops` directory.
 
-- In the CUDA version, `jagged_to_padded_dense` and `dense_to_jagged` depend on FBGEMM operators. The NPU version replaces them with Rec SDK service operator implementations.
-- The Triton operators `concat_2D_jagged` and `split_2D_jagged` are replaced with PyTorch implementations.
-- The Triton implementation of the position encoding operator is replaced with a PyTorch implementation.
+- In the CUDA version, `jagged_to_padded_dense` and `dense_to_jagged` depend on FBGEMM operators. The NPU version replaces them with RecSDK service operator implementations.
+- The `concat_2D_jagged` and `split_2D_jagged` Triton operators are replaced with PyTorch implementations.
+- The Position Encoding Triton operator is replaced with a PyTorch implementation.
 
 ##### 5. Adapting the HSTU Layer
 
@@ -258,11 +273,11 @@ class NpuFusedHSTUAttention(HSTUAttention):
                                           ).view(-1, self.num_heads * self.attention_dim)
 ```
 
-#### Recsys-gr Performance Tuning Example
+#### Recsys-GR Performance Tuning Example
 
 ##### Background
 
-Using non-FSDP2 mode as an example, the Recsys-gr model shows a significant difference in end-to-end training performance across CPU environments with different architectures (x86 and Arm) and clock frequencies. After comparing the two hardware environments, the device-side specifications are the same. The main difference is the CPU architecture and clock frequency. Performance drops sharply in the low-frequency Arm environment, which suggests a host-side bottleneck.
+Using non-FSDP2 mode as an example, the Recsys-GR model shows a significant difference in end-to-end training performance across CPU environments with different architectures (x86 and Arm) and clock frequencies. After comparing the two hardware environments, the device-side specifications are the same. The main difference is the CPU architecture and clock frequency. Performance drops sharply in the low-frequency Arm environment, which suggests a host-side bottleneck.
 
 ##### Analysis
 
@@ -286,7 +301,7 @@ if PROFILE_ENABLE:
         gc_detect_threshold=None,
     )
 
-        prof = torch_npu.profiler.profile(
+    prof = torch_npu.profiler.profile(
         activities=[
         torch_npu.profiler.ProfilerActivity.CPU,
         torch_npu.profiler.ProfilerActivity.NPU
@@ -300,24 +315,24 @@ if PROFILE_ENABLE:
         with_flops=False,
         experimental_config=experimental_config)
 
-        prof.start()
+    prof.start()
 ```
 
 A comparison of NPU-side kernel runtime shows almost no difference between the two environments. Therefore, device-side issues are not the cause of the performance degradation.
 
 ###### 2. Analyzing the Overall Computation Time
 
-With the collected profiling file, use the [MindStudio Insight](https://www.hiascend.com/document/detail/zh/mindstudio/830/GUI_baseddevelopmenttool/msascendinsightug/Insight_userguide_0002.html) visualization tool to analyze the timeline.
+With the collected profiling file, use the [MindStudio Insight](https://www.hiascend.com/document/detail/en/mindstudio/830/GUI_baseddevelopmenttool/msascendinsightug/Insight_userguide_0002.html) visualization tool to analyze the timeline.
 
 Free time accounts for more than 70 percent in both the x86 and Arm environments, and actual NPU computation accounts for very little.
 
-**Main hypothesis**: The performance bottleneck is not the NPU compute capacity, but host-side CPU operations such as data movement, operator dispatch, and scheduling delays.
+**Main inference**: The performance bottleneck is not the NPU compute capacity, but host-side CPU operations such as data movement, operator dispatch, and scheduling delays.
 
 ##### Tuning Plan
 
 ###### 1. Optimizing Multi-threaded Data Loading
 
-The model uses a single-threaded `DataLoader` that runs entirely on the CPU. The main process reads data serially, so the CPU becomes the bottleneck and the NPU stays idle for long periods. The single-threaded mode greatly amplifies the performance gap caused by CPU frequency differences.
+The model uses a single-threaded `DataLoader` that runs entirely on the CPU. The main process reads data serially. Therefore, the CPU becomes the bottleneck and the NPU stays idle for long periods. The single-threaded mode greatly amplifies the performance gap caused by CPU frequency differences.
 
 You can enable multi-core, multi-process data loading and support prefetching, persistent workers, data partitioning, and parallel shuffling. For example, optimize the data loading function as follows:
 
@@ -334,7 +349,7 @@ def get_data_loader(
         """
         if hasattr(dataset, 'set_worker_id'):
             dataset.set_worker_id(worker_id, num_workers)
-            # Reshuffle this worker's data using a different random seed.
+            # Reshuffle the data of this worker using a different random seed
             if hasattr(dataset, '_shuffle_batch'):
                 dataset._shuffle_batch(worker_id=worker_id)
 
@@ -370,23 +385,23 @@ def set_worker_id(self, worker_id: int, num_workers: int) -> None:
     total_samples = len(self._sample_ids)
     samples_per_worker = total_samples // num_workers
 
-    # Calculate the data range handled by this worker.
+    # Calculate the data range handled by this worker
     start_idx = worker_id * samples_per_worker
     end_idx = start_idx + samples_per_worker if worker_id < num_workers - 1 else total_samples
 
-    # Slice the sample IDs handled by this worker.
+    # Slice the sample IDs handled by this worker
     self._sample_ids = self._sample_ids[start_idx:end_idx]
     self._num_samples = len(self._sample_ids)
 
-    # Recalculate the batch count.
+    # Recalculate the batch count
     self._num_batches = math.ceil(self._num_samples / self._global_batch_size)
 ```
 
-After multi-threaded loading is enabled, data loading time drops significantly, and model training accuracy is barely affected.
+After multi-threaded loading is enabled, data loading time decreases significantly, with no significant impact on model training accuracy.
 
 ###### 2. Enabling a Huge Page Memory Pool
 
-Linux's default 4 KB memory pages cause many TLB misses and page faults. Huge pages can greatly reduce this overhead. For details, see [Enabling a Huge Page Memory Pool](https://www.hiascend.com/document/detail/zh/Pytorch/730/ptmoddevg/trainingmigrguide/performance_tuning_0070.html).
+The default 4 KB memory pages of Linux cause many TLB misses and page faults. Huge pages can greatly reduce this overhead. For details, see [Enabling a Huge Page Memory Pool](https://www.hiascend.com/document/detail/en/Pytorch/730/ptmoddevg/trainingmigrguide/performance_tuning_0070.html).
 
 Enable transparent huge pages in the OS in the model `run.sh` script:
 
@@ -397,6 +412,11 @@ echo always > /sys/kernel/mm/transparent_hugepage/enabled
 ###### 3. Optimizing the `jemalloc` Memory Allocator
 
 Use the CANN-optimized `jemalloc` to improve memory allocation efficiency. Load it in the model `run.sh` script:
+
+|Environment Variable|Meaning|Mandatory/Optional|Description|
+|--|--|--|--|
+|ARCH|System architecture|Mandatory|aarch64 or x86_64|
+|ASCEND_CANN_PACKAGE_PATH ASCEND_HOME_PATH|Actual installation path of the CANN package|Mandatory|Actual installation directory of the CANN package, which must be specified when compiling operators. The default value is `/usr/local/Ascend/ascend-toolkit/latest`.|
 
 ```bash
 export LD_PRELOAD=${ASCEND_CANN_PACKAGE_PATH}/${ARCH}-linux/lib64/libjemalloc.so
@@ -412,9 +432,23 @@ Enable operator queue optimization:
 export TASK_QUEUE_ENABLE=2
 ```
 
-Configure single-card NUMA memory binding:
+Configure single-device NUMA memory binding:
+
+Before using NUMA binding, install the system-level dependencies and the Python library dependencies separately:
+
+```bash
+# Install system library dependencies
+# CentOS/RHEL
+yum install numactl numactl-devel
+# Ubuntu/Debian
+apt install numactl libnuma-dev
+
+# Install the Python library
+pip install py-libnuma
+```
 
 ```python
+# Bind CPU cores
 import numa
 def bind_memory_to_numa0():
     numa.memory.set_membind_nodes(0)
@@ -423,9 +457,9 @@ def bind_memory_to_numa0():
 
 ###### 5. Other Tuning Directions
 
-1. Optimize the data parallel strategy at the service framework layer, for example, by using pipeline parallelism.
-2. Compilation optimization. For details, see [Introduction to Compilation Optimization Technologies](https://www.hiascend.com/document/detail/zh/Pytorch/730/ptmoddevg/trainingmigrguide/performance_tuning_0062.html).
-3. BIOS parameter tuning, such as enabling overclocking and high-performance mode.
+- Optimize the data parallel strategy at the service framework layer, for example, by using pipeline parallelism.
+- Compilation optimization. For details, see [Introduction to Compilation Optimization Technologies](https://www.hiascend.com/document/detail/en/Pytorch/730/ptmoddevg/trainingmigrguide/performance_tuning_0062.html).
+- BIOS parameter tuning, such as enabling overclocking and high-performance mode.
 
 ### DLRM (DCNv2) Model Adaptation
 
@@ -440,9 +474,9 @@ git clone -b main https://github.com/facebookresearch/dlrm.git
 cd dlrm && git checkout b631a99
 ```
 
-The main changes are as follows:
+The main modifications are as follows:
 
-1. Modify the distributed backend.
+1. Modifying the Distributed Backend
 
     Add the HCCL distributed backend option:
 
@@ -460,11 +494,12 @@ The main changes are as follows:
         backend = "gloo"
     ```
 
-2. Modify the sparse table configuration.
+2. Modifying the Sparse Table Configuration
 
     Configure sparse tables using `EmbeddingConfig` in EC mode.
 
     ```python
+    from torchrec import EmbeddingConfig
     eb_configs = [
         EmbeddingConfig(
             name=f"t_{feature_name}",
@@ -480,11 +515,13 @@ The main changes are as follows:
     ]
     ```
 
-3. Configure `EmbeddingCollection`.
+3. Configuring `EmbeddingCollection`
 
-Add the EC version model definition `DLRM_DCN_EC` to replace the original model. The new model code is in `dlrm/torchrec_dlrm/ec_dcnv2.py`.
+    Add the EC version model definition `DLRM_DCN_EC` to replace the original model. The new model code is in `dlrm/torchrec_dlrm/ec_dcnv2.py`.
 
     ```python
+    from torchrec.distributed.embedding import EmbeddingCollection
+    ...
     elif args.interaction_type == InteractionType.DCN:
         dlrm_model = DLRM_DCN_EC(
             embedding_collection=EmbeddingCollection(
@@ -501,7 +538,7 @@ Add the EC version model definition `DLRM_DCN_EC` to replace the original model.
         )
     ```
 
-4. Modify the sharding plan and create the distributed model.
+4. Modifying the Sharding Plan and Creating the Distributed Model
 
     Use the related DynamicEmb APIs to replace the native TorchRec APIs.
 
@@ -509,7 +546,7 @@ Add the EC version model definition `DLRM_DCN_EC` to replace the original model.
     from torchrec.distributed.planner import Topology
     from torchrec.distributed.planner.types import ShardingType
     from fbgemm_gpu.split_embedding_configs import SparseType
-    from dynamic_emb_extensions import OptimizerType
+    from dynamic_emb_extensions import OptimizerType # Dynamic sparse table custom operator library
     from dynamic_emb import (
         DynamicEmbeddingCollectionSharder,
         DynamicEmbeddingShardingPlanner,
@@ -552,7 +589,7 @@ Add the EC version model definition `DLRM_DCN_EC` to replace the original model.
             fused_params={
                 "output_dtype": SparseType.FP32,
                 "optimizer": "adagrad" if args.adagrad else "sgd",
-                "learning_rate":args.learning_rate,
+                "learning_rate":args.learning_rate
             },
             use_index_dedup=False,
         )

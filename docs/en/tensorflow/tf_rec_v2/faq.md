@@ -44,7 +44,6 @@ HCCL cluster communication fails.
         > ```bash
         > hccn_tool -i 0 -ping -inet6 -g ipv6_address x:x:x:x
         > ```
-        >
 
 2. Check whether the TLS settings of the NPU devices in the multi-node cluster are the same.
 

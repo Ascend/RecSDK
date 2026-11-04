@@ -15,106 +15,132 @@ Based on a TorchRec model network, replace the APIs according to the mapping in 
 
 |TorchRec API|Rec SDK Torch API|Description|
 |--|--|--|
-|EmbeddingBagConfig|HashEmbeddingBagConfig|Configure sparse tables.|
-|EmbeddingBagCollection|HashEmbeddingBagCollection|Create sparse tables.|
-|get_default_sharders|get_default_hybrid_sharders|Get table sharders.|
-|TrainPipelineSparseDist|HybridTrainPipelineSparseDist|Create pipelines.|
+|EmbeddingBagConfig|[HashEmbeddingBagConfig](./api/table_creation_apis.md#hashembeddingbagconfig)|Configure sparse tables.|
+|EmbeddingBagCollection|[HashEmbeddingBagCollection](./api/table_creation_apis.md#hashembeddingbagcollection)|Create sparse tables.|
+|get_default_sharders|[get_default_hybrid_sharders](./api/subtable_apis.md#get_default_hybrid_sharders)|Get table sharders.|
+|TrainPipelineSparseDist|[HybridTrainPipelineSparseDist](./api/pipeline_apis.md#hybridtrainpipelinesparsedist)|Create pipelines.|
 
 API example:
+
+> The examples are used only to show the API replacement relationships. Some parameters and model definitions are omitted in the examples.
 
 - TorchRec example
 
     ```python
+    import torch
     import torch.distributed as dist
+    from torch.utils.data import DataLoader
     from torchrec.distributed.train_pipeline.train_pipelines import TrainPipelineSparseDist
-    from torchrec.distributed.embeddingbag import EmbeddingBagCollectionSharder
     from torchrec.distributed.model_parallel import get_default_sharders
+    from torchrec import EmbeddingBagConfig, EmbeddingBagCollection
+
     class TestModel(torch.nn.Module):
-        def __init__(self, *):
-            # The API used by Rec SDK Torch is HashEmbeddingBagCollection.
-            self.sparse_model = EmbeddingBagCollection(xx)
-            self.dense_model = xx
-        def forward(self, batch: Batch):
-            # Sparse (self.ebc) forward call and dense forward call
-            # Note: the model forward return value must place loss first and output second, to match the native TorchRec TrainPipelineSparseDist usage.
+        def __init__(self):
+            configs = [EmbeddingBagConfig(100, 16, "table0")]
+            # The API used by Rec SDK Torch is HashEmbeddingBagCollection
+            self.sparse_model = EmbeddingBagCollection(configs)
+            self.dense_model = torch.nn.Linear(16, 16)
+        def forward(self, batch):
+            # The model forward implementation is omitted here
+            # The forward method returns the loss and output values
             return loss, output
     def invoke_main():
+        # The distributed environment initialization is omitted here
         dist.init_process_group(backend="hccl")
         rank = dist.get_rank()
         world_size = dist.get_world_size()
         device = torch.device("npu")
 
-        dataset = RandomRecDataset(BATCH_SIZE, BATCH_NUM, FEAT_NAMES, ID_RANGES)
-        data_loader = DataLoader(
-            dataset,
+        dataset = ......  # The dataset implementation is omitted here
+        data_loader = DataLoader(dataset, batch_size=None, batch_sampler=None,
+            pin_memory=True, pin_memory_device="npu", num_workers=1,
         )
-        test_model = TestModel(TABLE_NAMES, FEAT_NAMES, EMBED_DIMS, NUM_EMBEDS)
-        ...
-        Sharder creation
-        ...
-        #  The API used by Rec SDK Torch is get_default_hybrid_sharders.
-        hybrid_sharder = get_default_sharders()
-        ...
-        Optimizer creation
-        ...
-        # The API used by Rec SDK Torch is HybridTrainPipelineSparseDist.
-        pipeline = TrainPipelineSparseDist()
+        dataset_iterator = iter(data_loader)
+        test_model = TestModel()
+        ......
+        # Sharder creation
+        # The API used by Rec SDK Torch is get_default_hybrid_sharders
+        sharders = get_default_sharders()
+        ......
+        # The API used by Rec SDK Torch is HybridTrainPipelineSparseDist
+        pipeline = TrainPipelineSparseDist(......)
         for i in range(20):
-            output = pipeline.progress(batched_iterator)
+            output = pipeline.progress(dataset_iterator)
     ```
 
 - Rec SDK Torch example
 
     ```python
+    import torch
     import torch.distributed as dist
-    from hybrid_torchrec import HashEmbeddingBagCollection
+    from torch.utils.data import DataLoader
+    from torchrec.distributed.types import ShardingEnv
+    from hybrid_torchrec import HashEmbeddingBagConfig, HashEmbeddingBagCollection
     from hybrid_torchrec.distributed.hybrid_train_pipeline import HybridTrainPipelineSparseDist
     from hybrid_torchrec.distributed.sharding_plan import get_default_hybrid_sharders
-    ...
+
     class TestModel(torch.nn.Module):
-        def __init__(self, *):
-            # The API used by native TorchRec is EmbeddingBagCollection.
-            self.sparse_model = HashEmbeddingBagCollection(xx)
-            self.dense_model = xx
-        def forward(self, batch: Batch):
-            # Sparse forward call and dense forward call
-            # Note: the model forward return value must place loss first and output second, to match the native TorchRec TrainPipelineSparseDist usage.
+        def __init__(self):
+            configs = [HashEmbeddingBagConfig(100, 16, "table0")]
+            # The API used by native TorchRec is EmbeddingBagCollection
+            self.sparse_model = HashEmbeddingBagCollection(configs)
+            self.dense_model = torch.nn.Linear(16, 16)
+        def forward(self, batch):
+            # The model forward implementation is omitted here
+            # The forward method returns the loss and output values
             return loss, output
     def invoke_main():
+        # The distributed environment initialization is omitted here
         dist.init_process_group(backend="hccl")
         rank = dist.get_rank()
         world_size = dist.get_world_size()
         device = torch.device("npu")
 
-        # Create host connection for Rec SDK Torch.
+        dataset = ......  # The dataset implementation is omitted here
+        data_loader = DataLoader(dataset, batch_size=None, batch_sampler=None,
+            pin_memory=True, pin_memory_device="npu", num_workers=1,
+        )
+        dataset_iterator = iter(data_loader)
+        test_model = TestModel()
+        ......
+        # Sharder creation
+        # Create the host connection for Rec SDK Torch
         host_gp = dist.new_group(backend="gloo")
         host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
-        dataset = RandomRecDataset(BATCH_SIZE, BATCH_NUM, FEAT_NAMES, ID_RANGES)
-        data_loader = DataLoader(
-            dataset,
-        )
-        test_model = TestModel(TABLE_NAMES, FEAT_NAMES, EMBED_DIMS, NUM_EMBEDS)
-        ...
-        Sharder creation
-        ...
-        # The API used by native TorchRec is get_default_sharders.
-        hybrid_sharder = get_default_hybrid_sharders(host_env=host_env)
-        ...
-        Optimizer creation
-        ...
-        # The API used by native TorchRec is TrainPipelineSparseDist.
-        pipeline = HybridTrainPipelineSparseDist()
+        # The API used by native TorchRec is get_default_sharders
+        hybrid_sharders = get_default_hybrid_sharders(host_env=host_env)
+        ......
+        # The API used by native TorchRec is TrainPipelineSparseDist
+        pipeline = HybridTrainPipelineSparseDist(......)
         for i in range(20):
-            output = pipeline.progress(batched_iterator)
+            output = pipeline.progress(dataset_iterator)
     ```
 
 ## Rec SDK Torch Migration Examples
 
-Rec SDK Torch supports adaptation for open-source Torch recommendation models. This section describes the main changes needed to migrate the open-source DLRM model (DCNv2) to the Rec SDK Torch framework. For complete migration changes, see [README](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md) and review the code after applying the patch file.
+Rec SDK Torch supports adaptation for open-source Torch recommendation models. This section describes how to migrate the open-source DLRM model (DCNv2) to the Rec SDK Torch framework.
 
-The main migration change is to replace the native TorchRec APIs used by the open-source model, such as sparse table configuration and training pipelines, with the corresponding APIs in the Rec SDK Torch framework.
+### Complete Migration Example
 
-Before migrating, download the open-source model code and switch to the specified commit:
+For the complete migration example, see [DLRM example](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md). It describes how to **quickly migrate the DLRM model to the Rec SDK Torch framework based on the patch file**, as well as the detailed processes of **preparing the running environment**, **preparing the dataset**, and **running the migrated model**.
+
+### Migration Changes
+
+This section describes only the **main changes during migration** (some definitions and module imports are omitted). For the complete code after migration, see [DLRM Example - dlrm Source Code Adaptation](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md#dlrm%E6%BA%90%E7%A0%81%E9%80%82%E9%85%8D) and review the code after applying the patch.
+
+The main change in model migration is to replace the native TorchRec APIs used by the open-source model (sparse table configuration, training pipelines, and so on) with the APIs in the Rec SDK Torch framework.
+
+The Rec SDK Torch framework provides the full-device memory mode and the multi-level cache mode. In different modes, training-related APIs such as sparse table configuration and creation differ. For details, see [API differences between the multi-level cache mode and full-device memory mode](#api_diff_embcache).
+
+>[!NOTE]
+>The conditional branches in the modification content are described as follows:
+>
+>- `with_hybrid_torchrec`: When set to True, use the full-device memory mode of Rec SDK Torch.
+>- `with_embcache`: When set to True, use the multi-level cache mode of Rec SDK Torch.
+>   - `use_ec`: When set to True, use the EC mode (`EmbCacheEmbeddingCollection`) of the multi-level cache mode. Otherwise, use the EBC mode (`EmbCacheEmbeddingBagCollection`).
+>- When none of the preceding scenarios applies, use the native TorchRec APIs to create sparse tables and train the model.
+
+The following migration content is based on a specific commit version of the open-source model:
 
 ```bash
 git clone -b main https://github.com/facebookresearch/dlrm.git
@@ -135,7 +161,7 @@ The main changes are as follows:
         elif torch_npu.npu.is_available():
             device: torch.device = torch.device(f"npu:{rank}")
             backend = "hccl"
-            torch_npu.npu.set_device(device)
+            torch.npu.set_device(device)
         else:
             device: torch.device = torch.device("cpu")
             backend = "gloo"
@@ -159,7 +185,7 @@ The main changes are as follows:
                             else args.num_embeddings
                         ),
                         feature_names=[feature_name],
-                        # Initialize the weight limit to zero tensor.
+                        # Initialize the weight limit to zero tensor
                         weight_init_mean=0.0,
                         weight_init_stddev=0.01,
                         initializer_type=InitializerType.TRUNCATED_NORMAL
@@ -178,7 +204,7 @@ The main changes are as follows:
                             else args.num_embeddings
                         ),
                         feature_names=[feature_name],
-                        # Initialize the weight limit to zero tensor.
+                        # Initialize the weight limit to zero tensor
                         weight_init_mean=0.0,
                         weight_init_stddev=0.01,
                         initializer_type=InitializerType.TRUNCATED_NORMAL
@@ -392,23 +418,27 @@ The main changes are as follows:
             )
     ```
 
-## Functions and Features
+## Functions and Features<a id="functional_features_description"></a>
 
 Rec SDK Torch supports two training modes: full-device memory mode and multi-level cache mode.
 
 In full-device memory mode, all sparse table embedding data is stored in device memory during training.
 
-In multi-level cache mode, embeddings are stored using a combination of device memory and DDR (host memory) during training.
+In multi-level cache mode, embeddings are stored using a combination of device memory and host memory (DDR) during training.
 
 This section describes the related features and code examples for full-device memory mode and multi-level cache mode.
 
 > [!NOTE]
 >
-> The **Constraints** sections in this document only describe constraints for the main usage scenarios. For details, see the corresponding API documentation.
+> The **Constraints** sections in this chapter only describe constraints for the main usage scenarios. For details, see the corresponding API documentation.
+>
+> The **Code example** sections in this chapter only demonstrate the feature/API usage and may differ from actual usage scenarios.
+>
+> When you create sparse tables with the [HashEmbeddingBagCollection](./api/table_creation_apis.md#hashembeddingbagcollection)/[EmbCacheEmbeddingCollection](./api/table_creation_apis.md#embcacheembeddingcollection)/[EmbCacheEmbeddingBagCollection](./api/table_creation_apis.md#embcacheembeddingbagcollection) APIs provided by Rec SDK Torch and use the pipeline for table lookup, the hash mapping and table lookup fused operator features are automatically supported.
 
 ### Training in Full-Device Memory Mode
 
-**API differences between full-device memory mode and the native TorchRec framework**
+**API Differences Between Full-Device Memory Mode and the Native TorchRec Framework**
 
 The APIs used by Rec SDK Torch full-device memory mode differ from those used by the native TorchRec framework for configuring sparse tables, creating sparse tables, sharding sparse tables, and creating pipelines.
 
@@ -425,15 +455,15 @@ The APIs used by Rec SDK Torch full-device memory mode differ from those used by
 - Both pipeline mode and non-pipeline mode (directly calls the sharded sparse table forward pass) are supported for training.
 - Sparse table data cannot be saved or loaded.
 
-**Full-device memory mode test case**
+**Full-Device Memory Mode Test Case**
 
-For the complete full-device memory mode test case, see [README](../../../../training/torch_rec_v1/hybrid_torchrec/test/st/README.md).
+For the complete full-device memory mode test case, see [README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/hybrid_torchrec/test/st/README.md).
 
-#### Basic Usage
+#### Basic Usage<a id="basic_usage_device_memory"></a>
 
 The training process is the same as the native TorchRec pipeline mode. The only differences are the APIs used to create sparse tables, shard sparse tables, and create the pipeline.
 
-**Code example**
+**Code Example**
 
 ```python
 import logging
@@ -469,11 +499,11 @@ DENSE_OUTPUT_DIM: int = 2
 class DenseModel(torch.nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
-        # Define the dense layer.
+        # Define the dense layer
         self.linear = torch.nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
-        # Define the dense layer implementation.
+        # Define the dense layer forward implementation
         return self.linear(x)
 
 
@@ -491,23 +521,22 @@ class TestModel(torch.nn.Module):
         sparse_output: EmbeddingBagCollectionAwaitable = self.sparse_model(batch.sparse_features)
         feat_embeddings: list[torch.Tensor] = list()
         for feat_name in self.feat_names:
-            feat_embeddings.append(sparse_output[feat_name])  # type: ignore
-        # Merge the embeddings of all sparse features.
+            feat_embeddings.append(sparse_output[feat_name])
+        # Merge the embeddings of all sparse features
         embeddings: torch.Tensor = torch.concat(feat_embeddings, dim=-1)
 
         # Dense forward pass
         dense_output: torch.Tensor = self.dense_model(embeddings)
 
-        # Calculate loss.
+        # Calculate loss
         loss: torch.Tensor = self.loss_fn(dense_output, batch.labels)
 
-        # Define the output content as required.
+        # Define the output content as required
         output: dict[str, torch.Tensor] = dict()
         output["sparse"] = embeddings
         output["dense"] = dense_output
 
-        # Return the forward output.
-        # Note: The forward pass must return the loss and output values, with loss first and output second. This usage matches the native TorchRec TrainPipelineSparseDist usage.
+        # Note: The forward pass must return the loss and output values, with loss first and output second
         return loss, output
 
 
@@ -521,7 +550,7 @@ def weight_init(param: torch.nn.Parameter):
 
 def set_distribute_env():
     rank = int(os.environ.get("LOCAL_RANK", 0))
-    torch.npu.set_device(rank)  # type: ignore
+    torch.npu.set_device(rank)
     os.environ["MASTER_ADDR"] = "127.0.0.1"
     os.environ["MASTER_PORT"] = "6000"
     os.environ["GLOO_SOCKET_IFNAME"] = "lo"
@@ -529,7 +558,7 @@ def set_distribute_env():
 
 
 def train():
-    # 0. Set up the distributed environment.
+    # 0. Set up the distributed environment
     set_distribute_env()
     rank = dist.get_rank()
     world_size = dist.get_world_size()
@@ -539,7 +568,7 @@ def train():
     num_embeddings: list[int] = [400, 4000, 400]
     table_num: int = len(num_embeddings)
 
-    # 1. Create the dataset.
+    # 1. Create the dataset
 
     batch_size: int = 128
     dataset = RandomRecDataset(BATCH_NUM, batch_size, num_embeddings, table_num)
@@ -552,7 +581,7 @@ def train():
         num_workers=1,
     )
 
-    # 2. Create the sparse table.
+    # 2. Create the sparse table
     embedding_configs: list[HashEmbeddingBagConfig] = []
     table_names: list[str] = [f"table{i}" for i in range(len(num_embeddings))]
     feat_names: list[str] = [f"feat{i}" for i in range(table_num)]
@@ -563,16 +592,16 @@ def train():
             num_embeddings=num_embeddings[i],
             feature_names=[feat_names[i]],
             pooling=torchrec.PoolingType.MEAN,
-            init_fn=weight_init,  # type: ignore
+            init_fn=weight_init,
         )
         embedding_configs.append(emb_config)
     sparse_ebc: HashEmbeddingBagCollection = HashEmbeddingBagCollection(device="meta", tables=embedding_configs)
 
-    # 3. Create the model: Wrap the sparse table and dense part into one model.
+    # 3. Create the model: Wrap the sparse table and dense part into one model
     dense_model: torch.nn.Module = DenseModel(sum(embedding_dims), DENSE_OUTPUT_DIM)
     test_model: torch.nn.Module = TestModel(sparse_ebc, dense_model, feat_names)
 
-    # 4. Define the sparse table optimizer.
+    # 4. Define the sparse table optimizer
     embedding_optimizer_class: type[torch.optim.Optimizer] = torch.optim.Adagrad
     optimizer_kwargs = {"lr": 0.01, "eps": 0.1}
     apply_optimizer_in_backward(
@@ -581,12 +610,12 @@ def train():
         optimizer_kwargs=optimizer_kwargs,
     )
 
-    # 5. Shard the sparse table.
+    # 5. Shard the sparse table
     host_gp = dist.new_group(backend="gloo")
     host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
     sharders = get_default_hybrid_sharders(host_env=host_env)
     constraints = {
-        # Use the row_wise sharding type and fused for compute_kernels.
+        # Use the row_wise sharding type and fused for compute_kernels
         table_name: ParameterConstraints(sharding_types=["row_wise"], compute_kernels=["fused"])
         for table_name in table_names
     }
@@ -595,27 +624,27 @@ def train():
         constraints=constraints,
     )
     plan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)
-    #   Here, sharding matches the corresponding class type based on the sharders argument: EmbeddingBagCollection or HashEmbeddingBagCollection.
+    #   Here, sharding matches the corresponding class type based on the sharders argument: EmbeddingBagCollection or HashEmbeddingBagCollection
     #   It shards only sparse table parameters and does not shard dense parameters
     ddp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)
 
-    # 6. Combine the optimizers.
+    # 6. Combine the optimizers
     dense_optimizer = KeyedOptimizerWrapper(
         dict(in_backward_optimizer_filter(ddp_model.named_parameters())),
         lambda params: torch.optim.Adagrad(params, lr=0.1),
     )
     optimizer = CombinedOptimizer([ddp_model.fused_optimizer, dense_optimizer])
 
-    # 7. Create the pipeline.
+    # 7. Create the pipeline
     pipeline = HybridTrainPipelineSparseDist(
         ddp_model, optimizer, npu_device, return_loss=True, execute_all_batches=True
     )
 
-    # 8. Train with the pipeline.
+    # 8. Train with the pipeline
     dataset_iterator = iter(data_loader)
     for step in range(BATCH_NUM):
-        # When the pipeline is created, return_loss is set to True, so pipeline.progress() returns two values: output and loss.
-        # If return_loss is set to False when the pipeline is created, only output is returned.
+        # When the pipeline is created, return_loss is set to True. Therefore, pipeline.progress() returns two values: output and loss
+        # If return_loss is set to False when the pipeline is created, only output is returned
         output, loss = pipeline.progress(dataset_iterator)
         logging.info("rank: %d, step: %s, loss: %s, sparse output: %s", rank, step, loss, output["sparse"])
 
@@ -623,44 +652,44 @@ def train():
 if __name__ == "__main__":
     train()
     # How to use the script:
-    #   1. Write the script into main.py and copy RecSDK/training/torch_rec_v1/hybrid_torchrec/test/st/dataset.py to the same directory as the .py file.
-    #   2. Start single-card training: WORLD_SIZE=1 RANK=0 python3 main.py
-    #   3. Start multi-card training (two cards): torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=2 main.py
+    #   1. Write the script into main.py and copy RecSDK/training/torch_rec_v1/hybrid_torchrec/test/st/dataset.py to the same directory as the .py file
+    #   2. Start single-device training: WORLD_SIZE=1 RANK=0 python3 main.py
+    #   3. Start multi-device training (two devices): torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=2 main.py
 ```
 
 For more demo examples, see [Rec SDK Torch Little Demo examples](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_examples/little_demo).
 
 #### Sparse Table Data Parallelism (DP)
 
+**DP Mode**
+
+In the DP mode (data parallel), the sparse table is no longer sharded across different devices. Instead, each device holds a complete copy of the sparse table parameters. During backpropagation, the gradients from all devices are aggregated before a unified update.
+
+Compared with [the non-DP mode (basic usage)](#basic_usage_device_memory), the DP mode mainly differs in how it stores sparse table parameters during training.
+
 **Constraints**
 
 - The DP mode supports only a single sparse table.
 
-**Comparison with the non-DP mode**
-
-Compared with [the non-DP mode (basic usage)](#basic-usage), the DP mode mainly differs in how it stores sparse table parameters during training.
-
-In the DP mode, the sparse table is no longer sharded across different devices. Instead, each device holds a complete copy of the sparse table parameters. During backpropagation, the gradients from all devices are aggregated before a unified update.
-
-**Code example**
+**Code Example**
 
 For the complete DP mode code example, see [DP mode test case](../../../../training/torch_rec_v1/hybrid_torchrec/test/st/test_hybrid_hash_embeddingbag_dp.py).
 
-Simplified code example, showing only the differences from basic usage:
+Simplified code example, showing only the differences from [basic usage](#basic_usage_device_memory):
 
 ```python
-    # Difference: The DP mode supports only a single table and does not support multi-table mode.
+    # Difference: The DP mode supports only a single table and does not support multi-table mode
     embedding_dims = [64]
     num_embeddings = [400]
 
     ...
 
-    # 5. Shard the sparse table.
+    # 5. Shard the sparse table
     host_gp = dist.new_group(backend="gloo")
     host_env = ShardingEnv(world_size=world_size, rank=rank, pg=host_gp)
     sharders = get_default_hybrid_sharders(host_env=host_env)
     constraints = {
-        # Difference: The sharding type is data_parallel, and dense is used for compute_kernels.
+        # Difference: The sharding type is data_parallel, and dense is used for compute_kernels
         table_name: ParameterConstraints(sharding_types=["data_parallel"], compute_kernels=["dense"])
         for table_name in table_names
     }
@@ -669,23 +698,23 @@ Simplified code example, showing only the differences from basic usage:
         constraints=constraints,
     )
     plan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)
-    dmp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)
+    ddp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)
 
     ...
 ```
 
 ### Training in Multi-Level Cache Mode
 
-**Functional differences between the multi-level cache mode and full-device memory mode**
+**Functional Differences Between the Multi-Level Cache Mode and Full-Device Memory Mode**
 
-- Multi-level cache mode stores sparse tables with device memory as a cache for the embedding parameters needed during training, while DDR stores and manages the full set of embedding parameters.
+- Multi-level cache mode stores sparse tables with device memory as a cache for the embedding parameters needed during training, while host memory (DDR) stores and manages the full set of embedding parameters.
 - The EC mode and EBC mode are supported.
 - Sparse table parameters can be saved and loaded.
 - Only row-wise sharding for sparse tables is supported.
 - Only pipeline mode training is supported.
-  - During pipeline mode training, data is swapped in (H2D) and out (D2H) before `sparse_model.forward()` is called, so the training data for the current batch stays in device memory.
+  - During pipeline mode training, data is swapped in (host to device) and out (device to host) before `sparse_model.forward()` is called. Therefore, the training data for the current batch stays in device memory.
 
-**API differences between the multi-level cache mode and full-device memory mode**
+**API Differences Between the Multi-Level Cache Mode and Full-Device Memory Mode**<a id="api_diff_embcache"></a>
 
 The APIs used by multi-level cache mode differ from those used by full-device memory mode for configuring sparse tables, creating sparse tables, sharding sparse tables, and creating pipelines.
 
@@ -696,15 +725,19 @@ The APIs used by multi-level cache mode differ from those used by full-device me
 |Sparse table sharder|get_default_hybrid_sharders()|[EmbCacheEmbeddingCollectionSharder()]|[EmbCacheEmbeddingBagCollectionSharder()]|
 |Pipeline creation|HybridTrainPipelineSparseDist|EmbCacheTrainPipelineSparseDist|EmbCacheTrainPipelineSparseDist|
 
-**Multi-level cache mode test case**
+**Multi-Level Cache Mode Test Case**
 
-For the complete multi-level cache mode test case, see [README](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/README.md).
+For the complete multi-level cache mode test case, see [README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_embcache/tests/acc_test/README.md).
 
-#### Basic Usage
+#### Basic Usage<a id="basic_usage_embcache"></a>
 
-##### Multi-Level Cache EC Mode
+##### Multi-Level Cache EC Mode<a id="basic_usage_embcache_ec"></a>
 
-**Code example**
+**Constraints**
+
+- The multi-level cache EC mode supports only multiple sparse tables that use the same embedding dim.
+
+**Code Example**
 
 ```python
 import logging
@@ -726,7 +759,7 @@ from torchrec.distributed.planner import (
 )
 from torchrec.distributed.embedding import EmbeddingCollectionAwaitable
 from torchrec_embcache.distributed.embedding import EmbCacheEmbeddingCollection
-from torchrec_embcache.distributed.configs import AdmitAndEvictConfig, EmbCacheEmbeddingConfig, InitializerType
+from torchrec_embcache.distributed.configs import EmbCacheEmbeddingConfig, InitializerType
 from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSparseDist
 from torchrec_embcache.distributed.sharding.embedding_sharder import EmbCacheEmbeddingCollectionSharder
 
@@ -741,11 +774,11 @@ BATCH_NUM: int = 50
 class DenseModel(torch.nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
-        # Define the dense layer.
+        # Define the dense layer
         self.linear = torch.nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
-        # Define the dense layer implementation.
+        # Define the dense layer forward implementation
         return self.linear(x)
 
 
@@ -761,31 +794,30 @@ class TestModel(torch.nn.Module):
     def forward(self, batch: Batch):
         # Sparse forward pass
         sparse_output: EmbeddingCollectionAwaitable = self.sparse_model(batch.sparse_features)
-        sparse_output_dict: dict[str, torchrec.JaggedTensor] = sparse_output.wait()  # type: ignore
+        sparse_output_dict: dict[str, torchrec.JaggedTensor] = sparse_output.wait()
         feat_embeddings: list[torch.Tensor] = list()
         for feat_name in self.feat_names:
             feat_embeddings.append(sparse_output_dict[feat_name].values())
-        # Concatenate the embeddings of the sparse tables.
+        # Concatenate the embeddings of the sparse tables
         embeddings: torch.Tensor = torch.concat(feat_embeddings, dim=-1)
 
         # Dense forward pass
         dense_output: torch.Tensor = self.dense_model(embeddings)
 
-        # Calculate loss.
+        # Calculate loss
         loss = self.loss_fn(dense_output, batch.labels)
 
-        # Define the output content as required.
+        # Define the output content as required
         output = dict()
         output["sparse"] = embeddings
         output["dense"] = dense_output
-        # Return the forward output.
-        # Note: The forward pass must return the loss and output values, with loss first and output second. This usage matches the native TorchRec TrainPipelineSparseDist usage.
+        # Note: The forward pass must return the loss and output values, with loss first and output second
         return loss, output
 
 
 def set_distribute_env():
     rank = int(os.environ.get("LOCAL_RANK", 0))
-    torch.npu.set_device(rank)  # type: ignore
+    torch.npu.set_device(rank)
     os.environ["MASTER_ADDR"] = "127.0.0.1"
     os.environ["MASTER_PORT"] = "6000"
     os.environ["GLOO_SOCKET_IFNAME"] = "lo"
@@ -793,17 +825,17 @@ def set_distribute_env():
 
 
 def train():
-    # 0. Set up the distributed environment.
+    # 0. Set up the distributed environment
     set_distribute_env()
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     npu_device = torch.device("npu")
 
-    embedding_dims: list[int] = [64, 64, 64]  # TorchRec EC mode requires all tables to use the same embedding dim.
+    embedding_dims: list[int] = [64, 64, 64]
     num_embeddings: list[int] = [400, 4000, 400]
     table_num: int = len(num_embeddings)
 
-    # 1. Create the dataset.
+    # 1. Create the dataset
     batch_size: int = 128
     dataset: RandomRecDataset = RandomRecDataset(BATCH_NUM, batch_size, num_embeddings, table_num)
     data_loader: DataLoader[Batch] = DataLoader(
@@ -815,7 +847,7 @@ def train():
         num_workers=1,
     )
 
-    # 2. Create the sparse table.
+    # 2. Create the sparse table
     embedding_configs: list[EmbCacheEmbeddingConfig] = []
     table_names: list[str] = [f"table{i}" for i in range(len(num_embeddings))]
     feat_names: list[str] = [f"feat{i}" for i in range(len(num_embeddings))]
@@ -825,25 +857,25 @@ def train():
             embedding_dim=embedding_dims[i],
             num_embeddings=num_embeddings[i],
             feature_names=[feat_names[i]],
-            # init_fn=weight_init,  # Note: The multi-level cache mode does not support custom initialization functions.
-            initializer_type=InitializerType.UNIFORM,  # Set the embedding initialization method with the initializer_type parameter.
+            # init_fn=weight_init,  # Note: The multi-level cache mode does not support custom initialization functions
+            initializer_type=InitializerType.TRUNCATED_NORMAL,  # Set the embedding initialization method with the initializer_type parameter
             weight_init_mean=0.0,
             weight_init_stddev=0.05,
         )
         embedding_configs.append(emb_config)
     sparse_ebc: torch.nn.Module = EmbCacheEmbeddingCollection(
-        embedding_configs,  # type: ignore
+        embedding_configs,
         world_size,
         batch_size,
         multi_hot_sizes=[1] * table_num,
         device=torch.device("meta"),
     )
 
-    # 3. Create the model: Wrap the sparse table and dense part into one model.
+    # 3. Create the model: Wrap the sparse table and dense part into one model
     dense_model: torch.nn.Module = DenseModel(sum(embedding_dims), OUTPUT_SIZE)
     test_model: torch.nn.Module = TestModel(sparse_ebc, dense_model, feat_names)
 
-    # 4. Define the sparse table optimizer.
+    # 4. Define the sparse table optimizer
     embedding_optimizer_class: type[torch.optim.Optimizer] = torch.optim.Adagrad
     optimizer_kwargs = {"lr": 0.01, "eps": 0.1}
     apply_optimizer_in_backward(
@@ -852,20 +884,20 @@ def train():
         optimizer_kwargs=optimizer_kwargs,
     )
 
-    # 5. Shard the sparse table.
+    # 5. Shard the sparse table
     cpu_pg = dist.new_group(backend="gloo")
-    cpu_env = ShardingEnv.from_process_group(cpu_pg)  # pyright: ignore[reportArgumentType]
+    cpu_env = ShardingEnv.from_process_group(cpu_pg)
     cpu_device = torch.device("cpu")
     sharders: list[EmbCacheEmbeddingCollectionSharder] = [
         EmbCacheEmbeddingCollectionSharder(
             cpu_device=cpu_device,
             cpu_env=cpu_env,
             npu_device=npu_device,
-            npu_env=ShardingEnv.from_process_group(dist.GroupMember.WORLD),  # type: ignore
+            npu_env=ShardingEnv.from_process_group(dist.GroupMember.WORLD),
         ),
     ]
     constraints: dict[str, ParameterConstraints] = {
-        # Use the row_wise sharding type and fused for compute_kernels.
+        # Use the row_wise sharding type and fused for compute_kernels
         table_name: ParameterConstraints(sharding_types=["row_wise"], compute_kernels=["fused"])
         for table_name in table_names
     }
@@ -873,19 +905,19 @@ def train():
         topology=Topology(world_size=world_size, compute_device="npu"),
         constraints=constraints,
     )
-    plan: EmbeddingShardingPlan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)  # type: ignore
-    #   Here, sharding matches the corresponding class type based on the sharders argument: EmbCacheEmbeddingCollection.
+    plan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)
+    #   Here, sharding matches the corresponding class type based on the sharders argument: EmbCacheEmbeddingCollection
     #   It shards only sparse table parameters and does not shard dense parameters
-    ddp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)  # type: ignore
+    ddp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)
 
-    # 6. Combine the optimizers.
+    # 6. Combine the optimizers
     dense_optimizer: KeyedOptimizerWrapper = KeyedOptimizerWrapper(
         dict(in_backward_optimizer_filter(ddp_model.named_parameters())),
         lambda params: torch.optim.Adagrad(params, lr=0.1),
     )
     optimizer = CombinedOptimizer([ddp_model.fused_optimizer, dense_optimizer])
 
-    # 7. Create the pipeline.
+    # 7. Create the pipeline
     pipeline: EmbCacheTrainPipelineSparseDist = EmbCacheTrainPipelineSparseDist(
         ddp_model,
         optimizer,
@@ -894,10 +926,10 @@ def train():
         return_loss=True,
     )
 
-    # 8. Train with the pipeline.
+    # 8. Train with the pipeline
     dataset_iterator = iter(data_loader)
     for step in range(BATCH_NUM):
-        # When the pipeline is created, return_loss is set to True, so pipeline.progress() returns two values: output and loss.
+        # When the pipeline is created, return_loss is set to True. Therefore, pipeline.progress() returns two values: output and loss
         output, loss = pipeline.progress(dataset_iterator)
         logging.info("rank: %d, step: %s, loss: %s, sparse output: %s", rank, step, loss, output["sparse"])
 
@@ -905,9 +937,9 @@ def train():
 if __name__ == "__main__":
     train()
     # How to use the script:
-    #   1. Write the script into main.py and copy RecSDK/training/torch_rec_v1/torchrec_embcache/tests/acc_test/dataset.py to the same directory as the .py file.
-    #   2. Start single-card training: WORLD_SIZE=1 RANK=0 python3 main.py
-    #   3. Start multi-card training (two cards): torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=2 main.py
+    #   1. Write the script into main.py and copy RecSDK/training/torch_rec_v1/torchrec_embcache/tests/acc_test/dataset.py to the same directory as the .py file
+    #   2. Start single-device training: WORLD_SIZE=1 RANK=0 python3 main.py
+    #   3. Start multi-device training (two devices): torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=2 main.py
 ```
 
 For more code examples, see [Multi-Level Cache EC Test Case](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_embedding_ec_cache_pipeline.py).
@@ -916,22 +948,22 @@ For more code examples, see [Multi-Level Cache EC Test Case](../../../../trainin
 
 **Constraints**
 
-- The Multi-level cache EBC mode supports only multiple sparse tables that use the same embedding dim.
+- The multi-level cache EBC mode supports only multiple sparse tables that use the same embedding dim.
 
-**Differences from the multi-level cache EC mode**
+**Differences from the Multi-Level Cache EC Mode**
 
 Compared with the EC mode, the EBC mode uses different APIs to create sparse tables and sharders. It also differs in how the integrated model handles sparse table lookup results in `forward()`.
 
-**Code example**
+**Code Example**
 
 For the complete code example, see [Multi-Level Cache EBC Test Case](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_embedding_cache_pipeline.py).
 
-Simplified code example, showing only the differences from the multi-level cache EC mode:
+Simplified code example, showing only the differences from [the multi-level cache EC mode](#basic_usage_embcache_ec):
 
 ```python
 ...
 
-# Difference: Import the APIs used by multi-level cache EBC mode.
+# Difference: Import the APIs used by multi-level cache EBC mode
 from torchrec_embcache.distributed.configs import EmbCacheEmbeddingBagConfig, InitializerType
 from torchrec_embcache.distributed.embedding_bag import EmbCacheEmbeddingBagCollection
 from torchrec_embcache.distributed.train_pipeline import EmbCacheTrainPipelineSparseDist
@@ -951,25 +983,23 @@ class TestModel(torch.nn.Module):
     def forward(self, batch: Batch):
         # Sparse forward pass
         sparse_output: EmbeddingBagCollectionAwaitable = self.sparse_model(batch.sparse_features)
-        # Difference: The way embedding forward lookup results are parsed differs from the multi-level cache EC mode.
+        # Difference: The way embedding forward lookup results are parsed differs from the multi-level cache EC mode
         feat_embeddings: list[torch.Tensor] = list()
         for feat_name in self.feat_names:
-            feat_embeddings.append(sparse_output[feat_name])  # type: ignore
-        # Merge the embeddings of all sparse features.
+            feat_embeddings.append(sparse_output[feat_name])
+        # Merge the embeddings of all sparse features
         embeddings: torch.Tensor = torch.concat(feat_embeddings, dim=-1)
 
         # Dense forward pass
         dense_output: torch.Tensor = self.dense_model(embeddings)
 
-        # Calculate loss.
+        # Calculate loss
         loss: torch.Tensor = self.loss_fn(dense_output, batch.labels)
 
-        # Define the output content as required.
+        # Define the output content as required
         output = dict()
         output["sparse"] = embeddings
         output["dense"] = dense_output
-        # Return the forward output.
-        # Note: The forward pass must return the loss and output values, with loss first and output second. This usage matches the native TorchRec TrainPipelineSparseDist usage.
         return loss, output
 
 ...
@@ -977,24 +1007,25 @@ class TestModel(torch.nn.Module):
 def train():
     ...
 
-    # 2. Create the sparse table.
+    # 2. Create the sparse table
+    # Difference: The table config and collection API in the EBC mode differ from the EC mode
     embedding_configs: list[EmbCacheEmbeddingBagConfig] = []
     table_names: list[str] = [f"table{i}" for i in range(len(num_embeddings))]
     feat_names: list[str] = [f"feat{i}" for i in range(len(num_embeddings))]
     for i in range(table_num):
-        emb_config = EmbCacheEmbeddingBagConfig(  # Difference: The table config and collection API in the EBC mode differ from the EC mode.
+        emb_config = EmbCacheEmbeddingBagConfig(
             name=table_names[i],
             embedding_dim=embedding_dims[i],
             num_embeddings=num_embeddings[i],
             feature_names=[feat_names[i]],
-            # init_fn=weight_init,  # Note: The multi-level cache mode does not support custom initialization functions.
-            initializer_type=InitializerType.UNIFORM,  # Set the embedding initialization method with the initializer_type parameter.
+            # init_fn=weight_init,  # Note: The multi-level cache mode does not support custom initialization functions
+            initializer_type=InitializerType.TRUNCATED_NORMAL,  # Set the embedding initialization method with the initializer_type parameter
             weight_init_mean=0.0,
             weight_init_stddev=0.05,
         )
         embedding_configs.append(emb_config)
     sparse_ebc: torch.nn.Module = EmbCacheEmbeddingBagCollection(
-        embedding_configs,  # type: ignore
+        embedding_configs,
         world_size,
         batch_size,
         multi_hot_sizes=[1] * table_num,
@@ -1003,20 +1034,20 @@ def train():
 
     ...
 
-    # 5. Shard the sparse table.
+    # 5. Shard the sparse table
     cpu_pg = dist.new_group(backend="gloo")
-    cpu_env = ShardingEnv.from_process_group(cpu_pg)  # pyright: ignore[reportArgumentType]
+    cpu_env = ShardingEnv.from_process_group(cpu_pg)
     cpu_device = torch.device("cpu")
-    sharders: list[EmbCacheEmbeddingBagCollectionSharder] = [  # Difference: The sharder in the EBC mode differs from that in the EC mode.
+    sharders: list[EmbCacheEmbeddingBagCollectionSharder] = [  # Difference: The sharder in the EBC mode differs from that in the EC mode
         EmbCacheEmbeddingBagCollectionSharder(
             cpu_device=cpu_device,
             cpu_env=cpu_env,
             npu_device=npu_device,
-            npu_env=ShardingEnv.from_process_group(dist.GroupMember.WORLD),  # type: ignore
+            npu_env=ShardingEnv.from_process_group(dist.GroupMember.WORLD),
         ),
     ]
     constraints: dict[str, ParameterConstraints] = {
-        # Use the row_wise sharding type and fused for compute_kernels.
+        # Use the row_wise sharding type and fused for compute_kernels
         table_name: ParameterConstraints(sharding_types=["row_wise"], compute_kernels=["fused"])
         for table_name in table_names
     }
@@ -1024,10 +1055,10 @@ def train():
         topology=Topology(world_size=world_size, compute_device="npu"),
         constraints=constraints,
     )
-    plan: EmbeddingShardingPlan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)  # type: ignore
-    #   Here, sharding matches the corresponding class type based on the sharders argument: EmbCacheEmbeddingBagCollection.
+    plan = planner.collective_plan(test_model, sharders, dist.GroupMember.WORLD)
+    #   Here, sharding matches the corresponding class type based on the sharders argument: EmbCacheEmbeddingBagCollection
     #   It shards only sparse table parameters and does not shard dense parameters
-    ddp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)  # type: ignore
+    ddp_model = DistributedModelParallel(test_model, device=npu_device, plan=plan, sharders=sharders)
 
     ...
 
@@ -1057,7 +1088,7 @@ The multi-level cache mode supports two admission and eviction policies: **based
 - Only the multi-level cache EC mode is supported.
 - Admission and eviction can be enabled separately or simultaneously.
 
-**Code differences from the multi-level cache EC mode**
+**Code Differences from the Multi-Level Cache EC Mode**
 
 - Admission scenario
   - When creating `EmbCacheEmbeddingConfig`, specify the `admit_and_evict_config` parameter and configure the admission policy parameters in it.
@@ -1066,18 +1097,20 @@ The multi-level cache mode supports two admission and eviction policies: **based
   - When creating `EmbCacheEmbeddingConfig`, specify the `admit_and_evict_config` parameter and configure the eviction policy parameters in it.
   - When creating the pipeline, specify the `evict_step_interval` parameter to configure the step interval that triggers eviction.
 
-**Code example**
+**Code Example**
 
 For the complete code example, see [Admission and Eviction Based on Time and Count Test Case](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_feature_filter.py).
 
-Simplified code example, showing only the differences from the multi-level cache EC mode:
+Simplified code example, showing only the differences from [the multi-level cache EC mode](#basic_usage_embcache_ec):
 
 ```python
+# Difference: Add the module imports
+from torchrec_embcache.distributed.configs import AdmitAndEvictConfig
     ...
 
-    # 1. Create the dataset.
+    # 1. Create the dataset
     batch_size: int = 128
-    # Difference: In the eviction scenario, create a dataset with feature ID timestamps. For the detailed implementation, see the RandomRecDataset definition in dataset.py.
+    # Difference: In the eviction scenario, create a dataset with feature ID timestamps
     dataset: RandomRecDataset = RandomRecDataset(
         BATCH_NUM, batch_size, num_embeddings, table_num, is_evict_enabled=True
     )
@@ -1090,13 +1123,14 @@ Simplified code example, showing only the differences from the multi-level cache
         num_workers=1,
     )
 
-    # 2. Create the sparse table.
-    evict_step_interval = 20  # Eviction step. Evict once every 20 batches
+    # 2. Create the sparse table
+    # Difference: Set the eviction step. Evict once every 20 batches
+    evict_step_interval = 20
     embedding_configs: list[EmbCacheEmbeddingConfig] = []
     table_names: list[str] = [f"table{i}" for i in range(len(num_embeddings))]
     feat_names: list[str] = [f"feat{i}" for i in range(len(num_embeddings))]
     for i in range(table_num):
-        # Difference: Set the admission and eviction configuration parameters and pass them to emb_config.
+        # Difference: Set the admission and eviction configuration parameters and pass them to emb_config
         admit_and_evict_config = AdmitAndEvictConfig(
             admit_threshold=2,
             not_admitted_default_value=0.999,
@@ -1108,15 +1142,15 @@ Simplified code example, showing only the differences from the multi-level cache
             embedding_dim=embedding_dims[i],
             num_embeddings=num_embeddings[i],
             feature_names=[feat_names[i]],
-            # init_fn=weight_init,  # Note: The multi-level cache mode does not support custom initialization functions.
-            initializer_type=InitializerType.UNIFORM,  # Set the embedding initialization method with the initializer_type parameter.
+            # init_fn=weight_init,  # Note: The multi-level cache mode does not support custom initialization functions
+            initializer_type=InitializerType.TRUNCATED_NORMAL,  # Set the embedding initialization method with the initializer_type parameter
             weight_init_mean=0.0,
             weight_init_stddev=0.05,
-            admit_and_evict_config=admit_and_evict_config,  # Difference: Pass the admission and eviction configuration parameters.
+            admit_and_evict_config=admit_and_evict_config,  # Difference: Pass the admission and eviction configuration parameters
         )
         embedding_configs.append(emb_config)
     sparse_ebc: torch.nn.Module = EmbCacheEmbeddingCollection(
-        embedding_configs,  # type: ignore
+        embedding_configs,
         world_size,
         batch_size,
         multi_hot_sizes=[1] * table_num,
@@ -1125,14 +1159,14 @@ Simplified code example, showing only the differences from the multi-level cache
 
     ...
 
-    # 7. Create the pipeline.
+    # 7. Create the pipeline
     pipeline: EmbCacheTrainPipelineSparseDist = EmbCacheTrainPipelineSparseDist(
         ddp_model,
         optimizer,
         cpu_device=cpu_device,
         npu_device=npu_device,
         return_loss=True,
-        evict_step_interval=evict_step_interval,  # Difference: In the eviction scenario, pass the eviction step interval parameter to the pipeline.
+        evict_step_interval=evict_step_interval,  # Difference: In the eviction scenario, pass the eviction step interval parameter to the pipeline
     )
 
     ...
@@ -1156,15 +1190,16 @@ Simplified code example, showing only the differences from the multi-level cache
 - Only the multi-level cache EC mode is supported.
 - Admission and eviction can be enabled separately or simultaneously.
 
-**Code example**
+**Code Example**
 
-For the complete code example, see [Admission and Eviction Based on Time and Count Test Case](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_show_click.py).
+For the complete code example, see [Admission and Eviction Based on Impressions, Clicks, and Score Test Case](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_show_click.py).
 
-Simplified code example, showing only the differences from the multi-level cache EC mode:
+Simplified code example, showing only the differences from [the multi-level cache EC mode](#basic_usage_embcache_ec):
 
 ```python
-# Difference: Import ShowClickBatch.
-from dataset import RandomRecDataset, Batch, ShowClickBatch
+# Difference: Import the related modules
+from torchrec_embcache.distributed.configs import AdmitAndEvictConfig, ShowClickParams, AdmitAndEvictPolicyType
+from dataset import ShowClickBatch
 
 ...
 
@@ -1177,41 +1212,39 @@ class TestModel(torch.nn.Module):
         self.feat_names: list[str] = feat_names
         self.loss_fn: torch.nn.CrossEntropyLoss = torch.nn.CrossEntropyLoss()
 
-    def forward(self, batch: ShowClickBatch):  # Difference: The typing type is ShowClickBatch.
+    def forward(self, batch: ShowClickBatch):  # Difference: The typing type is ShowClickBatch
         # Sparse forward pass
         sparse_output: EmbeddingCollectionAwaitable = self.sparse_model(batch.sparse_features)
-        sparse_output_dict: dict[str, torchrec.JaggedTensor] = sparse_output.wait()  # type: ignore
+        sparse_output_dict: dict[str, torchrec.JaggedTensor] = sparse_output.wait()
         feat_embeddings: list[torch.Tensor] = list()
         for feat_name in self.feat_names:
             feat_embeddings.append(sparse_output_dict[feat_name].values())
-        # Concatenate the embeddings of the sparse tables.
+        # Concatenate the embeddings of the sparse tables
         embeddings: torch.Tensor = torch.concat(feat_embeddings, dim=-1)
 
         # Dense forward pass
         dense_output: torch.Tensor = self.dense_model(embeddings)
 
-        # Calculate loss.
-        loss = self.loss_fn(dense_output, batch.click_labels)  # Difference: In ShowClickBatch, the labels field is named click_labels.
+        # Calculate loss
+        loss = self.loss_fn(dense_output, batch.click_labels)  # Difference: In ShowClickBatch, the labels field is named click_labels
 
-        # Define the output content as required.
+        # Define the output content as required
         output = dict()
         output["sparse"] = embeddings
         output["dense"] = dense_output
-        # Return the forward output.
-        # Note: The forward pass must return the loss and output values, with loss first and output second. This usage matches the native TorchRec TrainPipelineSparseDist usage.
         return loss, output
 
 
 def train():
     ...
 
-    # 1. Create the dataset.
+    # 1. Create the dataset
     batch_size: int = 128
-    # Difference: Create a dataset that includes click_labels. For the detailed implementation, see the RandomRecDataset definition in dataset.py.
+    # Difference: Create a dataset that includes click_labels
     dataset: RandomRecDataset = RandomRecDataset(
         BATCH_NUM, batch_size, num_embeddings, table_num, is_enable_score=True
     )
-    data_loader: DataLoader[Batch] = DataLoader(
+    data_loader: DataLoader[ShowClickBatch] = DataLoader(
         dataset,
         batch_size=None,
         batch_sampler=None,
@@ -1220,34 +1253,35 @@ def train():
         num_workers=1,
     )
 
-    # 2. Create the sparse table.
-    evict_step_interval = 20  # Eviction step. Evict once every 20 batches
+    # 2. Create the sparse table
     embedding_configs: list[EmbCacheEmbeddingConfig] = []
     table_names: list[str] = [f"table{i}" for i in range(len(num_embeddings))]
     feat_names: list[str] = [f"feat{i}" for i in range(len(num_embeddings))]
+    # Difference: Set the eviction-related parameters
+    evict_step_interval = 20
     showclick_params = ShowClickParams(alpha=1, beta=1, admit_threshold=0.1, evict_percentage=0.1, score_decay=0.9)
     for i in range(table_num):
-        # Difference: Set the admission and eviction configuration parameters based on show and click events and pass them to emb_config.
+        # Difference: Set the admission and eviction configuration parameters based on show and click events and pass them to emb_config
         admit_and_evict_config = AdmitAndEvictConfig(
             showclick_params=showclick_params,
             not_admitted_default_value=0.999,
             evict_step_interval=evict_step_interval,
-            policy_type=AdmitAndEvictPolicyType.POLICY_SHOWCLICK,  # type: ignore
+            policy_type=AdmitAndEvictPolicyType.POLICY_SHOWCLICK,
         )
         emb_config = EmbCacheEmbeddingConfig(
             name=table_names[i],
             embedding_dim=embedding_dims[i],
             num_embeddings=num_embeddings[i],
             feature_names=[feat_names[i]],
-            # init_fn=weight_init,  # Note: The multi-level cache mode does not support custom initialization functions.
-            initializer_type=InitializerType.UNIFORM,  # Set the embedding initialization method with the initializer_type parameter.
+            # init_fn=weight_init,  # Note: The multi-level cache mode does not support custom initialization functions
+            initializer_type=InitializerType.TRUNCATED_NORMAL,  # Set the embedding initialization method with the initializer_type parameter
             weight_init_mean=0.0,
             weight_init_stddev=0.05,
-            admit_and_evict_config=admit_and_evict_config,  # Difference: Pass the admission and eviction configuration parameters.
+            admit_and_evict_config=admit_and_evict_config,  # Difference: Pass the admission and eviction configuration parameters
         )
         embedding_configs.append(emb_config)
     sparse_ebc: torch.nn.Module = EmbCacheEmbeddingCollection(
-        embedding_configs,  # type: ignore
+        embedding_configs,
         world_size,
         batch_size,
         multi_hot_sizes=[1] * table_num,
@@ -1256,14 +1290,14 @@ def train():
 
     ...
 
-    # 7. Create the pipeline.
+    # 7. Create the pipeline
     pipeline: EmbCacheTrainPipelineSparseDist = EmbCacheTrainPipelineSparseDist(
         ddp_model,
         optimizer,
         cpu_device=cpu_device,
         npu_device=npu_device,
         return_loss=True,
-        evict_step_interval=evict_step_interval,  # Difference: In the eviction scenario, pass the eviction step interval parameter to the pipeline.
+        evict_step_interval=evict_step_interval,  # Difference: In the eviction scenario, pass the eviction step interval parameter to the pipeline
     )
 
     ...
@@ -1277,27 +1311,27 @@ The core idea of gradient accumulation is to split a large batch that would othe
 
 The equivalent batch size for gradient accumulation is `micro-batch_size * accumulation_steps`.
 
-In a gradient accumulation scenario, the batch size is reduced, so training uses less device memory. This is suitable for cases where device memory is limited but large batch size training is required.
+In a gradient accumulation scenario, the batch size is reduced. Therefore, training uses less device memory. This is suitable for cases where device memory is limited but large batch size training is required.
 
 **Constraints**
 
-- You must use an optimizer from Rec SDK Torch that supports gradient accumulation. See [optimizer_class parameter description](./api/optimizers_apis.md#section888634319218) for supported optimizers.
+- You must use an optimizer from Rec SDK Torch that supports gradient accumulation. See [optimizer_class parameter description](./api/optimizers_apis.md#apply_optimizer_in_backward-torchrec) for supported optimizers.
 - Only the EC mode is supported.
 
-**API differences from the multi-level cache EC mode**
+**API Differences from the Multi-Level Cache EC Mode**
 
 The main difference from multi-level cache EC mode is that you must **use an optimizer that supports gradient accumulation** and **set the accumulation step parameter** in the optimizer initialization arguments.
 
-**Code example**
+**Code Example**
 
 For the complete code example, see [Gradient Accumulation Test Case](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_embedding_ec_cache_aggregation.py).
 
-Simplified code example, showing only the differences from the multi-level cache EC mode:
+Simplified code example, showing only the differences from [the multi-level cache EC mode](#basic_usage_embcache_ec):
 
 ```python
 ...
 
-# Difference: Import optimizers that support gradient accumulation.
+# Difference: Import optimizers that support gradient accumulation
 from torchrec.optim import AccumulateAdagrad, AccumulateAdam, AccumulateSGD
 
 ...
@@ -1305,10 +1339,10 @@ from torchrec.optim import AccumulateAdagrad, AccumulateAdam, AccumulateSGD
 def train():
     ...
 
-    # 4. Define the sparse table optimizer.
-    # Difference: Use an optimizer_class that supports gradient accumulation.
+    # 4. Define the sparse table optimizer
+    # Difference: Use an optimizer_class that supports gradient accumulation
     embedding_optimizer_class: type[torch.optim.Optimizer] = AccumulateAdagrad
-    # Difference: Set the gradient accumulation parameters. use_accumulate=True enables gradient accumulation, and accumulate_step is the accumulation step count.
+    # Difference: Set the gradient accumulation parameters. use_accumulate=True enables gradient accumulation, and accumulate_step is the accumulation step count
     optimizer_kwargs = {"lr": 0.01, "eps": 0.1, "use_accumulate": True, "accumulate_step": 10}
     apply_optimizer_in_backward(
         embedding_optimizer_class,
@@ -1329,7 +1363,7 @@ def train():
 - Incremental saving/loading:
   - Incremental sparse table data (based on the last full or incremental saving) can be saved.
   - Sparse table data that is incrementally saved can be loaded.
-- Both full and incremental saving/loading support loading with a different number of cards. For example, you can train and save sparse table data on eight cards and later load it on four cards.
+- Both full and incremental saving/loading support loading with a different number of devices. For example, you can train and save sparse table data on eight devices and later load it on four devices.
 - The EC mode and EBC mode are supported.
 
 **Constraints**
@@ -1343,17 +1377,16 @@ def train():
 
 ##### Full Saving and Loading
 
-**Code example**
+**Code Example**
 
 For the complete code example, see [Saving/Loading Test Case](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_save_and_load.py).
 
-Simplified code example, showing only the differences from the multi-level cache EC mode:
+Simplified code example, showing only the differences from [the multi-level cache EC mode](#basic_usage_embcache_ec):
 
 ```python
-# Difference: Import the Saver class and the safe_makedirs function.
+# Difference: Import the related modules
 import os
 import shutil
-
 from torchrec_embcache.saver import Saver
 from torchrec_embcache.utils import safe_makedirs
 
@@ -1362,32 +1395,32 @@ from torchrec_embcache.utils import safe_makedirs
 def train():
     ...
 
-    # 7. Create the pipeline.
+    # 7. Create the pipeline
     ...
 
-    is_train = True
-
-    # Difference: 8. [Pre-operation]: Load sparse table data. Load the dense part separately.
+    # Difference: In a loading scenario, load the sparse table data before training with the pipeline. Load the dense part separately
+    # Description: This example uses a flag to distinguish the saving and loading scenarios. In practice, call the save or load API according to the actual scenario
+    is_train = True  # True indicates the training scenario: save the sparse table data after training. False indicates the loading scenario: load the sparse table data before training
     save_dir = os.path.abspath("save_dir")
     sparse_save_dir = os.path.join(save_dir, "sparse")
     if not os.path.exists(save_dir):
         safe_makedirs(save_dir)
     if not is_train:
-        # Load sparse table data.
+        # Load sparse table data
         saver: Saver = Saver(rank=rank)
         saver.load(ddp_model, sparse_save_dir)
 
-    # 8. Train with the pipeline.
+    # 8. Train with the pipeline
     ...
 
-    # Difference: 9. Save sparse table data after training. Save the dense part separately.
+    # Difference: 9. Save sparse table data after training. Save the dense part separately
     if is_train:
         if os.path.exists(sparse_save_dir):
             shutil.rmtree(sparse_save_dir, ignore_errors=True)
         saver: Saver = Saver(rank=rank)
-        # If you need to save during training, that is, before the Dataset reaches the end, you must manually call wait_pipeline_compute_swapinfo().
+        # If you need to save during training, that is, before the Dataset reaches the end, you must manually call wait_pipeline_compute_swapinfo()
         pipeline.wait_pipeline_compute_swapinfo()
-        # Call the save API to save sparse table data.
+        # Call the save API to save sparse table data
         saver.save(ddp_model, sparse_save_dir)
 
     ...
@@ -1404,21 +1437,22 @@ In the incremental scenario, you must load the base data first, which is the res
 - Loading the base data clears the current sparse table data.
 - You can save and load incremental data multiple times by passing different delta saving or loading paths.
 
-**Parameter differences between incremental saving/loading and full saving/loading**
+**Parameter Differences Between Incremental Saving/Loading and Full Saving/Loading**
 
-- When creating `embedding_config`, pass `is_incremental=True` to enable incremental saving/loading.
-- When calling `Saver.save()` for incremental saving, pass `incremental=True`.
-- When calling `Saver.load()` for incremental loading, pass `incremental=True`.
+- When creating `embedding_config`, pass `is_incremental=True` to enable incremental saving/loading. This parameter defaults to False.
+- When calling `Saver.save()` for incremental saving, pass `incremental=True`. This parameter defaults to False.
+- When calling `Saver.load()` for incremental loading, pass `incremental=True`. This parameter defaults to False.
 
-**Code example**
+**Code Example**
 
 For the complete code example, see [Saving/Loading Test Case](../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_save_and_load.py).
 
-Simplified code example, showing only the differences from the multi-level cache EC mode:
+Simplified code example, showing only the differences from [the multi-level cache EC mode](#basic_usage_embcache_ec):
 
 ```python
 ...
-# Difference: Import the Saver class and the safe_makedirs function.
+# Difference: Import the Saver class and the safe_makedirs function
+import shutil
 from torchrec_embcache.saver import Saver
 from torchrec_embcache.utils import safe_makedirs
 
@@ -1427,7 +1461,7 @@ from torchrec_embcache.utils import safe_makedirs
 def train():
     ...
 
-    # 2. Create the sparse table.
+    # 2. Create the sparse table
     embedding_configs: list[EmbCacheEmbeddingConfig] = []
     table_names: list[str] = [f"table{i}" for i in range(len(num_embeddings))]
     feat_names: list[str] = [f"feat{i}" for i in range(len(num_embeddings))]
@@ -1437,15 +1471,15 @@ def train():
             embedding_dim=embedding_dims[i],
             num_embeddings=num_embeddings[i],
             feature_names=[feat_names[i]],
-            # init_fn=weight_init,  # Note: The multi-level cache mode does not support custom initialization functions.
-            initializer_type=InitializerType.UNIFORM,  # Set the embedding initialization method with the initializer_type parameter.
+            # init_fn=weight_init,  # Note: The multi-level cache mode does not support custom initialization functions
+            initializer_type=InitializerType.TRUNCATED_NORMAL,  # Set the embedding initialization method with the initializer_type parameter
             weight_init_mean=0.0,
             weight_init_stddev=0.05,
-            is_incremental=True,  # Difference: Configure the sparse table to support incremental saving.
+            is_incremental=True,  # Difference: Configure the sparse table to support incremental saving/loading
         )
         embedding_configs.append(emb_config)
     sparse_ebc: torch.nn.Module = EmbCacheEmbeddingCollection(
-        embedding_configs,  # type: ignore
+        embedding_configs,
         world_size,
         batch_size,
         multi_hot_sizes=[1] * table_num,
@@ -1454,10 +1488,9 @@ def train():
 
     ...
 
-    # Set this to True to perform full and incremental saving. Set it to False to perform full and incremental loading.
-    is_train = True
-
-    # Difference: 8. [Pre-operation]: Load sparse table data.
+    # Difference: 8. [Pre-operation]: In a loading scenario, load the sparse table data before training with the pipeline. Load the dense part separately
+    # Description: This example uses a flag to distinguish the saving and loading scenarios. In practice, call the save or load API according to the actual scenario
+    is_train = True  # True indicates the training scenario: save the sparse table data after training. False indicates the loading scenario: load the sparse table data before training
     saver: Saver = Saver(rank=rank)
     save_dir = os.path.abspath("save_dir")
     sparse_save_dir = os.path.join(save_dir, "sparse")
@@ -1466,33 +1499,31 @@ def train():
     if not os.path.exists(save_dir):
         safe_makedirs(save_dir)
     if not is_train:
-        # Load sparse table data.
-        saver.load(ddp_model, sparse_save_dir_base)  # Load full data.
-        saver.load(ddp_model, sparse_save_dir_delta, incremental=True)  # Load incremental data.
+        # Load sparse table data
+        saver.load(ddp_model, sparse_save_dir_base)  # Load full data
+        saver.load(ddp_model, sparse_save_dir_delta, incremental=True)  # Load incremental data
 
-    # 8. Train with the pipeline.
+    # 8. Train with the pipeline
     dataset_iterator = iter(data_loader)
     for step in range(BATCH_NUM):
-        # Perform a full saving of the sparse table data.
+        # Difference: Perform a full saving of the sparse table data during training
         if is_train and step == 20:
             if os.path.exists(sparse_save_dir):
                 shutil.rmtree(sparse_save_dir, ignore_errors=True)
-            # If you need to save during training, that is, before the Dataset reaches the end, you must manually call wait_pipeline_compute_swapinfo().
+            # If you need to save during training, that is, before the Dataset reaches the end, you must manually call wait_pipeline_compute_swapinfo()
             pipeline.wait_pipeline_compute_swapinfo()
-            # Call the save API to save sparse table data.
+            # Call the save API to save sparse table data
             saver.save(ddp_model, sparse_save_dir_base)
 
-        # When the pipeline is created, return_loss is set to True, so pipeline.progress() returns two values: output and loss.
+        # When the pipeline is created, return_loss is set to True. Therefore, pipeline.progress() returns two values: output and loss
         output, loss = pipeline.progress(dataset_iterator)
         logging.info("rank: %d, step: %s, loss: %s, sparse output: %s", rank, step, loss, output["sparse"])
 
-    # Difference: 9. Perform incremental saving of sparse table data.
+    # Difference: 9. Simulate the incremental saving scenario and perform an incremental saving of the sparse table data, for demonstration purposes only
     if is_train:
-        # If you need to save during training, that is, before the Dataset reaches the end, you must manually call wait_pipeline_compute_swapinfo().
+        # If you need to save during training, that is, before the Dataset reaches the end, you must manually call wait_pipeline_compute_swapinfo()
         pipeline.wait_pipeline_compute_swapinfo()
-        # Call the save API to save sparse table data.
+        # Call the save API to save sparse table data
         saver.save(ddp_model, sparse_save_dir_delta, incremental=True)
 
 ```
-
-Note: The code examples are for reference only and may differ from actual usage scenarios.

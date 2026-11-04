@@ -28,17 +28,17 @@ def get_embedding_table(
 |------------------------|-------------------|------|------------------------------------------------------------------------------------------------------|
 | name                   | str               | Mandatory  | Name of the sparse table. It can only contain [0-9A-Za-z_.] and its length must be in range [1, 128].                                                             |
 | dimension              | int               | Mandatory  | Embedding dimension of the sparse table. The value range is [1, 512].                                                                      |
-| device_vocabulary_size | int               | Mandatory  | Capacity of the sparse table on the device. The value range is [1, 10**9]. Ensure sufficient drive and memory space and set the parameter based on the server configuration.                                           |
+| device_vocabulary_size | int               | Mandatory  | Capacity of the sparse table on the device. The value range is [1, 10**9]. Ensure sufficient disk and memory space and set the parameter based on the server configuration.                                           |
 | initializer            | TensorFlow initializer| Optional  | Initial value generator for the sparse table. The default is a random normal distribution initializer.                                                                           |
 | key_dtype              | tf.int64          | Optional  | Data type of the sparse feature key. `tf.int64` is the default and only supported value.                                                           |
 | value_dtype            | tf.float32        | Optional  | Data type of the sparse feature value. `tf.float32` is the default and only supported value.                                                     |
-| distribution_strategy  | str               | Optional  | Distributed parallel mode for the sparse table. `MP` (model parallelism) is the default and only supported value.                                                                |
-| min_used_times         | int / None        | Optional  | Feature admission: an ID must appear more times than this value to take effect. Otherwise, querying the table with this ID returns the default embedding value. The value range is [0, 2^31-1].                                 |
-| max_cold_secs          | int / None        | Optional  | Feature eviction: the maximum tolerated idle time (in seconds) for an ID and its embedding since the last access. IDs exceeding this threshold are removed from the embedding hash table during saving. The default value is [0, 2^64-1].|
+| distribution_strategy  | str               | Optional  | Distributed parallel mode for the sparse table. model parallelism (`MP`) is the default and only supported value.                                                                |
+| min_used_times         | int/None        | Optional  | Feature admission: An ID takes effect only when its occurrence count exceeds this value. Otherwise, querying the table with this ID returns the default embedding value. The value range is [0, 2^31-1].                                   |
+| max_cold_secs          | int/None        | Optional  | Feature eviction: the maximum tolerated idle time (in seconds) for an ID and its embedding since the last access. IDs exceeding this threshold are removed from the embedding hash table during saving. The default value is [0, 2^64-1].|
 
->[!NOTE]
+> [!NOTE]
 >
-> - - Only non-dynamic expansion mode is supported, that is, `device_vocabulary_size` must be greater than 0.
+> - Only non-dynamic expansion mode is supported, that is, `device_vocabulary_size` must be greater than 0.
 > - After feature eviction is enabled, saving and loading are not supported.
 
 **Returns**
@@ -52,10 +52,10 @@ def get_embedding_table(
 import mxrec
 import tensorflow as tf
 
-# MxRec init.
+# MxRec init
 mxrec.init("toml_path")
 
-# Create an embedding table.
+# Create an embedding table
 table = mxrec.get_embedding_table(
     name="example_name",
     dimension=8,
@@ -106,17 +106,17 @@ def embedding_lookup(
 import mxrec
 import tensorflow as tf
 
-# Mxrec init.
+# Mxrec init
 mxrec.init("toml_path")
 
-# Create an embedding table.
+# Create an embedding table
 table = mxrec.get_embedding_table(
     name="example_name",
     dimension=8,
     device_vocabulary_size=10000,
 )
 
-# Embedding lookup.
+# Embedding lookup
 ids = tf.convert_to_tensor([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=tf.int64)
 embedding = mxrec.embedding_lookup(table, ids)
 ```
@@ -144,17 +144,17 @@ def get_sparse_embedding():
 import mxrec
 import tensorflow as tf
 
-# MxRec init.
+# MxRec init
 mxrec.init("toml_path")
 
-# Create an embedding table.
+# Create an embedding table
 table = mxrec.get_embedding_table(
     name="example_name",
     dimension=8,
     device_vocabulary_size=10000,
 )
 init_hashtable_op = mxrec.get_init_hashtable_op()
-# The model's loss.
+# The loss of the model
 loss = ...
 sparse_optimizer = mxrec.AdamWOptimizer(learning_rate=0.01)
 sparse_embeddings = mxrec.get_sparse_embedding()
@@ -185,10 +185,10 @@ def get_init_hashtable_op():
 import mxrec
 import tensorflow as tf
 
-# MxRec init.
+# MxRec init
 mxrec.init("toml_path")
 
-# Create an embedding table.
+# Create an embedding table
 table = mxrec.get_embedding_table(
     name="example_name",
     dimension=8,
@@ -226,10 +226,10 @@ def get_existing_tables():
 import mxrec
 import tensorflow as tf
 
-# MxRec init.
+# MxRec init
 mxrec.init("toml_path")
 
-# Create an embedding table.
+# Create an embedding table
 table = mxrec.get_embedding_table(
     name="example_name",
     dimension=8,
@@ -239,7 +239,7 @@ table = mxrec.get_embedding_table(
     value_dtype=tf.float32,
 )
 
-# Get all created embedding table instance.
+# Get all created embedding table instances
 emb_tables = mxrec.get_existing_tables()
 ```
 
@@ -267,9 +267,9 @@ def __init__(self, emb_tables: List[BaseEmbeddingTable]):
 |------------|--------------------------|------|----------------------------------------------|
 | emb_tables | List[BaseEmbeddingTable] | Mandatory  | Sparse table objects to save or restore, obtained through the `get_existing_tables` API.|
 
-> [!NOTE]NOTE
+> [!NOTE]
 >
-> - - `BaseEmbeddingTable` represents a sparse table instance, which can be obtained through the `get_embedding_table` API.
+> - `BaseEmbeddingTable` represents a sparse table instance, which can be obtained through the `get_embedding_table` API.
 
 **Returns**
 
@@ -282,10 +282,10 @@ def __init__(self, emb_tables: List[BaseEmbeddingTable]):
 import mxrec
 import tensorflow as tf
 
-# MxRec init.
+# MxRec init
 mxrec.init("toml_path")
 
-# Create an embedding table.
+# Create an embedding table
 table = mxrec.get_embedding_table(
     name="example_name",
     dimension=8,
@@ -295,7 +295,7 @@ table = mxrec.get_embedding_table(
     value_dtype=tf.float32,
 )
 
-# Get all created embedding table instance.
+# Get all created embedding table instances
 emb_tables = mxrec.get_existing_tables()
 
 emb_table_saver = mxrec.EmbeddingTableSaver(emb_tables)
@@ -332,10 +332,10 @@ def save(self, sess: tf.compat.v1.Session, save_path: str, global_step: int):
 import mxrec
 import tensorflow as tf
 
-# MxRec init.
+# MxRec init
 mxrec.init("toml_path")
 
-# Create an embedding table.
+# Create an embedding table
 table = mxrec.get_embedding_table(
     name="example_name",
     dimension=8,
@@ -345,16 +345,16 @@ table = mxrec.get_embedding_table(
     value_dtype=tf.float32,
 )
 
-# Get all created embedding table instance.
+# Get all created embedding table instances
 emb_tables = mxrec.get_existing_tables()
 
 emb_table_saver = mxrec.EmbeddingTableSaver(emb_tables)
 with tf.compat.v1.Session() as sess:
-    # run your session
+    # Run your session
     emb_table_saver.save(sess, save_path, global_step)
 ```
 
-### load
+### `load`
 
 **Description**
 
@@ -385,10 +385,10 @@ def load(self, sess: tf.compat.v1.Session, save_path: str, global_step: int):
 import mxrec
 import tensorflow as tf
 
-# MxRec init.
+# MxRec init
 mxrec.init("toml_path")
 
-# Create an embedding table.
+# Create an embedding table
 table = mxrec.get_embedding_table(
     name="example_name",
     dimension=8,
@@ -398,11 +398,11 @@ table = mxrec.get_embedding_table(
     value_dtype=tf.float32,
 )
 
-# Get all created embedding table instance.
+# Get all created embedding table instances
 emb_tables = mxrec.get_existing_tables()
 
 emb_table_saver = mxrec.EmbeddingTableSaver(emb_tables)
 with tf.compat.v1.Session() as sess:
     emb_table_saver.load(sess, save_path, global_step)
-    # run your session
+    # Run your session
 ```

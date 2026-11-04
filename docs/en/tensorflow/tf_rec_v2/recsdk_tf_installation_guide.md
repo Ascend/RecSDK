@@ -6,7 +6,7 @@
 - You are advised to install and run the software as a common user.
 
     >[!NOTE]
-    >To view the installation history of the Rec SDK TensorFlow, see [Viewing Rec SDK TensorFlow Installation and Uninstallation Records](common_operations.md#viewing-rec-sdk-tensorflow-installation-and-uninstallation-records).
+    >To view the installation history of Rec SDK TensorFlow, see [Viewing Rec SDK TensorFlow Installation and Uninstallation Records](common_operations.md#viewing-rec-sdk-tensorflow-installation-and-uninstallation-records).
 
 ## Installation Prerequisites
 
@@ -17,11 +17,10 @@ Before you install the Rec SDK TensorFlow software package, prepare the followin
 
 |Dependency/Operation|Recommended Version|How to Obtain|
 |--|--|--|
-|CANN software package and TensorFlow Ascend adaptation plugin|CANN 9.0.0|<li>`Ascend-cann-toolkit_{version}_linux-{arch}.run`:Click [this link](https://www.hiascend.com/developer/download/commercial/result?module=cann), configure the package in **Edit Resource Selection** under supporting resources on the left, filter the required software package, and obtain the package after you confirm the version information.<br>Install it according to the *CANN Software Installation Guide*. </li><li>For the TensorFlow Ascend adaptation plugin, click [this link](https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.44_8.3.RC1). npu_bridge-1.15.0* is compatible with TensorFlow 1.15.0.</li>|
+|CANN software package and TensorFlow Ascend adaptation plugin|CANN 9.0.0|Refer to [CANN Quick Installation](https://www.hiascend.com/cann/download) to install the Ascend CANN software package (including the Toolkit and ops packages), and configure the environment variables.<br>For the TensorFlow Ascend adaptation plugin, click [this link](https://gitee.com/ascend/tensorflow/releases/tag/tfa_v0.0.44_8.3.RC1). `npu_bridge-1.15.0*` is compatible with TensorFlow 1.15.0.|
 |Ascend hardware product driver and firmware|Ascend HDK 26.0.RC1 and its patch versions|Click [this link](https://www.hiascend.com/developer/download/commercial/result?module=cann), configure the package in **Edit Resource Selection** under supporting resources on the left, filter the required software package, and obtain the package after you confirm the version information. For driver and firmware installation, see the [driver and firmware installation and upgrade guides](https://support.huawei.com/enterprise/en/ascend-computing/ascend-hdk-pid-252764743) that come with the hardware product.|
-|Ascend Docker Runtime|MindCluster 7.3.0|See the **Installation** > **Installation Deployment** section of the *MindCluster Cluster Scheduling User Guide* for installation.|
 |Configuring the device NIC|-|Refer to the training node configuration example in the parameter network configuration section of the *Ascend Training Solution Networking Guide*, and configure the device IP address of the NPU network port with HCCN_Tool.|
-|TensorFlow|TensorFlow 1.15.0|Obtain the source code from the [TensorFlow](https://github.com/tensorflow/tensorflow) repository. In Arm environments, TensorFlow does not provide the corresponding official wheel package. If you need to use it in Arm environments, you can obtain the Arm TensorFlow wheel package from [this link](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html).<br>[!NOTE]<br>If the wheel package fails to be downloaded, copy the link and open it in a new tab page to complete the download.|
+|TensorFlow|TensorFlow 1.15.0|Obtain the source code from the [TensorFlow](https://github.com/tensorflow/tensorflow) repository. In Arm environments, TensorFlow does not provide the corresponding official wheel package. If you need to use it in Arm environments, you can obtain the Arm TensorFlow wheel package from [this link](https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/MindX/OpenSource/python/index.html).<br>If the wheel package fails to be downloaded, copy the link and open it in a new tab page to complete the download.|
 |Python 3.7.5|Python 3.7.5|Obtain the dependency software package from the [Python official website](https://www.python.org/).|
 
 >[!NOTE]
@@ -31,45 +30,30 @@ Before you install the Rec SDK TensorFlow software package, prepare the followin
 
 Refer to this section to obtain the Rec SDK TensorFlow software and verify the software digital signature.
 
-If you need the Rec SDK TensorFlow source code, you can obtain it from the [source address](https://gitcode.com/Ascend/RecSDK/tree/develop/training/tf_rec_v2). Note that no official version has been released yet, and the source code is for reference only. You can also build it yourself by following the procedure below.
+If you need the Rec SDK TensorFlow source code, you can obtain it from the [source address](https://atomgit.com/Ascend/RecSDK/tree/develop/training/tf_rec_v2). Note that no official version has been released yet, and the source code is for reference only. You can also build it yourself by following the procedure below.
 
 ### Installing from Source
 
-Before you build the source code, follow the [CANN Software Installation Guide](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta1/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=local&OS=Ubuntu) to install the CANN development kit software package. Then, follow the [TF Adapter Installation Guide](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/900beta1/migration/tfmigr1/tfmigr1_000009.html) to install the TensorFlow framework plugin package for Ascend adaptation.
+Before you build the source code, follow the [CANN Software Installation Guide](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/900beta1/softwareinst/instg/instg_0000.html?Mode=PmIns&InstallType=local&OS=Ubuntu) to install the CANN development kit software package. Then, follow the [TF Adapter Installation Guide](https://www.hiascend.com/document/detail/en/TensorFlowCommunity/900beta1/migration/tfmigr1/tfmigr1_000009.html) to install the TensorFlow framework plugin package for Ascend adaptation.
 
 Build environment dependencies:
 
-- Python3.7.5
+- Python 3.7.5
 - GCC 11.2.0
-- CMake 3.20.6
+- CMake 3.22.6
 
 Open-source dependencies:
 
-- [pybind11 v2.10.3](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
+- [pybind11](https://github.com/pybind/pybind11/archive/refs/tags/v2.10.3.zip)
 - [securec](https://github.com/huaweicloud/huaweicloud-sdk-c-obs/archive/refs/tags/v3.23.9.zip)
 - [openmpi 4.1.5](https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz): Install it in the build environment according to the software documentation.
 - TensorFlow 1.15: Select the corresponding version as required.
 
-Place the compressed packages of pybind11 (`>= 2.10.3`) and securec (`huaweicloud-sdk-c-obs-3.23.9.zip`) in the same directory as the RecSDK code under the `opensource` subdirectory.
+Place the compressed pybind11 (>= 2.10.3) and securec packages (`huaweicloud-sdk-c-obs-3.23.9.zip`) in the `opensource` directory at the same level as the RecSDK code.
 
-**Compilation method:**
+**Compilation Method:**
 
-> [!NOTE]
-> The `build_wrapper.sh` script is updated with the resource download center. Currently, you are advised to compile and install the Rec SDK .whl package separately.
-
-Go to the RecSDK code directory.
-
-To compile and install the software package, refer to the `build/build_wrapper/tf_rec_v2/build_wrapper.sh` script and run the script to build the software package. After the build is successful, the software package is stored in the `build/output` subdirectory.
-
-```bash
-# Build the package.
-bash build/build_wrapper/tf_rec_v2/build_wrapper.sh
-
-# Install the package.
-pip install build/output/tf_rec_v2*.tar.gz
-```
-
-To build and install the Rec SDK .whl package separately (excluding the automatic TensorFlow version identification function and the installation of framework-dependent operators), run the following command:
+Go to the Rec SDK code directory.
 
 - `setup.py`: Run `python3.7 setup.py bdist_wheel` to build the wheel package for TensorFlow 1. After the build succeeds, the wheel package is in the `build` subdirectory.
 
@@ -94,7 +78,7 @@ To build and install the Rec SDK .whl package separately (excluding the automati
 3. Run the following command to install the software package:
 
     ```bash
-    # Install the package.
+    # Install the package
     pip install tf_rec_v2-{version}-{arch}.tar.gz
     ```
 
@@ -112,7 +96,7 @@ To build and install the Rec SDK .whl package separately (excluding the automati
     pip3.7 install numpy decorator sympy cffi pyyaml pathlib2 grpcio grpcio-tools protobuf==3.20.3 scipy requests mpi4py easydict scikit-learn attrs toml
     ```
 
-    Before you install the horovod dependency, configure `HOROVOD_WITH_MPI` and `HOROVOD_WITH_TENSORFLOW`. The installation command is as follows:
+    Before you install the `horovod` dependency, configure `HOROVOD_WITH_MPI` and `HOROVOD_WITH_TENSORFLOW`. The installation command is as follows:
 
     ```bash
     HOROVOD_WITH_MPI=1 HOROVOD_WITH_TENSORFLOW=1 pip3.7 install horovod --no-cache-dir
@@ -134,7 +118,7 @@ You can deploy the Rec SDK TensorFlow development environment in a container by 
 **Figure 1** Configuring the development environment in a container and building the training image<a id="fig2687191413442"></a>
 ![](../../figures/tf_rec_v1/configuring-the-development-environment-in-a-container-and-building-the-training-image.png "Configuring the development environment in a container and building the training image")
 
-**Key steps**
+**Key Steps**
 
 1. Prepare the host environment.
 
@@ -156,7 +140,7 @@ This section helps you build a Rec SDK TensorFlow training image from an existin
 1. You have followed [Installation Prerequisites](#installation-prerequisites) to install the driver and firmware for the corresponding CANN version on the physical machine.
 2. Docker has been installed on the physical machine and the Docker network is available.
 3. Prepare a base image. You can obtain a base image from the [Ascend image repository](https://www.hiascend.com/developer/ascendhub), or use an existing base image you already have.
-    - You are advised to obtain the Rec SDK TensorFlow training image from the Ascend image repository. The Rec SDK TensorFlow training image in the Ascend image repository already includes GCC, CMake, and other basic dependencies, so you do not need to install them again. You only need to update the CANN and Rec SDK software packages.
+    - You are advised to obtain the Rec SDK TensorFlow training image from the Ascend image repository. The Rec SDK TensorFlow training image in the Ascend image repository already includes GCC, CMake, and other basic dependencies. Therefore, you do not need to install them again. You only need to update the CANN and Rec SDK software packages.
     - Prepare an image as the base image. You are advised to use the Ubuntu 20.04 image.
 
 4. Run the following command to load the base image into Docker.
@@ -179,7 +163,7 @@ This section helps you build a Rec SDK TensorFlow training image from an existin
 2. Create a Dockerfile configuration file (`Dockerfile` for example) in the `build_images` directory. Edit the file with `vi Dockerfile` and insert the following content:
 
     ```bash
-    # Modify the base image name and image tag as needed.
+    # Modify the base image name and image tag as needed
     FROM rec_sdk-tf1:7.3.0
 
     # CANN parameters
@@ -192,11 +176,11 @@ This section helps you build a Rec SDK TensorFlow training image from an existin
     # Set the installation path environment variable
     ARG ASCEND_BASE=/usr/local/Ascend
 
-    # Remove the old CANN installation.
+    # Remove the old CANN installation
     RUN rm -rf $ASCEND_BASE/ascend-toolkit
     RUN rm -rf $ASCEND_BASE/cann*
 
-    # Choose the dependencies to copy and install as required. If you do not need to run them, delete the corresponding lines.
+    # Choose the dependencies to copy and install as required. If you do not need to run them, delete the corresponding lines
     WORKDIR /tmp
     COPY $TOOLKIT_PKG .
     COPY $KERNEL_PKG .
@@ -205,7 +189,7 @@ This section helps you build a Rec SDK TensorFlow training image from an existin
     COPY version.info .
     COPY ascend_install.info .
 
-    # Install ascend-toolkit and the ops operator package.
+    # Install ascend-toolkit and the ops operator package
     RUN umask 0027 && \
         mkdir -p $ASCEND_BASE/driver && \
         /usr/bin/cp -f version.info $ASCEND_BASE/driver/ && \
@@ -221,7 +205,7 @@ This section helps you build a Rec SDK TensorFlow training image from an existin
         rm -rf $ASCEND_BASE/driver && \
         rm -rf /etc/ascend_install.info
 
-    # Install Rec SDK TensorFlow.
+    # Install Rec SDK TensorFlow
     RUN pip3.7 install $TF1_PLUGIN --force-reinstall && \
         pip3.7 install $REC_SDK_PKG --force-reinstall && \
         rm -rf /root/.cache/pip && \
@@ -260,12 +244,12 @@ This section helps you build a Rec SDK TensorFlow training image from an existin
 
 | Environment Variable                 | Meaning                         | Mandatory/Optional| Description                                                                                                                                                                                                                                                                                                                                                                                                                          |
 |------------------------|-----------------------------|-------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| RANK_TABLE_FILE        | Communication set file used to configure Ascend chips.           | Optional   | Path of the collective communication file. Default value: `""`. This parameter is mandatory when you use the ranktable mode.                                                                                                                                                                                                                                                                                                                                                                                         |
-| HCCL_TOPO_FILE_PATH    | Communication topology file for Ascend chips.           | Optional   | Path of the communication topology file. Default value: `""`. This parameter is mandatory when you use the ranktable mode.                                                                                                                                                                                                                                                                                                                                                                                         |
-| ASCEND_VISIBLE_DEVICES | Devices visible to the Ascend processor, which specify that the program uses only some of them.| Mandatory   | Use the `ASCEND_VISIBLE_DEVICES` environment variable to specify the NPU devices used for training. You can run `ls /dev/ \| grep davinci*` to query the NPU devices on the host. Specify devices by serial number. Single values, ranges, and mixed forms are supported. For example:<li>`ASCEND_VISIBLE_DEVICES=0` mounts device 0 (`/dev/davinci0`) into the container. </li><li>`ASCEND_VISIBLE_DEVICES=1,3` mounts devices 1 and 3 into the container. </li><li>`ASCEND_VISIBLE_DEVICES=0-2` mounts devices 0 to 2, inclusive, into the container. This has the same effect as `ASCEND_VISIBLE_DEVICES=0,1,2`. </li><li>`ASCEND_VISIBLE_DEVICES=0-2,4` mounts devices 0 to 2 and device 4 into the container. This has the same effect as `ASCEND_VISIBLE_DEVICES=0,1,2,4`.</li> |
+| RANK_TABLE_FILE        | Communication set file used to configure Ascend chips           | Optional   | Path of the collective communication file. Default value: `""`. This parameter is mandatory when you use the ranktable mode.                                                                                                                                                                                                                                                                                                                                                                                         |
+| HCCL_TOPO_FILE_PATH    | Communication topology file for Ascend chips           | Optional   | Path of the communication topology file. Default value: `""`. This parameter is mandatory when you use the ranktable mode.                                                                                                                                                                                                                                                                                                                                                                                         |
+| ASCEND_VISIBLE_DEVICES | Devices visible to the Ascend processor, which specify that the program uses only some of them| Mandatory   | Use the `ASCEND_VISIBLE_DEVICES` environment variable to specify the NPU devices used for training. You can run `ls /dev/ \| grep davinci*` to query the NPU devices on the host. Specify devices by serial number. Single values, ranges, and mixed forms are supported. For example:<li>`ASCEND_VISIBLE_DEVICES=0` mounts device 0 (`/dev/davinci0`) into the container. </li><li>`ASCEND_VISIBLE_DEVICES=1,3` mounts devices 1 and 3 into the container. </li><li>`ASCEND_VISIBLE_DEVICES=0-2` mounts devices 0 to 2, inclusive, into the container. This has the same effect as `ASCEND_VISIBLE_DEVICES=0,1,2`. </li><li>`ASCEND_VISIBLE_DEVICES=0-2,4` mounts devices 0 to 2 and device 4 into the container. This has the same effect as `ASCEND_VISIBLE_DEVICES=0,1,2,4`.</li> |
 
 >[!NOTE]
->Rec SDK TensorFlow depends on the `OMPI_COMM_WORLD_SIZE`, `OMPI_COMM_WORLD_LOCAL_SIZE`, and `OMPI_COMM_WORLD_RANK` environment variables in distributed training and inference scenarios started by OpenMPI. OpenMPI launchers inject these environment variables automatically, so you do not need to inject them manually.
+>Rec SDK TensorFlow depends on the `OMPI_COMM_WORLD_SIZE`, `OMPI_COMM_WORLD_LOCAL_SIZE`, and `OMPI_COMM_WORLD_RANK` environment variables in distributed training and inference scenarios started by OpenMPI. OpenMPI launchers inject these environment variables automatically. Therefore, you do not need to inject them manually.
 
 **Table 2** C++ build environment variables
 <a name="table20242918114315"></a>
@@ -291,7 +275,7 @@ If you need to upgrade the current version of Rec SDK TensorFlow to the latest v
     pip3 install --upgrade tf_rec_v2-{version}-{arch}.tar.gz
     ```
 
-(`{version}` indicates the version number, and `{arch}` indicates the OS architecture. Replace them with the actual ones.)
+Here, `{version}` indicates the version number, and `{arch}` indicates the OS architecture.
 
 ## Uninstallation
 

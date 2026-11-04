@@ -1,6 +1,6 @@
 # Data APIs
 
-## get_asc_insert_func
+## `get_asc_insert_func`
 
 **Description**
 
@@ -17,8 +17,8 @@ def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, table_names=No
 |Parameter|Type|Description|
 |--|--|--|
 |tgt_key_specs|<li>FeatureSpec</li><li>list[FeatureSpec]</li>|Feature object, list of feature objects, or tuple of feature objects. Default value: `None`.|
-|args_index_list|list[int]|List of parameter indexes. Default value: `None`. Value range: [1, 2^31-1]|
-|table_names|list[str]|List of table names. Default value: `None`. Value range: [1, 2^31-1]|
+|args_index_list|list[int]|List of parameter indexes. Default value: `None`. Value range for the list length: [1, 2^31-1]|
+|table_names|list[str]|List of table names. Default value: `None`. Value range for the list length: [1, 2^31-1]|
 
 >[!NOTE]
 >You can pass interface parameters in one of the following ways.
@@ -26,7 +26,7 @@ def get_asc_insert_func(tgt_key_specs=None, args_index_list=None, table_names=No
 >- Pass only `tgt_key_specs`.
 >- Pass `args_index_list` and `table_names`.
 
-**\*\*kwargs parameters**
+**`**kwargs` Parameters**
 
 |Parameter|Type|Mandatory/Optional|Description|
 |--|--|--|--|
@@ -50,7 +50,7 @@ import tensorflow as tf
 from mx_rec.core.asc.helper import get_asc_insert_func
 
 dataset = tf.data.TFRecordDataset(data_path) # data_path is the dataset path.
-dataset = dataset.map(get_asc_insert_func(tgt_key_specs=feature_spec_list, is_training=True)) # Elements in feature_spec_list are FeatureSpec objects.
+dataset = dataset.map(get_asc_insert_func(tgt_key_specs=feature_spec_list, is_training=True)) # Elements in feature_spec_list are FeatureSpec objects
 ```
 
 **References**

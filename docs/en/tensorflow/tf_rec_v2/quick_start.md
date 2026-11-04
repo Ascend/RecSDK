@@ -4,9 +4,9 @@
 
 This document guides you through the related files and key interface adaptations required for model training using `tf.Session`, based on the `little-demo` sample provided by Rec SDK TensorFlow. `little-demo` is a code example that introduces the logic of calling related interfaces. It does not contain specific models or implement specific functions.
 
-`little-demo` is for reference and learning only. Adapting your own models on `little-demo` is not supported. You can find `little-demo` at the following [link](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/tf_rec_v2_examples/little_demo).
+`little-demo` is for reference and learning only. Adapting your own models on `little-demo` is not supported. You can find `little-demo` at this [link](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/tf_rec_v2_examples/little_demo).
 
-**Table 1** little-demo file description
+**Table 1** Little-demo file description
 
 | File             | Description                            |
 |------------------|--------------------------------|
@@ -22,7 +22,7 @@ This document guides you through the related files and key interface adaptations
 
 ## Interface Call Introduction
 
-1. Initialize the framework. In `main.py`, call the `init` interface and pass the parameters required for framework initialization. For details about the parameters, see the [API description](./api/initialization_of_the_training_framework.md).
+1. Initialize the framework. In `main.py`, call the `init` interface and pass the parameters required for framework initialization. For details about the parameters, see the [API description](./api/initialization_of_the_training_framework.md#init).
 
     ```python
     mxrec.init(params.path)
@@ -70,7 +70,7 @@ This document guides you through the related files and key interface adaptations
     def _get_train_ops(train_model: Model) -> List[tf.Tensor]:
         train_ops = []
 
-        # Do dense optimization.
+        # Do dense optimization
         dense_variables = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.TRAINABLE_VARIABLES)
         dense_optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=Config.learning_rate)
         grads = dense_optimizer.compute_gradients(train_model.loss, var_list=dense_variables)
@@ -82,7 +82,7 @@ This document guides you through the related files and key interface adaptations
                avg_grads.append((grad, var))
         train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
-        # Do sparse optimization.
+        # Do sparse optimization
         sparse_optimizer = mxrec.AdamWOptimizer(learning_rate=Config.learning_rate)
         sparse_embeddings = mxrec.get_sparse_embedding()
         sparse_grads = tf.gradients(train_model.loss, sparse_embeddings)
@@ -128,9 +128,9 @@ This document guides you through the related files and key interface adaptations
 
 ## Model Training Startup
 
-### Single-Node Single-Card and Single-Node Multi-Card Training
+### Single-Node Single-Device and Single-Node Multi-Device Training
 
-This section describes how to set resource information through environment variables to start training tasks, including single-node single-card and single-node multi-card scenarios.
+This section describes how to set resource information through environment variables to start training tasks, including single-node single-device and single-node multi-device scenarios.
 
 **Prerequisites**
 

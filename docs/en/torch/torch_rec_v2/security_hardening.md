@@ -4,7 +4,7 @@
 
 **File Permissions**
 
-When you use an API to read a file, ensure that you own the file and that its permissions are no more permissive than `640`. This helps prevent privilege escalation and similar security issues.
+When you use an API to read a file, ensure that you own the file and that its permissions are no more permissive than 640. This helps prevent privilege escalation and similar security issues.
 
 Software code or programs downloaded from external sources may pose risks. You must guarantee the security of their functions.
 
@@ -18,11 +18,11 @@ The security hardening measures listed in this document provide basic recommenda
 
 After installing the OS, if common users are configured, you can add `ALWAYS_SET_PATH yes` to the `/etc/login.defs` file to prevent unauthorized privilege escalation.
 
-### Setting umask
+### Setting `umask`
 
-Set the host umask to `027` or more restrictive on the host and in containers to enhance file security.
+Set the host umask to 027 or more restrictive on the host and in containers to enhance file security.
 
-To set umask to `027`:
+To set umask to 027:
 
 1. Log in as `root` and edit `/etc/profile`.
 
@@ -43,7 +43,7 @@ Differences between official Docker images and the host OS may result in a misma
 
 You can find ownerless files on the host or in containers by running `find / -nouser -o -nogroup`. To mitigate security risks, create corresponding users and groups based on file UIDs and GIDs, or adjust existing UIDs and GIDs to match, thereby ensuring every file has a valid owner.
 
-### Port scanning
+### Port Scanning
 
 Monitor ports listening on all interfaces and identify unnecessary ports for immediate closure. You are advised to disable insecure services, such as Telnet and FTP. For details, see the related documents of the OS in use.
 

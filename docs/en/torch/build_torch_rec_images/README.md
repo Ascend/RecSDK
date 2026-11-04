@@ -14,7 +14,7 @@
 
 Rec SDK Torch currently supports the following version combinations:
 
-| Version Combination | PyTorch | torch_npu | fbgemm_gpu |
+| Version Combination | PyTorch | TorchNPU | fbgemm_gpu |
 |-------|---------|-----------|------------|
 | Version combination 1| 2.6.0   | 2.6.0     | 1.1.0      |
 | Version combination 2| 2.7.1   | 2.7.1     | 1.2.0      |
@@ -26,6 +26,10 @@ If you need to build an image for the PyTorch 2.7.1 version combination, see [Bu
 ## Build Steps
 
 Step 1: Create a `build_images` directory.
+
+```shell
+mkdir -p build_images
+```
 
 Step 2: Prepare the CANN packages in the `build_images` directory. You can download the 8.5.0 [toolkit package](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.5.0) and [operator package](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.5.0) from the [Ascend community](https://www.hiascend.com/developer/download/community/result?module=pt+cann&product=4&model=26). You can also choose another CANN package version as required.
 
@@ -49,6 +53,14 @@ CANN package installation requires the following two files:
 Copy the corresponding files from the physical machine to the `build_images` directory. After you install the driver and firmware on the physical machine, the default path of `version.info` is `/usr/local/Ascend/driver/version.info`.
 The default path of `ascend_install.info` is `/etc/ascend_install.info`.
 
+Reference commands are as follows:
+
+```shell
+cd build_images
+cp /usr/local/Ascend/driver/version.info .
+cp /etc/ascend_install.info .
+```
+
 Step 3: Move [Dockerfile_centos](./Dockerfile_centos), [Dockerfile_debian](./Dockerfile_debian), or [Dockerfile_openeuler](./Dockerfile_openeuler) to the `build_images` directory based on the base OS image, and then run the following command to build the image. The Dockerfile contains detailed instructions for the build process. The commented sections cover installation of the CANN packages and the torchrec-related packages.
 
 ```shell
@@ -57,6 +69,8 @@ docker build -t recsdk_torch_base:v1.0-[x86|arm] -f Dockerfile_[centos|debian|op
 # If the server can access the Internet through a proxy:
 docker build -t recsdk_torch_base:v1.0-[x86|arm] -f Dockerfile_[centos|debian|openeuler] --build-arg http_proxy=http://your_proxy --build-arg https_proxy=https://your_proxy .
 ```
+
+Note: In the preceding commands, the name of the built image is `recsdk_torch_base`, and the image version is `v1.0-x86`/`v1.0-arm`.
 
 **Note:**
 
@@ -86,8 +100,8 @@ docker run \
 
 Description of some parameters:
 
-- -`-m 300g`: Sets the amount of memory available in the container. Adjust it as required.
-- -`-e ASCEND_VISIBLE_DEVICES=0-7`: Mounts NPU devices `device0` to `device7` from the server into the container. Adjust it as required.
+- `-m 300g`: Sets the amount of memory available in the container. Adjust it as required.
+- `-e ASCEND_VISIBLE_DEVICES=0-7`: Mounts NPU devices `device0` to `device7` from the server into the container. Adjust it as required.
 
 Run the following command to create a container:
 
@@ -97,13 +111,13 @@ bash run_docker.sh <container_name> {image_name}:{version_name}
 
 ## Installing RecSDK-Related Packages
 
-For source compilation and installation, see [Installation and Deployment](../torch_rec_v1/recsdk_torch_installation_guide.md#installation-and-deployment).
+For source compilation and installation, see [Installation and Deployment../torch_rec_v1/02_torch_installation_guide/recsdk_torch_installation_guide.md#installing-from-source.
 
 ## Building a PyTorch 2.7.1 Image
 
 You can use either of the following methods to build an image environment for PyTorch 2.7.1.
 
-### Method 1: Modifying the Dockerfile and Rebuild the Image
+### Method 1: Modifying the Dockerfile and Rebuilding the Image
 
 Modify an existing Dockerfile and then rebuild the image.
 
@@ -111,24 +125,24 @@ Modify an existing Dockerfile and then rebuild the image.
 
     | Software Version                  | Python Version| Download Link                                                                                              |
     |------------------------|------------|----------------------------------------------------------------------------------------------------|
-    | PyTorch 2.7.1 (x86)    | 3.11       | <https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl>       |
-    | PyTorch 2.7.1 (Arm)    | 3.11       | <https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl>      |
-    | fbgemm_gpu 1.2.0 (x86) | 3.11       | <https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.2.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl>  |
-    | fbgemm_gpu 1.2.0 (Arm) | 3.11       | <https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.2.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl> |
+    | PyTorch 2.7.1 (x86)    | 3.11       | `https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl`       |
+    | PyTorch 2.7.1 (Arm)    | 3.11       | `https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl`      |
+    | fbgemm_gpu 1.2.0 (x86) | 3.11       | `https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.2.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl`  |
+    | fbgemm_gpu 1.2.0 (Arm) | 3.11       | `https://download.pytorch.org/whl/cpu/fbgemm_gpu-1.2.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl` |
 
-2. Update the package names that you use when installing PyTorch, fbgemm_gpu, and torch_npu.
+2. Update the package names that you use when installing PyTorch, fbgemm_gpu, and TorchNPU.
 
     | Before Modification                  | After Modification                       |
     |----------------------------|----------------------------|
     | torch-2.6.0+cpu-*.whl      | torch-2.7.1+cpu-*.whl      |
     | fbgemm_gpu-1.1.0+cpu-*.whl | fbgemm_gpu-1.2.0+cpu-*.whl |
-    | torch-npu==2.6.0           | torch-npu==2.7.1           |
+    | torch-npu==2.6.0           | torch-npu==2.7.1.post4       |
 
 3. To build the image, see [Build Steps](#build-steps).
 
 ### Method 2: Upgrading the Software Versions in an Existing Image
 
-Upgrade the PyTorch, fbgemm_gpu, and torch_npu versions in an existing image to the versions that correspond to PyTorch 2.7.1.
+Upgrade the PyTorch, fbgemm_gpu, and TorchNPU versions in an existing image to the versions that correspond to PyTorch 2.7.1.
 
 1. Upgrade PyTorch.
 
@@ -142,7 +156,7 @@ Upgrade the PyTorch, fbgemm_gpu, and torch_npu versions in an existing image to 
     pip3 install fbgemm_gpu==1.2.0+cpu -i https://download.pytorch.org/whl/cpu
     ```
 
-3. Upgrade torch_npu.
+3. Upgrade TorchNPU.
 
     ```shell
     pip3 install torch-npu==2.7.1

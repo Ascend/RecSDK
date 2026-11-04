@@ -4,10 +4,10 @@
 
 **Introduction to Training Scenarios**
 
-Rec SDK TensorFlow provides two training scenarios: `tf.Session` and NPUEstimator.
+Rec SDK TensorFlow provides two training scenarios: `tf.Session` and `NPUEstimator`.
 
 - `tf.Session` training scenario: Start model running by creating a new `Session` instance, which returns tensor examples for customized model training.
-- NPUEstimator training scenario: Based on the encapsulation of control over different stages of machine learning, you do not need to repeatedly write training, evaluation, and prediction code for new machine learning tasks. You can focus on the control of the network structure.
+- `NPUEstimator` training scenario: Based on the encapsulation of control over different stages of machine learning, you do not need to repeatedly write training, evaluation, and prediction code for new machine learning tasks. You can focus on the control of the network structure.
 
 > [!NOTE]
 >
@@ -32,7 +32,7 @@ API examples:
 
 - TensorFlow example
 
-    ```bash
+    ```python
     import tensorflow as tf
     from tensorflow.contrib.lookup import MutableHashTable
     # .......
@@ -43,11 +43,11 @@ API examples:
 
 - Rec SDK TensorFlow example
 
-    ```bash
+    ```python
     import tensorflow as tf
     from mx_rec.core.embedding import create_table, sparse_lookup
     # .......
-    user_emb_table = create_table(key_dtype=tf.int64, value_dtype=tf.float32, name="user_table", dim=tf.Tensorshape([1]),             emb_initializer=tf.compat.v1.truncated_normal_initializer(mean=10), device_vocabulary_size= 800000, host_vocabulary_size=0)
+    user_emb_table = create_table(key_dtype=tf.int64, value_dtype=tf.float32, name="user_table", dim=tf.TensorShape([1]), emb_initializer=tf.compat.v1.truncated_normal_initializer(mean=10), device_vocabulary_size= 800000, host_vocabulary_size=0)
     user_emb = sparse_lookup(user_emb_table, feature_spec_list, batch_size*16, is_train=True, name=user_emb_table.table_name + "_lookup", modify_graph=False)
     ```
 
@@ -89,14 +89,14 @@ Generally, this part of code does not need to be modified. Adapt the code in the
 
 If the original network script uses `dataset.batch(batch_size)` to return a dynamic shape, the number of remaining samples in the data stream may be smaller than the batch size. This makes the shape of the last step inconsistent with preceding shapes, triggering the dynamic shape compilation process. To improve compilation performance, set `drop_remainder` to `True` to discard the last few samples in the file and ensure consistent shapes for every step in the network.
 
-```bash
-  dataset = dataset.batch(batch_size, drop_remainder=True)
+```python
+    dataset = dataset.batch(batch_size, drop_remainder=True)
 ```
 
 Note: During inference, if the amount of inference data in the last iteration is smaller than the batch size, you must pad the data to the batch size. This is because some scripts include an assertion at the end to verify that the number of results matches the number of validation data.
 
-```bash
- assert num_written_lines == num_actual_predict_examples
+```python
+    assert num_written_lines == num_actual_predict_examples
 ```
 
 **Model Construction**
@@ -106,13 +106,13 @@ Generally, this part of code does not need to be modified. Adapt the code in the
 - For `dropout` in the original network, you are advised to replace it with the corresponding CANN API implementation for better performance, while paying attention to the impact on network accuracy.
     - If `tf.nn.dropout` exists, you are advised to change it to:
 
-        ```bash
+        ```python
         layers = npu_ops.dropout()
         ```
 
     - If `tf.layers.dropout`, `tf.layers.Dropout`, `tf.keras.layers.Dropout`, `tf.keras.layers.SpatialDropout1D`, `tf.keras.layers.SpatialDropout2D`, or `tf.keras.layers.SpatialDropout3D` exists, add the following header file reference:
 
-        ```bash
+        ```python
         from npu_bridge.estimator.npu import npu_convert_dropout
         ```
 
@@ -120,7 +120,7 @@ Generally, this part of code does not need to be modified. Adapt the code in the
 
     Original TensorFlow code:
 
-    ```bash
+    ```python
     def gelu(x):
       cdf = 0.5 * (1.0 + tf.tanh(
          (np.sqrt(2 / np.pi) * (x + 0.044715 * tf.pow(x, 3)))))
@@ -130,7 +130,7 @@ Generally, this part of code does not need to be modified. Adapt the code in the
 
     Migrated code:
 
-    ```bash
+    ```python
     layers = npu_unary_ops.gelu(x)
     ```
 
@@ -140,7 +140,7 @@ TensorFlow configures running parameters through `RunConfig`. You need to migrat
 
 Original TensorFlow code:
 
-```bash
+```python
 config=tf.estimator.RunConfig(
   model_dir=FLAGS.model_dir,
   save_checkpoints_steps=FLAGS.save_checkpoints_steps,
@@ -149,11 +149,11 @@ config=tf.estimator.RunConfig(
 
 Migrated code:
 
-```bash
+```python
 npu_config=NPURunConfig(
   model_dir=FLAGS.model_dir,
   save_checkpoints_steps=FLAGS.save_checkpoints_steps,
-  # If code related to tf.device is used in the original network, add the session configuration "allow_soft_placement=True" to allow TensorFlow to automatically allocate devices.
+  # If code related to tf.device is used in the original network, add the session configuration "allow_soft_placement=True" to allow TensorFlow to automatically allocate devices
   session_config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
   )
 ```
@@ -166,11 +166,11 @@ Additionally, some parameters are added to `NPURunConfig` to improve training pe
 
 **Creating an Estimator Object**
 
-You need to migrate the TensorFlow Estimator object to `NPUEstimator`. Since the `NPUEstimator` class inherits from the `Estimator` class, you can directory change the API as follows during migration, and the parameters can remain unchanged.
+You need to migrate the TensorFlow Estimator object to `NPUEstimator`. Since the `NPUEstimator` class inherits from the `Estimator` class, you can directly change the API as follows during migration, and the parameters can remain unchanged.
 
 Original TensorFlow code:
 
-```bash
+```python
 mnist_classifier=tf.estimator.Estimator(
   model_fn=cnn_model_fn,
   config=config,
@@ -179,7 +179,7 @@ mnist_classifier=tf.estimator.Estimator(
 
 Migrated code:
 
-```bash
+```python
 mnist_classifier=NPUEstimator(
   model_fn=cnn_model_fn,
   config=npu_config,
@@ -191,7 +191,7 @@ mnist_classifier=NPUEstimator(
 
 Train the model with specified inputs. This part of code does not need to be modified.
 
-```bash
+```python
 mnist_classifier.train(
   input_fn=train_input_fn,
   steps=20000,
@@ -199,13 +199,13 @@ mnist_classifier.train(
 ```
 
 > [!NOTE]
-> If an error occurs during migration and training, see the [FAQ](faq.md) or contact technical support.
+> If an error occurs during migration and training, see the [FAQ](./faq.md) or contact technical support.
 
 ### Training with Estimator
 
 #### Estimator Scenario Description
 
-Estimator encapsulates control over different stages of machine learning, so you do not need to repeatedly write training, evaluation, and prediction code for new machine learning tasks. You can focus on the control of the network structure. `NPUEstimator` is an encapsulation based on Estimator and supports model training on Ascend devices.
+Estimator encapsulates control over different stages of machine learning. Therefore, you do not need to repeatedly write training, evaluation, and prediction code for new machine learning tasks. You can focus on the control of the network structure. `NPUEstimator` is an encapsulation based on Estimator and supports model training on Ascend devices.
 
 **Training Process Introduction**
 
@@ -219,7 +219,7 @@ This section describes how to use `NPUEstimator` for model training. For the ove
 You need to adapt the model to be used and can add functional features provided by Rec SDK TensorFlow during the adaptation process. This section introduces key steps in model adaptation and how to add desired functional features.
 
 > [!NOTE]
-> Functional features can be used in combination. You need to modify and adapt them in the corresponding key steps. To view the calling process of a single functional feature, see [Training Feature Process](appendix.md#training-feature-process).
+> Functional features can be used in combination. You need to modify and adapt them in the corresponding key steps. To view the calling process of a single functional feature, see [Training Feature Process](./appendix.md#training-feature-process).
 > Feature eviction and the on-chip memory dynamic expansion mode cannot be enabled at the same time.
 
 The key steps are as follows:
@@ -258,7 +258,7 @@ The key steps are as follows:
 
      <li><a id="li0861185612173"></a>Automatic graph modification
 
-     In the NPUEstimator mode, add [`GraphModifierHook`](./api/class_reference.md#graphmodifierhook) for automatic graph modification to multiple modes (`train`, `predict`, and `train_and_evaluate`) of NPUEstimator. For example, if the current mode is `train`, add `GraphModifierHook` to the training hook to complete training in automatic graph modification mode.
+     In the `NPUEstimator` mode, add [`GraphModifierHook`](./api/class_reference.md#graphmodifierhook) for automatic graph modification to multiple modes (`train`, `predict`, and `train_and_evaluate`) of `NPUEstimator`. For example, if the current mode is `train`, add `GraphModifierHook` to the training hook to complete training in automatic graph modification mode.
 
      To add functional features, select the desired features and make corresponding modifications.
 
@@ -332,7 +332,7 @@ The key steps are as follows:
 
 Call `tf.estimator.train_and_evaluate` to start model training.
 
-See **Performing Training** in the [Estimator Migration](#estimator-migration) section.
+See **Performing Training** in [Estimator Migration](#estimator-migration).
 
 > [!NOTE]
 > When performing `train_and_evaluate` in the Estimator scenario, if dynamic expansion on the on-chip memory side is not enabled, tables will be created twice. If a table is very large, accelerator memory may be insufficient. In this case, use the on-chip memory dynamic expansion mode, as the expansion mode creates the table only once.
@@ -345,19 +345,19 @@ The key steps are as follows:
     - To export sparse table data in .npy format, call the [`export`](./api/model_apis.md#export) API.
     - To export a .pb model file, call the `export_saved_model` API of the Estimator. The example is as follows:
 
-        ```bash
+        ```python
         import os
         import tensorflow as tf
         if tf.__version__.startswith("1"):
             from npu_bridge.npu_init import NPURunConfig, NPUEstimator
         else:
             from npu_device.compat.v1.npu_init import NPURunConfig, NPUEstimator
-        # See "Running Configuration" and "Creating an Estimator Object" in the Estimator Migration section.
+        # See "Running Configuration" and "Creating an Estimator Object" in the Estimator Migration section
         run_config = NPURunConfig(...)
         est = NPUEstimator(...)
-        # Generally, the export_saved_model API is called after train or train_and_evaluate.
+        # Generally, the export_saved_model API is called after train or train_and_evaluate
         def _serving_input_fn():
-            # Adjust the configuration based on the specific service model. The following uses the input of the little demo estimator model as an example.
+            # Adjust the configuration based on the specific service model. The following uses the input of the little demo estimator model as an example
             inputs = {
                 "user_ids": tf.compat.v1.placeholder(shape=(None, 32), dtype=tf.int64, name="user_ids"),
                 "item_ids": tf.compat.v1.placeholder(shape=(None, 8), dtype=tf.int64, name="item_ids"),
@@ -366,7 +366,7 @@ The key steps are as follows:
             }
             return tf.estimator.export.ServingInputReceiver(features=inputs, receiver_tensors=inputs)
         target_pb_path = os.path.abspath("pb_model_path")
-        # Call the export_saved_model API of the estimator to save the .pb file.
+        # Call the export_saved_model API of the estimator to save the .pb file
         export_path = est.export_saved_model(target_pb_path, _serving_input_fn).decode("utf-8")
         print(f"The export saved model path is {export_path}.")
         ```
@@ -411,14 +411,14 @@ Generally, this part of code does not need to be modified. Adapt the code in the
 
 If the original network script uses `dataset.batch(batch_size)` to return a dynamic shape, the number of remaining samples in the data stream may be smaller than the batch size. This makes the shape of the last step inconsistent with preceding shapes, triggering the dynamic shape compilation process. To improve compilation performance, set `drop_remainder` to `True` to discard the last few samples in the file and ensure consistent shapes for every step in the network.
 
-```bash
-  dataset = dataset.batch(batch_size, drop_remainder=True)
+```python
+    dataset = dataset.batch(batch_size, drop_remainder=True)
 ```
 
-Note: During inference, if the amount of inference data in the last iteration is smaller than the batch size, you must pad the data to the batch size. This is because some scripts include an assertion at the end to verify that the number of results matches the number of validation data.
+Note: During inference, if the amount of inference data in the last iteration is smaller than `batch_size`, you must pad the data to `batch_size`. This is because some scripts include an assertion at the end to verify that the number of results matches the number of validation data.
 
-```bash
- assert num_written_lines == num_actual_predict_examples
+```python
+    assert num_written_lines == num_actual_predict_examples
 ```
 
 **Model Construction, Loss Calculation, and Gradient Update<a id="section177071912713"></a>**
@@ -434,7 +434,7 @@ Generally, this part of code does not need to be modified. Adapt the code in the
 
     - If `tf.layers.dropout`, `tf.layers.Dropout`, `tf.keras.layers.Dropout`, `tf.keras.layers.SpatialDropout1D`, `tf.keras.layers.SpatialDropout2D`, or `tf.keras.layers.SpatialDropout3D` exists, add the following header file reference:
 
-        ```bash
+        ```python
         from npu_bridge.estimator.npu import npu_convert_dropout
         ```
 
@@ -442,7 +442,7 @@ Generally, this part of code does not need to be modified. Adapt the code in the
 
     Original TensorFlow code:
 
-    ```bash
+    ```python
     def gelu(x):
       cdf = 0.5 * (1.0 + tf.tanh(
          (np.sqrt(2 / np.pi) * (x + 0.044715 * tf.pow(x, 3)))))
@@ -481,17 +481,17 @@ When you run a training script on the Ascend AI Processor in `sess.run` mode, no
 
 Original TensorFlow code:
 
-```bash
-#Construct an iterator.
+```python
+#Construct an iterator
 iterator=Iterator.from_structure(train_dataset.output_types, train_dataset.output_shapes)
 
-#Obtain the batch data.
+#Obtain the batch data
 next_batch=iterator.get_next()
 
-#Initialize the iterator.
+#Initialize the iterator
 training_init_op=iterator.make_initializer(train_dataset)
 
-#Initialize the variables.
+#Initialize the variables
 init=tf.global_variables_initializer()
 sess=tf.Session()
 sess.run(init)
@@ -502,26 +502,26 @@ train_batches_per_epoch=int(np.floor(train_size/batch_size))
 
 Migrated code:
 
-```bash
-#Construct an iterator.
+```python
+#Construct an iterator
 iterator=Iterator.from_structure(train_dataset.output_types, train_dataset.output_shapes)
 
-#Obtain the batch data.
+#Obtain the batch data
 next_batch=iterator.get_next()
 
-#Initialize the iterator.
+#Initialize the iterator
 training_init_op=iterator.make_initializer(train_dataset)
 
-#Initialize the variables.
+#Initialize the variables
 init=tf.global_variables_initializer()
 
-#Create a session. If code related to tf.device is used in the original network, add the session configuration "allow_soft_placement=True" to allow TensorFlow to automatically allocate devices.
+#Create a session. If code related to tf.device is used in the original network, add the session configuration "allow_soft_placement=True" to allow TensorFlow to automatically allocate devices
 config = tf.ConfigProto(allow_soft_placement=True)
 custom_op = config.graph_options.rewrite_options.custom_optimizers.add()
 custom_op.name = "NpuOptimizer"
-# You must explicitly disable the remapping and memory_optimization functions of TensorFlow to avoid conflicts with functions in the NPU.
-config.graph_options.rewrite_options.remapping = RewriterConfig.OFF  # Explicitly disable.
-config.graph_options.rewrite_options.memory_optimization = RewriterConfig.OFF  # Explicitly disable.
+# You must explicitly disable the remapping and memory_optimization functions of TensorFlow to avoid conflicts with functions in the NPU
+config.graph_options.rewrite_options.remapping = RewriterConfig.OFF  # Explicitly disable
+config.graph_options.rewrite_options.memory_optimization = RewriterConfig.OFF  # Explicitly disable
 sess = tf.Session(config=config)
 sess.run(init)
 
@@ -537,15 +537,15 @@ Additionally, the Ascend platform supports functions such as automatic mixed pre
 
 This part of the code does not need modification. For example:
 
-```bash
-#Start loop iterations.
+```python
+#Start loop iterations
 for epoch in range(num_epochs):
-  ##Initialize the iterator with the training dataset.
+  ##Initialize the iterator with the training dataset
   sess.run(training_init_op)
   for step in range(train_batches_per_epoch):
-    #Get the next batch of data.
+    #Get the next batch of data
     img_batch,label_batch=sess.run(next_batch)
-    #Run the training operation.
+    #Run the training operation
     _,train_loss = sess.run([train_op, loss],feed_dict={x:img_batch, y_:label_batch, is_training:True})
 ```
 
@@ -553,7 +553,7 @@ After the session object created by `tf.Session` is used, you must explicitly ca
 
 Example 1: Explicitly call `sess.close()`.
 
-```bash
+```python
 sess = tf.Session(config=config)
 sess.run(...)
 sess.close()
@@ -561,14 +561,13 @@ sess.close()
 
 Example 2: Use `with` to create a session.
 
-```bash
+```python
 with tf.Session(config=config) as sess:
     sess.run(...)
 ```
 
-> [!NOTE]
 >
-> If an error occurs during migration and training, see the [FAQ](faq.md) or contact technical support.
+> If an error occurs during migration and training, see the [FAQ](./faq.md) or contact technical support.
 
 ### Training with `tf.Session`
 
@@ -586,8 +585,8 @@ You need to define placeholders, variables, and operators to form a complete com
 You need to adapt the model to be used and can add functional features provided by Rec SDK TensorFlow during the adaptation process. This section introduces key steps in model adaptation and how to add desired functional features.
 
 > [!NOTE]
-> Functional features can be used in combination. You need to modify and adapt them in the corresponding key steps. To view the calling process of a single functional feature, see [Training Feature Process](appendix.md#training-feature-process).
->Feature eviction and the on-chip memory dynamic expansion mode cannot be enabled at the same time.
+> Functional features can be used in combination. You need to modify and adapt them in the corresponding key steps. To view the calling process of a single functional feature, see [Training Feature Process](./appendix.md#training-feature-process).
+> Feature eviction and the on-chip memory dynamic expansion mode cannot be enabled at the same time.
 
 The key steps are as follows:
 
@@ -634,7 +633,7 @@ The key steps are as follows:
         |--|--|
         |Dynamic expansion|-|
         |Dynamic shape|-|
-        |Feature admission and eviction|In FeatureSpec mode, see [FeatureSpec](./api/class_reference.md#featurespec) for configuration. <ol><li>To enable the admission function, set the admission threshold `access_threshold` to a value greater than or equal to 0 (unit: times). A parameter error will be reported if the threshold is less than -1. </li><li>To enable the eviction function, perform the following steps: <ol><li>Set the eviction threshold `eviction_threshold` to a value greater than or equal to 0 (unit: seconds). A parameter error will be reported if the threshold is less than -1. </li><li>Set `FeatureSpec` with `index_key` as `timestamp` and the parameter `is_timestamp=True`, indicating that the dataset contains timestamps. </li><li>Use the `EvictHook` API to set a hook for the eviction trigger. This API has three parameters: `evict_enable=True`, `evict_time_interval=24 * 60 * 60`, and `evict_step_interval=10000`, representing the eviction function switch, eviction trigger time interval (unit: seconds), and global step interval, respectively. You can choose either `evict_time_interval` or `evict_step_interval`. </li></ol></li><li>The feature eviction hook is used only in training mode.</li></ol>|
+        |Feature admission and eviction|In `FeatureSpec` mode, see [`FeatureSpec`](./api/class_reference.md#featurespec) for configuration. <ol><li>To enable the admission function, set the admission threshold `access_threshold` to a value greater than or equal to 0 (unit: times). A parameter error will be reported if the threshold is less than -1. </li><li>To enable the eviction function, perform the following steps: <ol><li>Set the eviction threshold `eviction_threshold` to a value greater than or equal to 0 (unit: seconds). A parameter error will be reported if the threshold is less than -1. </li><li>Set `FeatureSpec` with `index_key` as `timestamp` and the parameter `is_timestamp=True`, indicating that the dataset contains timestamps. </li><li>Use the `EvictHook` API to set a hook for the eviction trigger. This API has three parameters: `evict_enable=True`, `evict_time_interval=24 * 60 * 60`, and `evict_step_interval=10000`, representing the eviction function switch, eviction trigger time interval (unit: seconds), and global step interval, respectively. You can choose either `evict_time_interval` or `evict_step_interval`. </li></ol></li><li>The feature eviction hook is used only in training mode.</li></ol>|
 
     - Automatic graph modification
 
@@ -679,20 +678,20 @@ The key steps are as follows:
     |Feature admission and eviction|-|
 
 8. Start data loading and preprocessing.
-    - FeatureSpec mode
+    - `FeatureSpec` mode
 
         Call [`start_asc_pipeline`](./api/data_apis.md#start_asc_pipeline) to start the data pipeline.
 
     - Automatic graph modification mode
 
-        Call [modify_graph_and_start_emb_cache](./api/data_apis.md#modify_graph_and_start_emb_cache). Additionally, `sess.run(iterator.initializer)` must be changed to the dataset initialization API for automatic graph modification, that is, `sess.run([get_initializer](./api/automatic_graph_modification.md#get_initializer)(True))` or `sess.run(get_initializer(False))`. The former is used for training and the latter for evaluation.
+        Call [`modify_graph_and_start_emb_cache`](./api/data_apis.md#modify_graph_and_start_emb_cache). Additionally, `sess.run(iterator.initializer)` must be changed to the dataset initialization API for automatic graph modification, that is, `sess.run([get_initializer](./api/automatic_graph_modification.md#get_initializer)(True))` or `sess.run(get_initializer(False))`. The former is used for training and the latter for evaluation.
 
 #### Starting Training
 
 The key steps are as follows:
 
 1. Define `Saver` for saving and loading models during training. Start `Session` calculation and save ([`tf.compat.v1.train.Saver.save`](./api/tensorflow_apis.md#tfcompatv1trainsaversave)) or load ([`tf.compat.v1.train.Saver.restore`](./api/tensorflow_apis.md#tfcompatv1trainsaverrestore)) models during training.
-2. Start the training task. Start the training task. See [Single-Node Single-Card and Single-Node Multi-Card Training](quick_start.md#single-node-single-card-and-single-node-multi-card-training).
+2. Start the training task. See [Single-Node Single-Device and Single-Node Multi-Device Training](quick_start.md#single-node-single-device-and-single-node-multi-device-training).
 
 #### Completing Training and Viewing Results
 
@@ -702,7 +701,7 @@ The key steps are as follows:
 2. Call the [`terminate_config_initializer`](./api/initialization_and_deinitialization_of_the_training_framework.md#terminate_config_initializer) API to close the data stream and release resources.
 
 > [!NOTE]
-> To convert an NPU format model saved based on Rec SDK TensorFlow into a model that can be loaded and used by the GPU and CPU, see the [model conversion tool instructions](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/reference-tools/model_convert/README.md).
+> To convert an NPU format model saved based on Rec SDK TensorFlow into a model that can be loaded and used by the GPU and CPU, see the [model conversion tool instructions](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/reference-tools/model_convert/README.md).
 
 ## Distributed Training Script Migration
 
@@ -728,7 +727,7 @@ The Ring algorithm (called Ring-AllReduce) is used to introduce the Allreduce mo
 
 **APIs Used**
 
-In TensorFlow, `tf.distribute.Strategy` is generally used for distributed training. For details, see [this link](https://www.tensorflow.org/guide/distributed_training). However, Ascend AI Processors do not support the aforementioned distributed strategy. TF Adapter provides the distributed API `npu_distributed_optimizer_wrapper` to add the AllReduce operation of the NPU to the passed optimizer gradient function, and finally returns the input optimizer. This supports gradient aggregation between devices in networking modes such as single-node multi-card and multi-node multi-card. After you call this function, AllReduce operator nodes are inserted between gradient calculation and update operators in the generated training graph.
+In TensorFlow, `tf.distribute.Strategy` is generally used for distributed training. For details, see [this link](https://www.tensorflow.org/guide/distributed_training). However, Ascend AI Processors do not support the aforementioned distributed strategy. TF Adapter provides the distributed API `npu_distributed_optimizer_wrapper` to add the AllReduce operation of the NPU to the passed optimizer gradient function, and finally returns the input optimizer. This supports gradient aggregation between devices in networking modes such as single-node multi-device and multi-node multi-device. After you call this function, AllReduce operator nodes are inserted between gradient calculation and update operators in the generated training graph.
 
 **Figure 3** APIs used
 ![](../../figures/tf_rec_v1/apis-used.png "APIs used")
@@ -739,17 +738,17 @@ Therefore, the original TensorFlow training script must be modified to support d
 
 During distributed training, you can use the TensorFlow API for dataset sharding. If processor resource information is required for dataset sharding, obtain the number of Ascend AI Processors through the collective communication API `get_rank_size` and obtain the processor ID through `get_rank_id`. For example:
 
-```bash
-  dataset = dataset.shard(get_rank_size(),get_rank_id())
+```python
+    dataset = dataset.shard(get_rank_size(),get_rank_id())
 ```
 
 **Script Migration in Estimator Mode**
 
-1. TensorFlow passes strategy objects to `Runconfig` of Estimator, but TF Adapter does not support this mode. You need to delete relevant code. For example:
+1. TensorFlow passes strategy objects to `RunConfig` of Estimator, but TF Adapter does not support this mode. You need to delete relevant code. For example:
 
     Before migration:
 
-    ```bash
+    ```python
     mirrored_strategy = tf.distribute.MirroredStrategy()
     config = tf.estimator.RunConfig(
         train_distribute=mirrored_strategy,
@@ -760,7 +759,7 @@ During distributed training, you can use the TensorFlow API for dataset sharding
 
     After migration:
 
-    ```bash
+    ```python
     config = tf.estimator.NPURunConfig(
         session_config=session_config,
         save_checkpoints_secs=60*60*24)
@@ -768,18 +767,18 @@ During distributed training, you can use the TensorFlow API for dataset sharding
 
 2. Then call `npu_distributed_optimizer_wrapper` (see `npu_distributed_optimizer_wrapper` in *TF Adapter API (1.x)*) to add the AllReduce operation of the NPU to the passed optimizer gradient function and return the input optimizer, implementing distributed calculation on the Ascend AI Processor. The method is as follows:
 
-    ```bash
+    ```python
     def cnn_model_fn(features,labels,mode):
-      #Build the network.
+      #Build the network
       xxx
-      #Calculate loss.
+      #Calculate loss
       xxx
 
       #Configure the TrainingOp(for TRAIN mode)
       if mode == tf.estimator.ModeKeys.TRAIN:
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001) # Use the SGD optimizer.
-        optimizer = npu_distributed_optimizer_wrapper(optimizer) # Use NPU distributed computing to update gradients.
-        train_op=optimizer.minimize(loss=loss,global_step=tf.train.get_global_step()) # Minimize loss.
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001) # Use the SGD optimizer
+        optimizer = npu_distributed_optimizer_wrapper(optimizer) # Use NPU distributed computing to update gradients
+        train_op=optimizer.minimize(loss=loss,global_step=tf.train.get_global_step()) # Minimize loss
         return tf.estimator.EstimatorSpec(mode=mode,loss=loss,train_op=train_op)
     ```
 
@@ -791,13 +790,13 @@ During distributed training, you can use the TensorFlow API for dataset sharding
 
     Before migration:
 
-    ```bash
+    ```python
     grads = tf.gradients(a + b, [a, b], stop_gradients=[a, b])
     ```
 
     After migration:
 
-    ```bash
+    ```python
     grads = npu_allreduce(tf.gradients(a + b, [a, b], stop_gradients=[a, b]))
     ```
 
@@ -807,7 +806,7 @@ In Estimator mode, when `npu_distributed_optimizer_wrapper` is used to implement
 
 1. After variable initialization and before training, broadcast variables through the collective communication API broadcast. For details about the broadcast API, see the *HCCL APIs*.
 
-    ```bash
+    ```python
     from npu_bridge.npu_init import *
 
     def broadcast_global_variables(root_rank, index):
@@ -819,7 +818,7 @@ In Estimator mode, when `npu_distributed_optimizer_wrapper` is used to implement
         """
         op_list = []
         for var in tf.trainable_variables():
-            # the input and out tensor of HCOMBroadcast interface are list
+            # The input and output tensor of the HCOMBroadcast interface is a list
             if "float" in var.dtype.name:
                 inputs = [var]
                 outputs=hccl_ops.broadcast(tensor=inputs,root_rank=root_rank)
@@ -838,18 +837,18 @@ In Estimator mode, when `npu_distributed_optimizer_wrapper` is used to implement
 
     In addition, the broadcast API includes a graph modification operation. If the graph cannot be modified (for example, the graph is finalized or a session is created using `tf.train.Supervisor`), you need to unfreeze the graph first:
 
-    ```bash
+    ```python
     with sv.managed_session() as sess:
-      sess.graph._unsafe_unfinalize() # Unfreeze the graph.
+      sess.graph._unsafe_unfinalize() # Unfreeze the graph
       sess.run(bcast_op)
     ```
 
 2. During training, call `npu_distributed_optimizer_wrapper` to aggregate gradient data after calculating the data for each device using the gradient optimizer:
 
-    ```bash
+    ```python
     from npu_bridge.npu_init import *
-    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001) # Use the SGD optimizer.
-    distributedOptimizer=npu_distributed_optimizer_wrapper(optimizer) # Use NPU distributed computing to update gradients.
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001) # Use the SGD optimizer
+    distributedOptimizer=npu_distributed_optimizer_wrapper(optimizer) # Use NPU distributed computing to update gradients
     ```
 
     > [!NOTE]
@@ -857,13 +856,13 @@ In Estimator mode, when `npu_distributed_optimizer_wrapper` is used to implement
 
     If the original script uses the TensorFlow API to calculate gradients, such as `grads = tf.gradients(loss, tvars)`, you need to call the `npu_AllReduce` API to perform AllReduce on the gradients after calculation.
 
-    ```bash
+    ```python
     grads = npu_allreduce(tf.gradients(a + b, [a, b], stop_gradients=[a, b]))
     ```
 
 ### Data Parallelism Support (PS-Worker)
 
-In recommendation networks, feature data is saved in an embedding table. The data volume can reach the terabyte TB level and cannot be saved on the device side. Therefore, data must be saved in the host memory through the PS-worker mode. This section describes how to perform distributed training of a TensorFlow training script on the Ascend AI Processor using the PS-worker architecture.
+In recommendation networks, feature data is saved in an embedding table. The data volume can reach the terabyte (TB) level and cannot be saved on the device side. Therefore, data must be saved in the host memory through the PS-worker mode. This section describes how to perform distributed training of a TensorFlow training script on the Ascend AI Processor using the PS-worker architecture.
 
 **Implementation Principle of PS-Worker**
 
@@ -878,7 +877,7 @@ The following describes how to perform distributed training on the Ascend AI Pro
 
 > [!NOTICE]
 >
-> - Distributed training through the PS-worker architecture on the Ascend AI Processor currently supports only the NPUEstimator mode.
+> - Distributed training through the PS-worker architecture on the Ascend AI Processor currently supports only the `NPUEstimator` mode.
 > - Currently, only one worker process is supported on one device.
 > - In the PS-worker cluster scenario, you are advised to use high-speed NICs.
 
@@ -888,13 +887,13 @@ The following uses two servers, each with one parameter server and eight workers
 
 1. Set `TF_CONFIG` information.
 
-    ```bash
+    ```python
     os.environ['TF_CONFIG'] = json.dumps({
             'cluster': {
-                ##'chief':chief_hosts, # This parameter is optional.
+                #'chief':chief_hosts, # This parameter is optional
                 'worker': worker_hosts,
                 'ps': ps_hosts,
-                'evaluator': evaluator_hosts, # This parameter is optional if evaluation is not performed.
+                'evaluator':evaluator_hosts, # This parameter is optional if evaluation is not performed
             },
             'task': {'type': job_name, 'index': task_index}
     })
@@ -931,13 +930,13 @@ The following uses two servers, each with one parameter server and eight workers
 
 To support distributed training under the PS-worker architecture, you need to define a `tf.distribute.experimental.ParameterServerStrategy` instance first. For more details about this strategy, see [this link](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/ParameterServerStrategy).
 
-```bash
+```python
 strategy = tf.distribute.experimental.ParameterServerStrategy()
 ```
 
 **Training and Evaluating the Model**
 
-You need to specify the distributed strategy for NPUEstimator through the distribute parameter in NPURunConfig, and then call `tf.estimator.train_and_evaluate` to train and evaluate the model.
+You need to specify the distributed strategy for `NPUEstimator` through the distribute parameter in `NPURunConfig`, and then call `tf.estimator.train_and_evaluate` to train and evaluate the model.
 
 In addition, ensure that the `NPURunConfig.model_dir` of all workers is set to the same directory, such as a shared file system accessible to all workers. That is, if worker1 sets a directory, worker2 must mount this shared directory, and their `NPURunConfig.model_dir` values must be consistent.
 
@@ -952,8 +951,8 @@ run_config = NPURunConfig(
             log_step_count_steps=1,
             save_checkpoints_steps=100,
             enable_data_pre_proc=True,
-           mix_compile_mode=True, # In PS mode, only mixed calculation mode is supported.
-           iterations_per_loop=1, # In mixed calculation mode, this must be 1.
+           mix_compile_mode=True, # In PS mode, only mixed calculation mode is supported
+           iterations_per_loop=1, # In mixed calculation mode, this must be 1
             precision_mode='allow_mix_precision',
             distribute=strategy)
 
@@ -970,16 +969,16 @@ tf.estimator.train_and_evaluate(
 
 > [!NOTICE]
 > **Evaluation** processes can run on the device or on the host CPU, each with its own pros and cons. You can choose either of them as required.
-> For example, in the scenario where one server is equipped with eight cards, one parameter server process and eight worker processes are required, and the eight worker processes run on the device side.
+> For example, in the scenario where one server is equipped with eight devices, one parameter server process and eight worker processes are required, and the eight worker processes run on the device side.
 >
-> - If you **evaluate while training**, the total number of evaluator and worker processes that start cannot exceed the maximum number of devices on the current server, which is currently eight. Because the worker processes already occupy the devices, evaluation needs to be performed on the host CPU. This approach lets evaluation run during training, but it cannot use the performance advantages of the Ascend AI Processor during evaluation. However, it can run in parallel with training. When you use this approach, you are advised to set the checkpoint save interval to a value longer than the evaluation execution time.<br>To implement host-side evaluation, you must call the native TensorFlow Estimator directly for evaluation. You cannot convert it to NPUEstimator. Otherwise, evaluation requires device resources and fails because training already occupies the devices.
+> - If you **evaluate while training**, the total number of evaluator and worker processes that start cannot exceed the maximum number of devices on the current server, which is currently eight. Because the worker processes already occupy the devices, evaluation needs to be performed on the host CPU. This approach lets evaluation run during training, but it cannot use the performance advantages of the Ascend AI Processor during evaluation. However, it can run in parallel with training. When you use this approach, you are advised to set the checkpoint save interval to a value longer than the evaluation execution time.<br>To implement host-side evaluation, you must call the native TensorFlow Estimator directly for evaluation. You cannot convert it to `NPUEstimator`. Otherwise, evaluation requires device resources and fails because training already occupies the devices.
 > - If you **evaluate after training finishes**, you only need to make sure the evaluator starts after worker training ends. In this case, both training and evaluation can run on the device side for better performance.
 
 **Running the Script**
 
 If you run the script according to `ps_hosts`, `worker_hosts`, and other information defined in the Python script itself, with no `chief` defined in the Python script:
 
-```bash
+```python
 python resnet50_ps_strategy.py --job_name=ps --task_index=0
 python resnet50_ps_strategy.py --job_name=ps --task_index=1
 python resnet50_ps_strategy.py --job_name=worker --task_index=0
@@ -994,7 +993,7 @@ python resnet50_ps_strategy.py --job_name=worker --task_index=7
 
 If you need to redefine information such as `ps_hosts` and `worker_hosts`, with no `chief` defined in the Python script:
 
-```bash
+```python
 python resnet50_ps_strategy.py \
        --ps_hosts=192.168.1.79:2222,192.168.1.80:2222 \
        --worker_hosts=192.168.1.79:2223,192.168.1.79:2224,192.168.1.79:2225,192.168.1.79:2226,192.168.1.79:2227,192.168.1.79:2228,192.168.1.79:2229,192.168.1.79:2230,192.168.1.80:2223,192.168.1.80:2224,192.168.1.80:2225,192.168.1.80:2226,192.168.1.80:2227,192.168.1.80:2228,192.168.1.80:2229,192.168.1.80:2230 \
@@ -1004,7 +1003,7 @@ python resnet50_ps_strategy.py \
 
 If you need to run `chief` and `evaluator`, change `job_name` to the corresponding defined value:
 
-```bash
+```python
 python resnet50_ps_strategy.py --job_name=chief --task_index=0
 python resnet50_ps_strategy.py --job_name=evaluator --task_index=0
 ```
@@ -1039,34 +1038,34 @@ opt = tf.train.AdagradOptimizer(0.01 * hvd.size())
 opt = hvd.DistributedOptimizer(opt)
 
 # Add hook to broadcast variables from rank 0 to all other processes during
-# initialization.
+# initialization
 hooks = [hvd.BroadcastGlobalVariablesHook(0)]
 
 # Make training operation
 train_op = opt.minimize(loss)
 
-# Save checkpoints only on worker 0 to prevent other workers from corrupting them.
+# Save checkpoints only on worker 0 to prevent other workers from corrupting them
 checkpoint_dir = '/tmp/train_logs' if hvd.rank() == 0 else None
 
 # The MonitoredTrainingSession takes care of session initialization,
 # restoring from a checkpoint, saving to a checkpoint, and closing when done
-# or an error occurs.
+# or an error occurs
 with tf.train.MonitoredTrainingSession(checkpoint_dir=checkpoint_dir,
                                        config=config,
                                        hooks=hooks) as mon_sess:
   while not mon_sess.should_stop():
-    # Perform synchronous training.
+    # Perform synchronous training
     mon_sess.run(train_op)
 ```
 
 Migrated code:
 
 ```python
-# Import the NPU library.
+# Import the NPU library
 import tensorflow as tf
 from npu_bridge.npu_init import *
 
-# This example uses the HCCL group management API, so you need to start a separate session to initialize HCCL. For more information, see the "Collective Communication Initialization" section of the TensorFlow 1.15 Model Portal Guide.
+# This example uses the HCCL group management API. Therefore, you need to start a separate session to initialize HCCL. For more information, see the "Collective Communication Initialization" section of the TensorFlow 1.15 Model Porting Guide
 npu_int = npu_ops.initialize_system()
 npu_shutdown = npu_ops.shutdown_system()
 config = tf.ConfigProto()
@@ -1078,41 +1077,41 @@ init_sess = tf.Session(config=config)
 init_sess.run(npu_int)
 
 # Pin GPU to be used to process local rank (one GPU per process)
-config.gpu_options.visible_device_list = str(get_local_rank_id())  # Replace hvd.local_rank with get_local_rank_id.
+config.gpu_options.visible_device_list = str(get_local_rank_id())  # Replace hvd.local_rank with get_local_rank_id
 
 # Build model...
 loss = ...
-opt = tf.train.AdagradOptimizer(0.01 * get_rank_size())   # Replace hvd.size with get_rank_size.
+opt = tf.train.AdagradOptimizer(0.01 * get_rank_size())   # Replace hvd.size with get_rank_size
 
 # NPU Allreduce
-# Replace hvd.DistributedOptimizer with npu_distributed_optimizer_wrapper.
+# Replace hvd.DistributedOptimizer with npu_distributed_optimizer_wrapper
 opt = npu_distributed_optimizer_wrapper(opt)
-# Add hook to broadcast variables from rank 0 to all other processes during initialization.
+# Add hook to broadcast variables from rank 0 to all other processes during initialization
 hooks = [NPUBroadcastGlobalVariablesHook(0)]
 
-# Use the broadcast interface of collective communication in session.run mode to broadcast variables.
+# Use the broadcast interface of collective communication in session.run mode to broadcast variables
 input = tf.trainable_variables()
 bcast_global_variables_op = hccl_ops.broadcast(input, 0)
 
 # Make training operation
 train_op = opt.minimize(loss)
 
-# Save checkpoints only on worker 0 to prevent other workers from corrupting them.
-checkpoint_dir = '/tmp/train_logs' if get_rank_id() == 0 else None  # Replace hvd.rank with get_rank_id.
+# Save checkpoints only on worker 0 to prevent other workers from corrupting them
+checkpoint_dir = '/tmp/train_logs' if get_rank_id() == 0 else None  # Replace hvd.rank with get_rank_id
 
 # The MonitoredTrainingSession takes care of session initialization,
 # restoring from a checkpoint, saving to a checkpoint, and closing when done
-# or an error occurs.
+# or an error occurs
 with tf.train.MonitoredTrainingSession(checkpoint_dir=checkpoint_dir,
                                        config=config,
                                        hooks=hooks) as mon_sess:
-  # Broadcast variables.
+  # Broadcast variables
   mon_sess.run(bcast_global_variables_op)
   while not mon_sess.should_stop():
-    # Perform synchronous training.
+    # Perform synchronous training
     mon_sess.run(train_op)
 
-# Run shutdown_system after training finishes, then close the session.
+# Run shutdown_system after training finishes, then close the session
 init_sess.run(npu_shutdown)
 init_sess.close()
 ```
@@ -1134,9 +1133,9 @@ Model: [link](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/
 
 Tool: [link](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/reference-tools/precrec-python)
 
-**Run `little_demo` Precision Monitoring Mode**
+**Running `little_demo` Precision Monitoring Mode**
 
-In the `little_demo` training script, such as `run.sh`, set the `PRECISION_CHECK` environment variable. `0` disables precision monitoring and `1` enables precision monitoring. The default value is `0`.
+In the `little_demo` training script, such as `run.sh`, set the `PRECISION_CHECK` environment variable. 0 disables precision monitoring and 1 enables precision monitoring. The default value is 0.
 
 ```bash
 export PRECISION_CHECK=0
@@ -1150,9 +1149,9 @@ export PRECISION_CHECK=1
 
 After precision alignment is enabled, a `precision_check` data file will be generated in the same directory as the `run.sh` script for later comparison.
 
-For details about the generated files, see the "Enable Precision Alignment Mode" section in the [code repository](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/README.md).
+For details about the generated files, see the "Enable Precision Alignment Mode" section in the [code repository](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/README.md).
 
-**Use the precrec-python Tool for Parsing and Comparison**
+**Using the precrec-python Tool for Parsing and Comparison**
 
 After you run two tasks in `little_demo` precision alignment mode and generate the corresponding trace files, use `precision_check.py` to compare the paths.
 
@@ -1160,8 +1159,8 @@ Example:
 
 ```bash
 /home/little_demo/precision_check/20240807_091347
-/home/little_demo/precision_check/20240807_101855  // Run the task twice to generate the corresponding trace files.
-python precision_check.py /home/little_demo/precision_check/20240807_091347 /home/little_demo/precision_check/20240807_101855  // Use precision_check.py to compare the paths.
+/home/little_demo/precision_check/20240807_101855  // Run the task twice to generate the corresponding trace files
+python precision_check.py /home/little_demo/precision_check/20240807_091347 /home/little_demo/precision_check/20240807_101855  // Use precision_check.py to compare the paths
 ```
 
 For detailed usage of the precrec-python precision comparison tool, see this [link](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/reference-tools/precrec-python/README.md).
@@ -1179,7 +1178,7 @@ The scenarios where precision does not meet expectations are mainly divided into
 - If a model trained on NPU produces `NaN` output values, refer to [NaN Overflow Localization](#nan-overflow-localization) for precision tuning.
 - If a model trained on NPU shows random precision errors, that is, precision may occasionally fail to meet expectations after multiple training runs, refer to [Random Error Localization](#random-error-localization) for precision tuning.
 
-If you find any issues during tuning or encounter difficulties while operating, you are advised to visit the [GitCode community](https://gitcode.com/Ascend/RecSDK) and submit feedback or ask for help.
+If you find any issues during tuning or encounter difficulties while operating, you are advised to visit the [AtomGit community](https://atomgit.com/Ascend/RecSDK) and submit feedback or ask for help.
 
 ### Preparations Before Tuning
 
@@ -1192,7 +1191,7 @@ For scenarios where a model is migrated from GPU/CPU training to NPU training, p
     Train the model multiple times on the GPU/CPU and multiple times on the NPU. If the results of the multiple runs fluctuate within the same range for both the GPU/CPU and the NPU, you cannot conclude that NPU training has a precision issue. If the average precision of multiple GPU/CPU runs is significantly higher than the average precision of multiple NPU runs and exceeds the normal fluctuation range, you can conclude that NPU training has a precision issue.
 
 2. Check the migrated model configuration.
-    - Make sure the mixed precision mode on the NPU matches that on the GPU. Use the `precision_mode_v2` option with the value `origin`. For details, see the "Session Configuration Parameter Description" section in [TF Adapter API (1.x)](https://www.hiascend.com/document/detail/zh/TensorFlowCommercial/800/API/tfadapter1x/tfmigr1_tfadapi_0020.html).
+    - Make sure the mixed precision mode on the NPU matches that on the GPU. Use the `precision_mode_v2` option with the value `origin`. For details, see the "Session Configuration Parameter Description" section in [TF Adapter API (1.x)](https://www.hiascend.com/document/detail/en/TensorFlowCommercial/800/API/tfadapter1x/tfmigr1_tfadapi_0020.html).
     - Make sure the loss scaling function is enabled correctly on the NPU. If the GPU/CPU version uses `LossScaleManager` for dynamic LossScale calculation, you need to migrate it to `NPULossScaleOptimizer` on the NPU. For details, see the "Loss Scale" section in the *TensorFlow 1.15 Model Porting Guide*.
     - Make sure the GPU/CPU training and NPU training use the same dataset, data preprocessing method, and model hyperparameters, except for the interface changes involved in migration.
 
@@ -1202,19 +1201,19 @@ For scenarios where a model is migrated from GPU/CPU training to NPU training, p
 
     Example configuration for `session.run` mode training:
 
-    ```bash
+    ```python
     custom_op.parameter_map["op_select_implmode"].s = tf.compat.as_bytes("high_precision")
     ```
 
-    For details, see the "Session Configuration Parameter Description" section in [TF Adapter API (1.x)](https://www.hiascend.com/document/detail/zh/TensorFlowCommercial/800/API/tfadapter1x/tfmigr1_tfadapi_0020.html).
+    For details, see the "Session Configuration Parameter Description" section in [TF Adapter API (1.x)](https://www.hiascend.com/document/detail/en/TensorFlowCommercial/800/API/tfadapter1x/tfmigr1_tfadapi_0020.html).
 
     Example configuration for Estimator mode training:
 
-    ```bash
+    ```python
     config = NPURunConfig(op_select_implmode="high_precision")
     ```
 
-    For details, see the "NPURunConfig Configuration Parameter Description" section in [TF Adapter API (1.x)](https://www.hiascend.com/document/detail/zh/TensorFlowCommercial/800/API/tfadapter1x/tfmigr1_tfadapi_0020.html).
+    For details, see the "NPURunConfig Configuration Parameter Description" section in [TF Adapter API (1.x)](https://www.hiascend.com/document/detail/en/TensorFlowCommercial/800/API/tfadapter1x/tfmigr1_tfadapi_0020.html).
 
 #### Fixed Randomness Removal
 
@@ -1236,7 +1235,7 @@ Remove or deterministically modify other kinds of random data processing as well
 
 ##### Removing Randomness in the Network Structure
 
-If the network uses dropout, such as `tf.nn.dropout`, change the `rate` input parameter to `0`. If it uses `slim.dropout`, change the `keep_prob` input parameter to `1`.
+If the network uses dropout, such as `tf.nn.dropout`, change the `rate` input parameter to 0. If it uses `slim.dropout`, change the `keep_prob` input parameter to 1.
 
 If the network calls TensorFlow random modules, such as `tf.random_uniform`, you are advised to replace the random value directly with a constant such as `tf.constant`.
 
@@ -1244,23 +1243,23 @@ Remove or deterministically modify other kinds of random network structures as w
 
 ##### Enabling Deterministic Computing
 
-When you train on the GPU or NPU, repeated runs may produce different results. This difference usually comes from asynchronous multithreaded execution in operator implementations, which changes the order of floating-point accumulation. On the NPU, you can enable deterministic computation to make repeated results the same and improve the accuracy of precision comparison. However, operator execution becomes slower and performance drops, so you can choose whether to enable it as required.
+When you train on the GPU or NPU, repeated runs may produce different results. This difference usually comes from asynchronous multithreaded execution in operator implementations, which changes the order of floating-point accumulation. On the NPU, you can enable deterministic computation to make repeated results the same and improve the accuracy of precision comparison. However, operator execution becomes slower and performance drops. Therefore, you can choose whether to enable it as required.
 
 - Example configuration for `session.run` mode training:
 
-    ```bash
+    ```python
     custom_op.parameter_map["deterministic"].i = 1
     ```
 
-    For details, see the "Session Configuration Parameter Description" section in [TF Adapter API (1.x)](https://www.hiascend.com/document/detail/zh/TensorFlowCommercial/800/API/tfadapter1x/tfmigr1_tfadapi_0020.html).
+    For details, see the "Session Configuration Parameter Description" section in [TF Adapter API (1.x)](https://www.hiascend.com/document/detail/en/TensorFlowCommercial/800/API/tfadapter1x/tfmigr1_tfadapi_0020.html).
 
 - Example configuration for Estimator mode training:
 
-    ```bash
+    ```python
     config = NPURunConfig(deterministic=1)
     ```
 
-    For details, see the "NPURunConfig Configuration Parameter Description" section in [TF Adapter API (1.x)](https://www.hiascend.com/document/detail/zh/TensorFlowCommercial/800/API/tfadapter1x/tfmigr1_tfadapi_0020.html).
+    For details, see the "NPURunConfig Configuration Parameter Description" section in [TF Adapter API (1.x)](https://www.hiascend.com/document/detail/en/TensorFlowCommercial/800/API/tfadapter1x/tfmigr1_tfadapi_0020.html).
 
 ##### Validating Fixed Randomness
 
@@ -1273,7 +1272,7 @@ To determine whether randomness has been removed, perform the following checks:
 
 For scenarios that require full-network comparison, deploy the precision analysis tool. Upload the `precision_tool` folder from the [Ascend tools](https://gitee.com/ascend/tools) project to any directory in the training working directory. You need this tool both for collecting training precision data and for performing precision comparison analysis after training.
 
-### End-to-End Network Comparison between GPU/CPU and NPU
+### End-to-End Network Comparison Between GPU/CPU and NPU
 
 #### GPU/CPU Data Dump
 
@@ -1287,21 +1286,21 @@ For scenarios that require full-network comparison, deploy the precision analysi
 
     - Example configuration for `session.run` mode training:
 
-        ```bash
+        ```python
         import precision_tool.tf_config as npu_tf_config
         sess = npu_tf_config.sess_dump(sess=sess)
         ```
 
     - Example configuration for Estimator mode training:
 
-        ```bash
+        ```python
         import precision_tool.tf_config as npu_tf_config
         estim_specs = tf.estimator.EstimatorSpec(training_hooks=[npu_tf_config.estimator_dump()])
         ```
 
     > [!NOTE]
     > - In `session.run` mode, you cannot use dump configuration and Rec SDK TensorFlow model saving at the same time.
-    > - During multi-card training, you only need to add dump configuration to the training of one card. Otherwise, saving data from multiple cards at the same time will cause data conflicts.
+    > - During multi-device training, you only need to add dump configuration to the training of one device. Otherwise, saving data from multiple devices at the same time will cause data conflicts.
 
 3. Perform training.
 
@@ -1317,7 +1316,7 @@ For scenarios that require full-network comparison, deploy the precision analysi
 
     - Example configuration for `session.run` mode training:
 
-        ```bash
+        ```python
         import precision_tool.tf_config as npu_tf_config
         config = npu_tf_config.session_dump_config(config, action='dump')
         sess = tf.Session(config)
@@ -1325,7 +1324,7 @@ For scenarios that require full-network comparison, deploy the precision analysi
 
     - Example configuration for Estimator mode training:
 
-        ```bash
+        ```python
         import precision_tool.tf_config as npu_tf_config
         dump_config=npu_tf_config.estimator_dump_config(action='dump')
         npu_config = NPURunConfig(dump_config=dump_config)
@@ -1333,7 +1332,7 @@ For scenarios that require full-network comparison, deploy the precision analysi
 
     > [!NOTE]
     > - In `session.run` mode, you cannot use dump configuration and Rec SDK TensorFlow model saving at the same time.
-    > - During multi-card training, you only need to add dump configuration to the training of one card. Otherwise, saving data from multiple cards at the same time will cause data conflicts.
+    > - During multi-device training, you only need to add dump configuration to the training of one device. Otherwise, saving data from multiple devices at the same time will cause data conflicts.
 
 2. Perform training.
 
@@ -1350,9 +1349,9 @@ For scenarios that require full-network comparison, deploy the precision analysi
     |dump_path|Path for storing dump data. If a relative path is set, the full path after concatenation is used.|-|
     |time|Time when the dump data files are written to the drive.|The format is *YYYYMMDDHHMMSS*.|
     |deviceid|Device ID.|-|
-    |model_name|Subgraph name.|There may be multiple folders at the `model_name` level. Use the data under the directory that corresponds to the computational graph name.<br>If `model_name` contains dots (.), slashes (/), backslashes (\), or spaces, they are converted into underscores (_).|
+    |model_name|Subgraph name.|There may be multiple folders at the `model_name` level. Use the data under the directory that corresponds to the computational graph name.<br>If `model_name` contains dots (.), slashes (/), backslashes (\\), or spaces, they are converted into underscores (_).|
     |model_id|Subgraph ID.|-|
-    |data_index|Iteration number used to save the dump data for the corresponding iteration.|If `dump_step` is specified, `data_index` is the same as `dump_step`. If `dump_step` is not specified, `data_index` starts at `0` and increments by 1 for each dumped iteration.|
+    |data_index|Iteration number used to save the dump data for the corresponding iteration.|If `dump_step` is specified, `data_index` is the same as `dump_step`. If `dump_step` is not specified, `data_index` starts at 0 and increments by 1 for each dumped iteration.|
 
 #### Dump Data Comparison
 
@@ -1366,24 +1365,24 @@ Upload the `precision_tool` and `precision_data` folders, including the GPU/CPU 
 │    ├── ...
 ├── precision_data
 │    ├── npu
-│    │    ├── debug_0  // Stores NPU dump data.
+│    │    ├── debug_0  // Stores NPU dump data
 │    ├── tf
-│    │    ├── dump     // Stores GPU/CPU dump data.
+│    │    ├── dump     // Stores GPU/CPU dump data
 │    ├── ...
 ```
 
 **Installing Dependencies**
 
 ```bash
-# Graphviz is an optional dependency. Install it only when you need to draw operator subgraphs.
+# Graphviz is an optional dependency. Install it only when you need to draw operator subgraphs
 pip3 install rich graphviz
 # ubuntu/Debian
 sudo apt-get install graphviz
 # fedora/CentOS
 sudo yum install graphviz
 Modify config.py in the precision_tool/lib/config directory.
-# This tool depends on the atc and msaccucmp.py tools in the Toolkit package, so configure the Toolkit installation directory.
-# By default, the Toolkit package is installed in /usr/local/Ascend, so you do not need to modify it unless you installed it in a different directory.
+# This tool depends on the atc and msaccucmp.py tools in the Toolkit package. Therefore, configure the Toolkit installation directory
+# By default, the Toolkit package is installed in /usr/local/Ascend. Therefore, you do not need to modify it unless you installed it in a different directory
 CMD_ROOT_PATH = '/usr/local/Ascend'
 ```
 
@@ -1401,7 +1400,7 @@ CMD_ROOT_PATH = '/usr/local/Ascend'
     PrecisionTool \>
     ```
 
-3. Run the `ac -l [limit_num] (-c)` command to perform full-network precision comparison. For details, see the "precision_tool Command Reference" section of the TensorFlow 1.15 Model Migration Guide.
+3. Run the `ac -l [limit_num] (-c)` command to perform full-network precision comparison. For details, see the "precision_tool Command Reference" section of the *TensorFlow 1.15 Model Porting Guide*.
 
     ```bash
     PrecisionTool > ac -c
@@ -1426,7 +1425,7 @@ The following figure shows an example `vcs` command result.
 From the comparison result in the preceding figure, you can see that the operator inputs are basically the same, but the first output differs significantly from the benchmark, with a cosine similarity of 0.806927, which is less than 0.98. This indicates that the operator may have a precision issue. If the operator inputs already differ significantly, you need to continue checking the comparison result of the input node.
 
 > [!NOTE]
->Run the `ni (-n) [op_name] -g [graph] -a [attr] -s [save sub graph depth]` command to query the input and output node information of the operator. For details, see the "precision_tool Command Reference" section of the *TensorFlow 1.15 Model Porting Guide*.
+>Run the `ni (-n) [op_name] -g [graph] -a [attr] -s [save subgraph depth]` command to query the input and output node information of the operator. For details, see the "precision_tool Command Reference" section of the *TensorFlow 1.15 Model Porting Guide*.
 > <br>![](../../figures/tf_rec_v1/image_0000002210306721.png)
 > <br>The `ni` command can obtain the following key information based on the operator name you pass in.
 > <br>The text inside `[]` is the operator type. In the preceding figure, the operator type is `Add`. If `PassName` is included, the operator is a fusion operator, and the corresponding value is the name of the fusion rule. `OriginOp` indicates the operator before fusion.
@@ -1448,7 +1447,7 @@ From the comparison result in the preceding figure, you can see that the operato
     **Figure 3** Output differs for a Rec SDK TensorFlow table lookup operator in the CSV file generated by the vcs command
     ![](../../figures/tf_rec_v1/output-differs-for-a-rec-sdk-tensor-flow-table-lookup-operator-in-the-csv-file-generated-by-the-vcs-command.png "Output differs for a Rec SDK TensorFlow table lookup operator in the CSV file generated by the vcs command")
 
-### End-to-End Network Comparison between NPUs
+### End-to-End Network Comparison Between NPUs
 
 #### NPU Data Dump
 
@@ -1476,7 +1475,7 @@ Follow the instructions in [NPU Data Dump](#npu-data-dump). The data is saved by
 
     Precision comparison results are generated in the `out_dir` directory. For data analysis, see the "Full-Network Precision Comparison Result File Description" section of the *TensorFlow 1.15 Model Porting Guide*. Open the CSV file in the directory and search from top to bottom for the first operator whose output cosine similarity is less than 0.98.
 
-4. For the preceding results, you can also use the `precision_tool` command `ni (-n) [op_name] -g [graph] -a [attr] -s [save sub graph deep]` for single-layer data comparison analysis. For details, see the "precision_tool Command Reference" section of the *TensorFlow 1.15 Model Porting Guide*.
+4. For the preceding results, you can also use the `precision_tool` command `ni (-n) [op_name] -g [graph] -a [attr] -s [save subgraph depth]` for single-layer data comparison analysis. For details, see the "precision_tool Command Reference" section of the *TensorFlow 1.15 Model Porting Guide*.
 5. When both `debug_0` and `debug_1` exist in the `precision_data/npu/` directory, the `ni` command parses the dump files with the same operator name in both folders at the same time. From the parsing result, you can clearly see the data differences.
 
     ![](../../figures/tf_rec_v1/image_0000002210306725.png)
@@ -1491,14 +1490,14 @@ Follow the instructions in [NPU Data Dump](#npu-data-dump). The data is saved by
 
 ### NaN Overflow Localization
 
-#### Determine the Overflow Step
+#### Determining the Overflow Step
 
 Overflow localization depends on precision data dumps. If you can reliably reproduce the model output `NaN` issue at a certain training iteration after fixed randomness is removed, you can specify the dump step for training:
 
 1. Modify `config.py` in the `precision_tool/lib/config` directory and specify the step for which you want to dump data.
 
     ```bash
-    # Dump data for a specific step. In general, you only need to compare the first dumped layer, that is, keep the default value. If you need to specify a particular step, you can change it, for example to '0|5|10'.
+    # Dump data for a specific step. In general, you only need to compare the first dumped layer, that is, keep the default value. If you need to specify a particular step, you can change it, for example to '0|5|10'
     TF_DUMP_STEP = '0'
     ```
 
@@ -1526,7 +1525,7 @@ Follow the instructions in [NPU Data Dump](#npu-data-dump). The data is saved by
 
     Run the `python3 find_nan.py` command. The `find_nan.py` file is as follows:
 
-    ```bash
+    ```python
     import glob
     import numpy as np
 
@@ -1590,11 +1589,11 @@ for key, cos in key_cos:
 
 ### References
 
-[Precision Tuning Process](https://www.hiascend.com/document/detail/zh/TensorFlowCommercial/800/migration/tfmigr1/tfmigr1_tfprecision_0002.html)
+[Precision Tuning Process](https://www.hiascend.com/document/detail/en/TensorFlowCommercial/800/migration/tfmigr1/tfmigr1_tfprecision_0002.html)
 
-[precision_tool Command Reference](https://www.hiascend.com/document/detail/zh/TensorFlowCommercial/800/migration/tfmigr1/tfmigr1_tfprecision_0050.html)
+[precision_tool Command Reference](https://www.hiascend.com/document/detail/en/TensorFlowCommercial/800/migration/tfmigr1/tfmigr1_tfprecision_0050.html)
 
-[Full-Network Precision Comparison Result File Description](https://www.hiascend.com/document/detail/zh/TensorFlowCommercial/800/migration/tfmigr1/tfmigr1_tfprecision_0051.html)
+[Full-Network Precision Comparison Result File Description](https://www.hiascend.com/document/detail/en/TensorFlowCommercial/800/migration/tfmigr1/tfmigr1_tfprecision_0051.html)
 
 ## Performance Optimization
 
@@ -1606,10 +1605,11 @@ In inference workloads for recommendation models, some operators, such as `where
 
 This section uses the SVE instruction set to optimize four TensorFlow CPU operators: `less`, `greater`, `floormod`, and `where`.
 
-You can obtain the component source code from the [Rec SDK TensorFlow source repository](https://gitcode.com/Ascend/RecSDK/tree/develop). For implementation, see the `cust_op/tf_cpu_op/README.md` file in the source code.
+You can obtain the component source code from the [Rec SDK TensorFlow source repository](https://atomgit.com/Ascend/RecSDK/tree/develop). For implementation, see the `cust_op/tf_cpu_op/README.md` file in the source code.
 
 #### `less`
 
+<a name="table149063259414"></a>
 <table><tbody><tr id="row19541172317518"><th class="firstcol" valign="top" width="14.14%" id="mcps1.1.3.1.1"><p id="p1393062512417">Function</p>
 </th>
 <td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.1.1 "><p id="p19313251245">Returns the element-wise truth value of <code>(x &lt; y)</code>.</p>
@@ -1624,8 +1624,8 @@ You can obtain the component source code from the [Rec SDK TensorFlow source rep
 </tr>
 <tr id="row129318251844"><th class="firstcol" valign="top" width="14.14%" id="mcps1.1.3.3.1"><p id="p189317252041">Usage</p>
 </th>
-<td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.3.1 "><p id="p1124391913512">The usage is the same as the native TensorFlow <code>less</code> operator, and it also supports broadcasting. For specific input types (tf.int32<span> and </span>tf.int64), the SVE-optimized operator runs. For other input types, the native <code>less</code> operator runs.</p>
-<p id="p129312251949">For installation instructions, see the <span id="ph370062120391">Rec SDK TensorFlow</span> source tree file <span class="filepath" id="filepath67381030559"><code>cust_op/tf_cpu_op/README.md</code></span></p>
+<td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.3.1 "><p id="p1124391913512">The usage is the same as the native TensorFlow <code>less</code> operator, and it also supports broadcasting. For specific input types (<code>tf.int32</code><span> and </span><code>tf.int64</code>), the SVE-optimized operator runs. For other input types, the native <code>less</code> operator runs.</p>
+<p id="p129312251949">For installation instructions, see the <span id="ph370062120391">Rec SDK TensorFlow</span> source tree file <span class="filepath" id="filepath67381030559"><code>cust_op/tf_cpu_op/README.md</code></span>.</p>
 </td>
 </tr>
 <tr id="row19317251548"><th class="firstcol" valign="top" width="14.14%" id="mcps1.1.3.4.1"><p id="p6931102518414">Constraints</p>
@@ -1636,8 +1636,9 @@ You can obtain the component source code from the [Rec SDK TensorFlow source rep
 </tbody>
 </table>
 
-#### greater
+#### `greater`
 
+<a name="table373115516419"></a>
 <table><tbody><tr id="row16758655843"><th class="firstcol" valign="top" width="14.14%" id="mcps1.1.3.1.1"><p id="p675820553415">Function</p>
 </th>
 <td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.1.1 "><p id="p575816551641">Returns the element-wise truth value of <code>(x &gt; y)</code>.</p>
@@ -1652,7 +1653,7 @@ You can obtain the component source code from the [Rec SDK TensorFlow source rep
 </tr>
 <tr id="row875810553418"><th class="firstcol" valign="top" width="14.14%" id="mcps1.1.3.3.1"><p id="p375885511414">Usage</p>
 </th>
-<td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.3.1 "><p id="p1364912379518">The usage is the same as the native TensorFlow <code>greater</code> operator, and it also supports broadcasting. For specific input types (tf.int32 and tf.int64), the SVE-optimized operator runs. For other input types, the native <code>greater</code> operator runs.</p>
+<td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.3.1 "><p id="p1364912379518">The usage is the same as the native TensorFlow <code>greater</code> operator, and it also supports broadcasting. For specific input types (<code>tf.int32</code> and <code>tf.int64</code>), the SVE-optimized operator runs. For other input types, the native <code>greater</code> operator runs.</p>
 <p id="p107585551844">For installation instructions, see the <span id="ph370062120391">Rec SDK TensorFlow</span> source tree file <span class="filepath" id="filepath54641045155"><code>cust_op/tf_cpu_op/README.md</code></span>.</p>
 </td>
 </tr>
@@ -1664,8 +1665,9 @@ You can obtain the component source code from the [Rec SDK TensorFlow source rep
 </tbody>
 </table>
 
-#### floormod
+#### `floormod`
 
+<a name="table9918150856"></a>
 <table><tbody><tr id="row79351901356"><th class="firstcol" valign="top" width="14.14%" id="mcps1.1.3.1.1"><p id="p99352018517">Function</p>
 </th>
 <td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.1.1 "><p id="p1793618017517">Returns the element-wise remainder after division.</p>
@@ -1680,7 +1682,7 @@ You can obtain the component source code from the [Rec SDK TensorFlow source rep
 </tr>
 <tr id="row2936150254"><th class="firstcol" valign="top" width="14.14%" id="mcps1.1.3.3.1"><p id="p19361101555">Usage</p>
 </th>
-<td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.3.1 "><p id="p19517152357">The usage is the same as the native TensorFlow <code>floormod</code> operator, and it also supports broadcasting. For specific input types (tf.float32<span> and </span>tf.float64), the SVE-optimized operator runs. For other input types, the native <code>floormod</code> operator runs.</p>
+<td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.3.1 "><p id="p19517152357">The usage is the same as the native TensorFlow <code>floormod</code> operator, and it also supports broadcasting. For specific input types (<code>tf.float32</code><span> and </span><code>tf.float64</code>), the SVE-optimized operator runs. For other input types, the native <code>floormod</code> operator runs.</p>
 <p id="p193640954">For installation instructions, see the <span id="ph370062120391">Rec SDK TensorFlow</span> source tree file <span class="filepath" id="filepath18979598516"><code>cust_op/tf_cpu_op/README.md</code></span>.</p>
 </td>
 </tr>
@@ -1692,8 +1694,9 @@ You can obtain the component source code from the [Rec SDK TensorFlow source rep
 </tbody>
 </table>
 
-#### where
+#### `where`
 
+<a name="table155115455"></a>
 <table><tbody><tr id="row19711255517"><th class="firstcol" valign="top" width="14.14%" id="mcps1.1.3.1.1"><p id="p9721151055">Function</p>
 </th>
 <td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.1.1 "><p id="p572195655">Returns elements from <code>x</code> or <code>y</code> depending on the condition.</p>
@@ -1708,7 +1711,7 @@ You can obtain the component source code from the [Rec SDK TensorFlow source rep
 </tr>
 <tr id="row13721351154"><th class="firstcol" valign="top" width="14.14%" id="mcps1.1.3.3.1"><p id="p16722519512">Usage</p>
 </th>
-<td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.3.1 "><p id="p18162555412">The usage is the same as the native TensorFlow <code>where</code> operator. <code>condition</code> is a boolean type. For specific input types (tf.int64) of <code>x</code> and <code>y</code>, the SVE-optimized operator runs. For other input types, the native where operator runs.</p>
+<td class="cellrowborder" valign="top" width="85.86%" headers="mcps1.1.3.3.1 "><p id="p18162555412">The usage is the same as the native TensorFlow <code>where</code> operator. <code>condition</code> is a boolean type. For specific input types (<code>tf.int64</code>) of <code>x</code> and <code>y</code>, the SVE-optimized operator runs. For other input types, the native <code>where</code> operator runs.</p>
 <p id="p127217518513">For installation instructions, see the <span id="ph370062120391">Rec SDK TensorFlow</span> source tree file <span class="filepath" id="filepath540149560"><code>cust_op/tf_cpu_op/README.md</code></span>.</p>
 </td>
 </tr>
@@ -1724,17 +1727,17 @@ You can obtain the component source code from the [Rec SDK TensorFlow source rep
 
 Rec SDK TensorFlow supports migration and adaptation of open-source TensorFlow recommendation models. You can refer to the following migration examples:
 
-- [xDeepFM Example](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/xDeepFM/README.md)
-- [WideDeep Example](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/WideDeep/README.md)
-- [mmoe Example](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/mmoe/README.md)
+- [xDeepFM Example](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/xDeepFM/README.md)
+- [WideDeep Example](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/WideDeep/README.md)
+- [mmoe Example](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/mmoe/README.md)
 
 ### DCNv2 Model Development Guide
 
-This section provides guidance on migrating the DCNv2 recommendation model based on TensorFlow 1.15.0 from a GPU environment to the Huawei Ascend NPU environment, using the automatic graph modification mode of the `tf_rec_v1` component. For the adapted model code, see [DCNv2 Model](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/DCNv2).
+This section provides guidance on migrating the DCNv2 recommendation model based on TensorFlow 1.15.0 from a GPU environment to the Huawei Ascend NPU environment, using the automatic graph modification mode of the `tf_rec_v1` component. For the adapted model code, see [DCNv2 Model](https://atomgit.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/DCNv2).
 
 #### Prerequisites
 
-Refer to the [Ascend Community `sess.run` Migration Guide](https://www.hiascend.com/document/detail/zh/TensorFlowCommunity/850/migration/tfmigr1/tfmigr1_000019.html) to complete the model migration from GPUs to NPUs.
+Refer to the [Ascend Community `sess.run` Migration Guide](https://www.hiascend.com/document/detail/en/TensorFlowCommunity/850/migration/tfmigr1/tfmigr1_000019.html) to complete the model migration from GPUs to NPUs.
 
 #### Step 1: Replacing Sparse Feature Lookup APIs
 
@@ -1759,7 +1762,7 @@ Refer to the [Ascend Community `sess.run` Migration Guide](https://www.hiascend.
     ```python
     from mx_rec.core.embedding import create_table, sparse_lookup
 
-    # 1. Create a sparse table (replacing tf.get_variable).
+    # 1. Create a sparse table (replacing tf.get_variable)
     sparse_hashtable = create_table(
         key_dtype=cfg.key_type,
         dim=tf.TensorShape([cfg.emb_dim]),
@@ -1768,14 +1771,14 @@ Refer to the [Ascend Community `sess.run` Migration Guide](https://www.hiascend.
         **cfg.get_emb_table_cfg()
     )
 
-    # 2. Sparse feature lookup (replacing tf.nn.embedding_lookup).
+    # 2. Sparse feature lookup (replacing tf.nn.embedding_lookup)
     feature = batch["sparse_feature"]
     embedding = sparse_lookup(sparse_hashtable, feature, cfg.send_count, dim=None, is_train=is_train,
                               name="user_embedding_lookup", modify_graph=True, batch=batch,
                               access_and_evict_config=None)
     ```
 
-    Note: The 26 sparse features in the Criteo dataset are already offset and merged into `sparse_feature` during preprocessing, so only one `create_table` call is needed. If the features are not merged, a separate table must be created for each field.
+    Note: The 26 sparse features in the Criteo dataset are already offset and merged into `sparse_feature` during preprocessing. Therefore, only one `create_table` call is needed. If the features are not merged, a separate table must be created for each field.
 
 #### Step 2: Replacing the Sparse Feature Optimizer
 
@@ -1795,7 +1798,7 @@ def get_dense_and_sparse_optimizer(cfg):
     # Sparse layer optimizer: Lazy Adam provided by Rec SDK
     sparse_optimizer = create_hash_optimizer(learning_rate=cfg.learning_rate[1])
 
-    # Add loss scaling.
+    # Add loss scaling
     sparse_optimizer = SparseLossScaleOptimizer(sparse_optimizer, 65536)
     dense_optimizer = DenseLossScaleOptimizer(dense_optimizer, 65536)
     return dense_optimizer, sparse_optimizer
@@ -1806,9 +1809,9 @@ def get_dense_and_sparse_optimizer(cfg):
 ```python
 from mx_rec.util.variable import get_dense_and_sparse_variable
 
-# Get the parameter variables for dense layers and sparse layers in the model.
+# Get the parameter variables for dense layers and sparse layers in the model
 dense_variables, sparse_variables = get_dense_and_sparse_variable()
-rank_size = rec_sdk_common.communication.hccl.hccl_info.get_rank_size()     # Get the number of distributed training devices.
+rank_size = rec_sdk_common.communication.hccl.hccl_info.get_rank_size()     # Get the number of distributed training devices
 train_ops = []
 for loss, (dense_optimizer, sparse_optimizer) in zip([train_model.get("loss")], optimizer_list):
     # ========== Dense layer gradient calculation ==========
@@ -1819,7 +1822,7 @@ for loss, (dense_optimizer, sparse_optimizer) in zip([train_model.get("loss")], 
             grad = hccl_ops.allreduce(grad, "sum") if grad is not None else None
         if grad is not None:
             avg_grads.append((grad / 8.0, var))
-    # Apply gradient updates.
+    # Apply gradient updates
     train_ops.append(dense_optimizer.apply_gradients(avg_grads))
 
     # ========== Sparse layer gradient calculation ==========
@@ -1850,13 +1853,13 @@ for loss, (dense_optimizer, sparse_optimizer) in zip([train_model.get("loss")], 
     from mx_rec.graph.modifier import modify_graph_and_start_emb_cache
     from mx_rec.util.initialize import ConfigInitializer, init, terminate_config_initializer
 
-    # Enable automatic graph modification, data loading, and data preprocessing.
+    # Enable automatic graph modification, data loading, and data preprocessing
     modify_graph_and_start_emb_cache(dump_graph=True)
 
-    # Create a Session.
+    # Create a Session
     sess = tf.compat.v1.Session(config=sess_config(dump_data=False))
 
-    # Initialize all global variables.
+    # Initialize all global variables
     sess.run(ConfigInitializer.get_instance().train_params_config.get_initializer(True))
     ```
 
@@ -1869,9 +1872,9 @@ for loss, (dense_optimizer, sparse_optimizer) in zip([train_model.get("loss")], 
     ```python
     from mx_rec.util.initialize import ConfigInitializer, init, terminate_config_initializer
 
-    # Close the Session.
+    # Close the Session
     sess.close()
 
-    # Deinitialize and release resources.
+    # Deinitialize and release resources
     terminate_config_initializer()
     ```

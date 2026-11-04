@@ -2,9 +2,9 @@
 
 ## `JaggedTensor` (TorchRec)
 
->[!NOTICE]
+> [!NOTICE]
 >
->This API is a TorchRec open-source API, not an external Rec SDK Torch API. This section describes the parameter ranges supported by the TorchRec API when you use Rec SDK Torch.
+> This API is a TorchRec open-source API, not an external Rec SDK Torch API. This section describes the parameter ranges supported by the TorchRec API when you use Rec SDK Torch.
 
 **Description**
 
@@ -13,24 +13,40 @@ Class that stores sparse IDs and feature lengths for table lookups. For example,
 **Function Prototype**
 
 ```python
-class JaggedTensor:
- def __init__(**kwargs):
+class JaggedTensor(Pipelineable, metaclass=JaggedTensorMeta):
+    def __init__(
+        self,
+        values: torch.Tensor,
+        weights: Optional[torch.Tensor] = None,
+        lengths: Optional[torch.Tensor] = None,
+        offsets: Optional[torch.Tensor] = None,
+    ) -> None:
 ```
 
 **Parameters**
 
 |Parameter|Type| Mandatory/Optional| Description                                                                                                              |
 |--|--|------|-------------------------------------------------------------------------------------------------------------------------------------------|
-|values|torch.Tensor[int64]| Mandatory  | Sparse table lookup IDs.                                                                                                                                 |
+|values|torch.Tensor| Mandatory  | Sparse table lookup IDs.                                                                                                                                 |
 |weights|torch.Tensor| Optional  | When you use an NPU device, only the default value `None` is supported.                                                                                                           |
-|lengths|torch.Tensor[int64]| Optional  | Length of the feature sequence in each sample. When you use an NPU device, this field is required. The value range is [1, 10000]. Make sure the sum of `lengths` equals the length of `values`. Rec SDK Torch does not support variable batch sizes currently. The `lengths` of all `JaggedTensor` objects in a training job must have the same length.|
-|offsets|torch.Tensor[int64]| Optional  | Cumulative sum of `lengths`. The first element of `offsets` is `0`, and the remaining elements are the cumulative sums of `lengths`. The default value is `None`. You must validate the correctness of `offsets`.                                                          |
+|lengths|torch.Tensor| Optional  | Length of the feature sequence in each sample. The default value is `None`. When `lengths` is not `None`, ensure that the sum of `lengths` equals the length of `values`. Rec SDK Torch does not support variable batch sizes currently. The `lengths` of all `JaggedTensor` objects in a training job must have the same length.|
+|offsets|torch.Tensor| Optional  | Cumulative sum of `lengths`. The default value is `None`. When `offsets` is not `None`, the first element of `offsets` must be `0`, and the remaining elements are the cumulative sums of `lengths`. You must validate the correctness of `offsets`. `lengths` and `offsets` cannot both be `None`.                                                          |
+
+**Returns**
+
+- Success: A `JaggedTensor` object is returned.
+- Failure: An exception is thrown.
 
 **Example**
 
 ```python
+import torch
 from torchrec import JaggedTensor
-JaggedTensor(values=[1, 3, 4], lengths=[1, 1, 1], offsets=[0, 1, 2, 3])
+
+values = torch.tensor([1, 3, 4])
+lengths = torch.tensor([1, 1, 1])
+offsets = torch.tensor([0, 1, 2, 3])
+jagged_tensor = JaggedTensor(values=values, lengths=lengths, offsets=offsets)
 ```
 
 **References**
@@ -39,11 +55,11 @@ For the interface calling process and examples, see [Migration and Training](../
 
 ## `KeyedJaggedTensor` (TorchRec)
 
-### `from\_jt\_dict`
+### `from_jt_dict`
 
->[!NOTICE]
+> [!NOTICE]
 >
->The APIs in this class are TorchRec open-source APIs, not external Rec SDK Torch APIs. This section describes the parameter ranges supported by the TorchRec API when you use Rec SDK Torch.
+> The APIs in this class are TorchRec open-source APIs, not external Rec SDK Torch APIs. This section describes the parameter ranges supported by the TorchRec API when you use Rec SDK Torch.
 
 **Description**
 
@@ -52,7 +68,8 @@ Creates a `KeyedJaggedTensor` from a `JaggedTensor`.
 **Function Prototype**
 
 ```python
-def from_jt_dict(jt_dict: Dict[str, JaggedTensor]) -> "KeyedJaggedTensor"
+@staticmethod
+def from_jt_dict(jt_dict: Dict[str, JaggedTensor]) -> "KeyedJaggedTensor":
 ```
 
 **Parameters**
@@ -69,8 +86,13 @@ def from_jt_dict(jt_dict: Dict[str, JaggedTensor]) -> "KeyedJaggedTensor"
 **Example**
 
 ```python
+import torch
 from torchrec import KeyedJaggedTensor, JaggedTensor
-jt = JaggedTensor(values=[1, 3, 4], lengths=[1, 1, 1])
+
+values = torch.tensor([1, 3, 4])
+lengths = torch.tensor([1, 1, 1])
+offsets = torch.tensor([0, 1, 2, 3])
+jt = JaggedTensor(values=values, lengths=lengths, offsets=offsets)
 kjt = KeyedJaggedTensor.from_jt_dict({"feat0": jt})
 ```
 

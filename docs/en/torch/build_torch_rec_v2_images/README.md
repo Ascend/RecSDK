@@ -4,7 +4,7 @@
 
 - The driver and firmware of the target CANN version have been installed on the physical machine.
 - Docker has been installed on the physical machine and the Docker network is available.
-- A base OS image has been prepared on the physical machine by running one of the following commands:
+- A base OS image has been prepared on the physical machine by running the following commands:
   - Debian, x86 architecture: `docker pull debian:12` (pulls the image from Docker Hub)
 
 ## Build Steps
@@ -33,7 +33,7 @@ CANN package installation requires the following two files:
 Copy the corresponding files from the physical machine to the `build_images` directory. After you install the driver and firmware on the physical machine, the default path of `version.info` is `/usr/local/Ascend/driver/version.info`.
 The default path of `ascend_install.info` is `/etc/ascend_install.info`.
 
-Step 3: Move the Dockerfile to the `build_images` directory, and then run the following command to build the image. The Dockerfile contains detailed instructions for the build process. The commented sections cover installation of the CANN packages and the torchrec-related packages.
+Step 3: Move the `Dockerfile_debian` file in the current directory to the `build_images` directory, and then run the following command to build the image. The Dockerfile contains detailed instructions for the build process. The commented sections cover installation of the CANN packages and the torchrec-related packages.
 
 ```shell
 # If the server can directly access the Internet:
