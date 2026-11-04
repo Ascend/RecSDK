@@ -12,6 +12,7 @@ except NameError:
     if "." not in sys.path:
         sys.path.append(".")
 
+import tensorflow
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

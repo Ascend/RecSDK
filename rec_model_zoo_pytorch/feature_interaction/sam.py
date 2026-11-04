@@ -29,6 +29,7 @@ except NameError:
         sys.path.append(".")
 
 # 导入框架的公共模块和库
+import tensorflow
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
