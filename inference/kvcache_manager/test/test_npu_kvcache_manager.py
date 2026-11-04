@@ -25,8 +25,8 @@ import pytest
 import torch
 import torch_npu  # noqa: F401
 
-from recsys_kvcache_manager_npu.npu_kvcache_manager import NPUKVCacheManager
-from recsys_kvcache_manager_npu.kvcache_utils import KVLookupResult
+from recsys_kvcache_manager.npu_kvcache_manager import NPUKVCacheManager
+from recsys_kvcache_manager.kvcache_utils import KVLookupResult
 
 NPU_AVAILABLE = False
 try:

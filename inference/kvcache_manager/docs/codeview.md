@@ -1,4 +1,4 @@
-# recsys_kvcache_manager_npu 代码
+# recsys_kvcache_manager 代码
 
 ## 1. 整体代码结构
 
@@ -10,7 +10,7 @@
 
 ```text
 inference/kvcache_manager/
-├── recsys_kvcache_manager_npu/       Python 接入与编排
+├── recsys_kvcache_manager/          Python 接入与编排
 │   ├── kvcache_manager.py           总入口：KVCacheManager
 │   ├── npu_kvcache_manager.py       NPU 分页缓存组件
 │   ├── native_host_kvcache_manager.py  主机存储与搬运组件
@@ -221,7 +221,7 @@ setup.py 调用 CMake
 Python 包加载 kvcache_npu_cpp，扩展再链接算子库
 ```
 
-运行环境是带目标昇腾 NPU 的 Linux：先准备相互兼容的驱动、CANN Toolkit、PyTorch 与 `torch_npu`，再安装 Python 构建依赖。源码要求 Python ≥ 3.9、CMake ≥ 3.16，默认 SoC 是 `Ascend950PR_9579`；还需要 CANN 提供 `ASC`/AscendC 工具链、支持 C++20 的编译器，以及 ABI 与源码中 `_GLIBCXX_USE_CXX11_ABI=1` 一致的 PyTorch。仓库未固定一套完整的依赖版本组合。
+运行环境是带目标昇腾 NPU 的 Linux：先准备相互兼容的驱动、CANN Toolkit、PyTorch 与 `torch_npu`，再安装 Python 构建依赖。源码要求 Python ≥ 3.9、CMake ≥ 3.16；还需要 CANN 提供 `ASC`/AscendC 工具链、支持 C++20 的编译器，以及 ABI 与源码中 `_GLIBCXX_USE_CXX11_ABI=1` 一致的 PyTorch。仓库未固定一套完整的依赖版本组合。
 
 ### 5.2 在目标机器上构建
 
@@ -234,15 +234,13 @@ cd /path/to/RecSDK/inference/kvcache_manager
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
 export ASCEND_CANN_PACKAGE_PATH=/usr/local/Ascend/ascend-toolkit/latest
 export ASCEND_HOME="$ASCEND_CANN_PACKAGE_PATH"
-export SOC_VERSION=Ascend950PR_9579   # 本仓库默认目标，需与实际硬件匹配
-export MAX_COMPILE_THREADS=8
 
 python -c 'import torch, torch_npu; print(torch.__version__, torch_npu.__version__); print(torch.npu.is_available())'
 python -m pip install setuptools wheel pybind11 pytest
 python -m pip install --no-build-isolation --no-deps .
 
 # 确认扩展与 Python 包均能加载
-python -c 'import torch, torch_npu, kvcache_npu_cpp; from recsys_kvcache_manager_npu import KVCacheManager; print("import OK")'
+python -c 'import torch, kvcache_npu_cpp; from recsys_kvcache_manager import KVCacheManager; print("import OK")'
 ```
 
 `--no-build-isolation` 让构建使用当前已配置好的 Python 环境，`--no-deps` 保留事先匹配好的依赖。CANN 环境脚本需让 CMake 能找到 `ASC`，单独设置库路径不能代替完整工具链初始化。开发时也可用 `python setup.py build_ext --inplace`，随后从源码根目录运行。

@@ -17,7 +17,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Native host KV cache manager (Ascend A5, phase1).
+"""Native host KV cache manager.
 
 Mirrors `corelib/recsys_kvcache_manager/recsys_kvcache_manager/native_host_kvcache_manager.py`
 structure-for-structure; only the C++ extension name (`kvcache_npu_cpp` vs

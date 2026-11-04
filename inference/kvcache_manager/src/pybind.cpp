@@ -57,7 +57,7 @@ void check_npu_kv_2byte(const at::Tensor& tensor, const at::Device& expected_dev
 
 // nnz (the host-side token count) is accepted but unused below: the kernel
 // path reads the device-side nnz_npu instead. Kept because
-// recsys_kvcache_manager_npu/npu_kvcache_manager.py's put() already calls this
+// recsys_kvcache_manager/npu_kvcache_manager.py's put() already calls this
 // binding positionally with kvcache_metadata.new_history_nnz in this slot;
 // dropping it needs a synchronized change there too.
 static void append_paged_kv_cache(at::Tensor append_key, at::Tensor append_value, at::Tensor batch_indices,

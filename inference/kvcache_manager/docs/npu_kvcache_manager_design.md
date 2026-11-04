@@ -1,6 +1,6 @@
 # recsys_kvcache_manager_npu 设计文档
 
-> 版本 0.3.0 | 昇腾 A5 KVCache Manager
+> 版本 26.06
 
 ## 1. 项目定位与核心问题
 
@@ -8,7 +8,7 @@
 
 在 HSTU 等大模型推荐推理框架中，KV cache 是推理延迟和显存占用的关键瓶颈。推理框架通常采用 **paged KV cache** 方案——将 KV cache 按页分配、按用户（request）管理生命周期——来支持变长序列和前缀共享。
 
-GPU 上的 paged KV cache 方案（如 vLLM、FlashAttention）已相对成熟，但昇腾 A5 NPU 缺乏对应的实现。核心痛点：
+GPU 上的 paged KV cache 方案（如 vLLM、FlashAttention）已相对成熟，但 NPU 缺乏对应的实现。核心痛点：
 
 1. **NPU 侧页分配与换入换出**：GPU 上的 `GPUKVCacheManagerImpl` 管理页表、LRU 驱逐、offload 锁定，这套逻辑在 NPU 上需要用 CANN ACL API 重新实现
 2. **Host 侧存储与异步搬运**：GPU 用 CUDA pinned memory + cudaMemcpyAsync，NPU 需要用 `aclrtMallocHost` + `aclrtMemcpyAsync` + 多 stream 流水
@@ -83,7 +83,7 @@ graph TB
 
 ### 3.1 KVCacheManager — 顶层编排
 
-> 文件：`recsys_kvcache_manager_npu/kvcache_manager.py`
+> 文件：`recsys_kvcache_manager/kvcache_manager.py`
 
 KVCacheManager 是推理系统与 KV cache 子系统的唯一交互入口。它协调 NPU 侧页分配器与 Host 侧存储后端，提供完整的推理生命周期。
 
@@ -134,7 +134,7 @@ sequenceDiagram
 
 ### 3.2 NPUKVCacheManager — NPU 侧页分配器
 
-> 文件：`recsys_kvcache_manager_npu/npu_kvcache_manager.py`、`src/npu_kvcache_manager_impl.{h,cpp}`
+> 文件：`recsys_kvcache_manager/npu_kvcache_manager.py`、`src/npu_kvcache_manager_impl.{h,cpp}`
 
 管理 NPU 设备上的 paged KV cache tensor 和页表元数据。
 
@@ -192,7 +192,7 @@ metadata_npu_buffer: [5 * batch_size + 4 + 2 * num_new_tokens]
 
 ### 3.3 NativeHostKVCacheManager — Host 侧存储后端
 
-> 文件：`recsys_kvcache_manager_npu/native_host_kvcache_manager.py`、`src/native_host_kvcache_manager_impl.{h,cpp}`
+> 文件：`recsys_kvcache_manager/native_host_kvcache_manager.py`、`src/native_host_kvcache_manager_impl.{h,cpp}`
 
 这是最复杂的模块，负责在 Host pinned memory 中存储 KV cache，并通过 CANN ACL 的多 stream 异步搬运实现 NPU ↔ Host 数据传输。
 
@@ -313,13 +313,13 @@ _uid_to_chunks: uid → (vector<offset>, vector<psize>)
 | `scatter_paged_kvcache` | 连续 → paged | 从连续 buffer 按 page_ids 写入 paged cache（onboard 时 scatter） |
 | `get_paged_batch_indices_positions` | 计算 | 为每个新 token 计算 batch_index 和 position |
 
-**fastdiv 优化**：gather/scatter/append 内部需要频繁除以 `page_size`（计算页内偏移）。昇腾 A5 的 AscendC 指令集没有硬件整数除法，因此使用 **算法除法（Barrett reduction / magic number）** 将除法转化为乘法+移位。`get_uint_fastdiv_msa()` 在 host 端预计算 magic number `(m, s, a)`，传入设备端算子用于快速除法。
+**fastdiv 优化**：gather/scatter/append 内部需要频繁除以 `page_size`（计算页内偏移）。AscendC 指令集没有硬件整数除法，因此使用 **算法除法（Barrett reduction / magic number）** 将除法转化为乘法+移位。`get_uint_fastdiv_msa()` 在 host 端预计算 magic number `(m, s, a)`，传入设备端算子用于快速除法。
 
-**dispatch_head_dim 模板**：append/gather/scatter 按 `head_dim` 的四个受支持值（64, 128, 256, 512）模板特化，避免运行时分支。昇腾 A5 的 AI Core 是标量+向量协处理器，循环展开和分支消除对性能至关重要。传入其余 `head_dim` 会落入 `default:` 空分支，既不报错也不回落，静默跳过——接入新模型维度前务必确认已在这四个值内。
+**dispatch_head_dim 模板**：append/gather/scatter 按 `head_dim` 的四个受支持值（64, 128, 256, 512）模板特化，避免运行时分支。NPU 的 AI Core 是标量+向量协处理器，循环展开和分支消除对性能至关重要。传入其余 `head_dim` 会落入 `default:` 空分支，既不报错也不回落，静默跳过——接入新模型维度前务必确认已在这四个值内。
 
 ### 3.7 HostKVStorageManagerBase — 抽象基类
 
-> 文件：`recsys_kvcache_manager_npu/host_kvstorage_manager.py`
+> 文件：`recsys_kvcache_manager/host_kvstorage_manager.py`
 
 定义 Host 侧存储后端的接口契约。当前唯一实现是 `NativeHostKVCacheManager`，后续计划接入 FlexKV。
 
@@ -459,7 +459,7 @@ Host 侧用 chunk（4 pages）而非 page 粒度管理存储。Chunk 减少分�
 
 ```text
 inference/kvcache_manager/
-├── recsys_kvcache_manager_npu/       # Python 包
+├── recsys_kvcache_manager/       # Python 包
 │   ├── __init__.py                   # 公开 API 导出
 │   ├── kvcache_manager.py            # KVCacheManager 顶层编排
 │   ├── npu_kvcache_manager.py        # NPUKVCacheManager Python wrapper
@@ -491,5 +491,5 @@ inference/kvcache_manager/
 
 - **FlexKV 后端**：接入 FlexKV 作为 Host 侧存储替代，支持分布式 KV cache 共享
 - **HSTU 端到端集成**：将本库集成到 HSTU 推理框架，替换 GPU paged KV cache
-- **性能调优**：当前 stream 流水和 chunk 管理是保守设计，可基于 A5 实测数据优化 buffer 大小和并发度
+- **性能调优**：当前 stream 流水和 chunk 管理是保守设计，可基于 NPU 实测数据优化 buffer 大小和并发度
 - **eager offload 模式**：当前主要使用 lazy offload（推理后按需 offload），eager 模式（推理同时立即 offload）可降低峰值显存
