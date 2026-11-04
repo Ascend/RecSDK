@@ -21,8 +21,8 @@ import pytest
 import torch
 import torch_npu  # noqa: F401  required to register npu backend
 
-from recsys_kvcache_manager_npu.native_host_kvcache_manager import NativeHostKVCacheManager
-from recsys_kvcache_manager_npu.host_kvstorage_manager import HostKVTaskHandle, HostKVTaskStatus
+from recsys_kvcache_manager.native_host_kvcache_manager import NativeHostKVCacheManager
+from recsys_kvcache_manager.host_kvstorage_manager import HostKVTaskHandle, HostKVTaskStatus
 
 NPU_AVAILABLE = False
 try:
@@ -202,10 +202,8 @@ def test_offload_failure_cancel():
     from kvcache_npu_cpp import KVOffloadHandle
 
     handle = KVOffloadHandle(3)
-    # offload 启动可能成功，finish 时校验失败
-    mgr.impl_.offload_kvcache(uids, starts, page_indices_list, handle)
-    assert wait_handle_ready(handle), "offload handle did not become ready within 100 retries"
-    # finish_offload 检测到 offload_start_index 越界 -> 抛
+    ret = mgr.impl_.offload_kvcache(uids, starts, page_indices_list, handle)
+    assert ret is False
     with pytest.raises(RuntimeError):
         mgr.impl_.finish_offload(handle)
     print("Passed.")
@@ -224,9 +222,9 @@ def test_onboard_skipped():
     fake = torch.empty([3, 128, 2, 32, 4, 128], dtype=torch.bfloat16, device="npu")
     mgr.register_npu_cache_tables(list(fake.unbind(dim=0)))
 
-    from recsys_kvcache_manager_npu.kvcache_metadata import get_kvcache_metadata_buffer
-    from recsys_kvcache_manager_npu.kvcache_utils import KVLookupResult
-    from recsys_kvcache_manager_npu.npu_kvcache_manager import NPUKVCacheManager
+    from recsys_kvcache_manager.kvcache_metadata import get_kvcache_metadata_buffer
+    from recsys_kvcache_manager.kvcache_utils import KVLookupResult
+    from recsys_kvcache_manager.npu_kvcache_manager import NPUKVCacheManager
 
     npu_mgr = NPUKVCacheManager(
         num_layers=3,
@@ -408,8 +406,8 @@ def test_acl_runtime_failure():
     from kvcache_npu_cpp import KVOffloadHandle
 
     handle = KVOffloadHandle(num_layers)
-    mgr.impl_.offload_kvcache(uids, starts, page_indices_list, handle)
-    assert wait_handle_ready(handle), "offload handle did not become ready within 100 retries"
+    ret = mgr.impl_.offload_kvcache(uids, starts, page_indices_list, handle)
+    assert ret is False
     with pytest.raises(RuntimeError, match="chunks"):
         mgr.impl_.finish_offload(handle)
     print("Passed.")

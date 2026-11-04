@@ -86,7 +86,7 @@ def get_version():
         git_sha = subprocess.check_output([git_path, "rev-parse", "HEAD"], cwd=str(root_path)).decode("ascii").strip()
     except Exception:
         git_sha = "Unknown"
-    return os.environ.get("BUILD_VERSION", "0.3.0"), git_sha
+    return os.environ.get("BUILD_VERSION", "26.06"), git_sha
 
 
 def _torch_npu_dirs():
@@ -106,8 +106,8 @@ version, sha = get_version()
 setup(
     name=library_name,
     version=version,
-    author="Recsys Team",
-    description="Ascend A5 KVCache Manager (phase1: native_host)",
+    author="Huawei Technologies Co., Ltd.",
+    description="Recsys KVCache Manager - Dynamic KV-cache management for LLM inference",
     packages=package,
     ext_modules=[CMakeExtension("kvcache_npu_cpp", str(root_path))],
     cmdclass={"build_ext": CMakeBuild},

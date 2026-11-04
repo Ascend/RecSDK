@@ -123,3 +123,28 @@ def get_kvcache_metadata_buffer(
         kv_seqlen_offsets=kv_seqlen_offsets,
         kv_onload_handle=None,
     )
+
+
+def copy_kvcache_metadata(dst_metadata: KVCacheMetadata, src_metadata: KVCacheMetadata):
+    def copy_tensor(dst, src):
+        dst[: src.shape[0], ...].copy_(src, non_blocking=True)
+        dst[src.shape[0] :, ...] = 0
+
+    def copy_offsets(dst, src):
+        dst[: src.shape[0], ...].copy_(src, non_blocking=True)
+        dst[src.shape[0] :, ...] = src[-1, ...]
+
+    copy_tensor(dst_metadata.kv_indices, src_metadata.kv_indices)
+    copy_offsets(dst_metadata.kv_indptr, src_metadata.kv_indptr)
+    copy_tensor(dst_metadata.kv_last_page_len, src_metadata.kv_last_page_len)
+    copy_tensor(dst_metadata.batch_indices, src_metadata.batch_indices)
+    copy_tensor(dst_metadata.position, src_metadata.position)
+    copy_tensor(dst_metadata.new_history_nnz_npu, src_metadata.new_history_nnz_npu)
+    copy_offsets(dst_metadata.total_history_offsets, src_metadata.total_history_offsets)
+    copy_offsets(dst_metadata.new_history_offsets, src_metadata.new_history_offsets)
+    copy_tensor(dst_metadata.kv_seqlens, src_metadata.kv_seqlens)
+    copy_offsets(dst_metadata.kv_seqlen_offsets, src_metadata.kv_seqlen_offsets)
+
+    dst_metadata.new_history_nnz = src_metadata.new_history_nnz
+
+    dst_metadata.kv_onload_handle = src_metadata.kv_onload_handle
