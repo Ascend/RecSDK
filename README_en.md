@@ -2,7 +2,7 @@
 
 <div align="center">
 
- [![Ascend](https://img.shields.io/badge/Community-MindSDK-blue.svg)](https://www.hiascend.com/cn/developer/software/mindsdk)
+ [![Ascend](https://img.shields.io/badge/Community-MindSDK-blue.svg)](https://www.hiascend.com/eng/developer/software/mindsdk)
  [![License](https://badgen.net/badge/License/Apache-2.0/blue)](LICENSE)
  [![Zread](https://img.shields.io/badge/Zread-Ask_AI-_.svg?style=flat&color=0052D9&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/Ascend/RecSDK)
  [![DeepWiki](https://img.shields.io/badge/DeepWiki-Ask_AI-_.svg?style=flat&color=0052D9&labelColor=000000&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACwAAAAyCAYAAAAnWDnqAAAAAXNSR0IArs4c6QAAA05JREFUaEPtmUtyEzEQhtWTQyQLHNak2AB7ZnyXZMEjXMGeK/AIi+QuHrMnbChYY7MIh8g01fJoopFb0uhhEqqcbWTp06/uv1saEDv4O3n3dV60RfP947Mm9/SQc0ICFQgzfc4CYZoTPAswgSJCCUJUnAAoRHOAUOcATwbmVLWdGoH//PB8mnKqScAhsD0kYP3j/Yt5LPQe2KvcXmGvRHcDnpxfL2zOYJ1mFwrryWTz0advv1Ut4CJgf5uhDuDj5eUcAUoahrdY/56ebRWeraTjMt/00Sh3UDtjgHtQNHwcRGOC98BJEAEymycmYcWwOprTgcB6VZ5JK5TAJ+fXGLBm3FDAmn6oPPjR4rKCAoJCal2eAiQp2x0vxTPB3ALO2CRkwmDy5WohzBDwSEFKRwPbknEggCPB/imwrycgxX2NzoMCHhPkDwqYMr9tRcP5qNrMZHkVnOjRMWwLCcr8ohBVb1OMjxLwGCvjTikrsBOiA6fNyCrm8V1rP93iVPpwaE+gO0SsWmPiXB+jikdf6SizrT5qKasx5j8ABbHpFTx+vFXp9EnYQmLx02h1QTTrl6eDqxLnGjporxl3NL3agEvXdT0WmEost648sQOYAeJS9Q7bfUVoMGnjo4AZdUMQku50McDcMWcBPvr0SzbTAFDfvJqwLzgxwATnCgnp4wDl6Aa+Ax283gghmj+vj7feE2KBBRMW3FzOpLOADl0Isb5587h/U4gGvkt5v60Z1VLG8BhYjbzRwyQZemwAd6cCR5/XFWLYZRIMpX39AR0tjaGGiGzLVyhse5C9RKC6ai42ppWPKiBagOvaYk8lO7DajerabOZP46Lby5wKjw1HCRx7p9sVMOWGzb/vA1hwiWc6jm3MvQDTogQkiqIhJV0nBQBTU+3okKCFDy9WwferkHjtxib7t3xIUQtHxnIwtx4mpg26/HfwVNVDb4oI9RHmx5WGelRVlrtiw43zboCLaxv46AZeB3IlTkwouebTr1y2NjSpHz68WNFjHvupy3q8TFn3Hos2IAk4Ju5dCo8B3wP7VPr/FGaKiG+T+v+TQqIrOqMTL1VdWV1DdmcbO8KXBz6esmYWYKPwDL5b5FA1a0hwapHiom0r/cKaoqr+27/XcrS5UwSMbQAAAABJRU5ErkJggg==)](https://deepwiki.com/Ascend/RecSDK)
@@ -13,8 +13,8 @@
 
 <span style="font-size:14px;">
 
-🔹 **[2026.07.31]**: [Rec SDK 26.1.0 Release](https://gitcode.com/Ascend/RecSDK/releases/v26.1.0)<br>
-🔹 **[2026.04.25]**: [Rec SDK 26.0.0 Release](https://gitcode.com/Ascend/RecSDK/releases/v26.0.0)<br>
+🔹 **[Jul 31, 2026]**: [Rec SDK 26.1.0 Release](https://gitcode.com/Ascend/RecSDK/releases/v26.1.0)<br>
+🔹 **[Apr 25, 2026]**: [Rec SDK 26.0.0 Release](https://gitcode.com/Ascend/RecSDK/releases/v26.0.0)<br>
 
 </span>
 
@@ -28,25 +28,25 @@ Rec SDK provides the following features:
 2. Recommendation-specific functions: Based on the sparse table solution, Rec SDK provides essential functions such as feature saving and loading, feature admission, and feature eviction.
 3. Large-scale sparse table functions: Rec SDK supports multi-level storage across accelerator card memory, host memory, and host drive. It also supports multi-node storage and dynamic scaling, with capacities exceeding 10 TB.
 
-<img src="./docs/zh/figures/rec_full_stack/全栈架构图.png" width="1200"/>
+<img src="./docs/en/figures/rec_full_stack/recommendation-full-stack.png" width="1200"/>
 
 ## ⚙️ Features
 
 | Component | Feature Summary | Documentation |
 | --- | --- | --- |
-| tf_rec_v1 | Supports single-/multi-node and single-/multi-card distributed training; provides recommendation-specific features such as feature saving and loading, feature admission and eviction, dynamic capacity expansion, dynamic shape, automatic graph rewriting, Hot_Embedding, customized WarmStart, incremental model saving/loading, single-table multi-query, and PCIe through; supports multi-level storage across accelerator memory, host memory, and host disk (capacity > 10 TB); provides performance and accuracy detection tools. | [Details](./docs/en/tensorflow/tf_rec_v1/introduction.md) |
-| tf_rec_v2 | Supports single-/multi-node and single-/multi-card distributed training; provides recommendation-specific features such as sparse table creation, query, saving and loading, and feature admission and eviction; supports large-scale sparse table storage. | [Details](./docs/en/tensorflow/tf_rec_v2/introduction.md) |
-| torch_rec_v1 | Supports single-/multi-node and single-/multi-card distributed training; provides recommendation-specific features such as hash mapping, EBC table lookup, Row-wise table sharding, pipelined lookup, and fused lookup operators; supports Row-wise distributed sparse table sharding. | [Details](./docs/en/torch/torch_rec_v1/introduction.md) |
-| torch_rec_v2 | Supports single-/multi-node and single-/multi-card distributed training; provides recommendation-specific features such as hash mapping, Row-wise table sharding, dynamic sparse table expansion and eviction, and dynamic sparse table operators; implements dynamic sparse table operators based on the HKV high-performance key-value storage acceleration library. | [Details](./docs/en/torch/torch_rec_v2/introduction.md) |
+| tf_rec_v1 | Supports single-/multi-node and single-/multi-card distributed training; provides recommendation-specific features such as feature saving and loading, feature admission and eviction, dynamic capacity expansion, dynamic shape, automatic graph rewriting, Hot_Embedding, customized WarmStart, incremental model saving/loading, single-table multi-query, and PCIe through; supports multi-level storage across accelerator memory, host memory, and host disk (capacity > 10 TB); provides performance and accuracy detection tools. | [Details](./docs/en/tensorflow/tf_rec_v1/01_introduction/introduction.md) |
+| tf_rec_v2 | Supports single-/multi-node and single-/multi-card distributed training; provides recommendation-specific features such as sparse table creation, query, saving and loading, and feature admission and eviction; supports large-scale sparse table storage. | [Details](./docs/en/tensorflow/tf_rec_v2/01_introduction/introduction.md) |
+| torch_rec_v1 | Supports single-/multi-node and single-/multi-card distributed training; provides recommendation-specific features such as hash mapping, EBC table lookup, Row-wise table sharding, pipelined lookup, and fused lookup operators; supports Row-wise distributed sparse table sharding. | [Details](./docs/en/torch/torch_rec_v1/01_introduction/introduction.md) |
+| torch_rec_v2 | Supports single-/multi-node and single-/multi-card distributed training; provides recommendation-specific features such as hash mapping, Row-wise table sharding, dynamic sparse table expansion and eviction, and dynamic sparse table operators; implements dynamic sparse table operators based on the HKV high-performance key-value storage acceleration library. | [Details](./docs/en/torch/torch_rec_v2/01_introduction/introduction.md) |
 
 ## 🚀 Quick Start
 
 | Component | Base Framework | Adaptation Status | Framework Type | Description | Documentation |
 | --- | --- | --- | --- | --- | --- |
-| tf_rec_v1 | TensorFlow | Non-fully-offloaded | Sparse recommendation framework | Non-fully-offloaded sparse recommendation framework based on TensorFlow, adapted for NPU devices | [Quick Start](./docs/en/tensorflow/tf_rec_v1/quick_start.md) |
-| tf_rec_v2 | TensorFlow | Fully-offloaded | Sparse recommendation framework | Fully-offloaded sparse recommendation framework based on TensorFlow, adapted for NPU devices (PoC) | [Quick Start](./docs/en/tensorflow/tf_rec_v2/quick_start.md) |
-| torch_rec_v1 | PyTorch + TorchRec | Non-fully-offloaded | Sparse recommendation framework | Non-fully-offloaded sparse recommendation framework based on open-source PyTorch and TorchRec, adapted for NPU devices | [Quick Start](./docs/en/torch/torch_rec_v1/quick_start.md) |
-| torch_rec_v2 | PyTorch + TorchRec | Fully-offloaded | Sparse recommendation framework | Fully-offloaded sparse recommendation framework based on open-source PyTorch and TorchRec, adapted for NPU devices (PoC) | [Quick Start](./docs/en/torch/torch_rec_v2/quick_start.md) |
+| tf_rec_v1 | TensorFlow | Non-fully-offloaded | Sparse recommendation framework | Non-fully-offloaded sparse recommendation framework based on TensorFlow, adapted for NPU devices | [Quick Start](./docs/en/tensorflow/tf_rec_v1/03_quick_start/quick_start.md) |
+| tf_rec_v2 | TensorFlow | Fully-offloaded | Sparse recommendation framework | Fully-offloaded sparse recommendation framework based on TensorFlow, adapted for NPU devices (PoC) | [Quick Start](./docs/en/tensorflow/tf_rec_v2/03_quick_start/quick_start.md) |
+| torch_rec_v1 | PyTorch + TorchRec | Non-fully-offloaded | Sparse recommendation framework | Non-fully-offloaded sparse recommendation framework based on open-source PyTorch and TorchRec, adapted for NPU devices | [Quick Start](./docs/en/torch/torch_rec_v1/03_quick_start/quick_start.md) |
+| torch_rec_v2 | PyTorch + TorchRec | Fully-offloaded | Sparse recommendation framework | Fully-offloaded sparse recommendation framework based on open-source PyTorch and TorchRec, adapted for NPU devices (PoC) | [Quick Start](./docs/en/torch/torch_rec_v2/03_quick_start/quick_start.md) |
 
 Key terminology:
 
@@ -60,18 +60,18 @@ The following product models are supported by Rec SDK:
 
 - Atlas A2 Train Series
 - Atlas A3 Train Series
-- Ascend 950PR&950DT Series
+- Atlas 950PR&950DT Series
 
 | Component | Installation Guide |
 | --- | --- |
-| tf_rec_v1 | [Installation Guide](./docs/en/tensorflow/tf_rec_v1/recsdk_tf_installation_guide.md) |
-| tf_rec_v2 | [Installation Guide](./docs/en/tensorflow/tf_rec_v2/recsdk_tf_installation_guide.md) |
-| torch_rec_v1 | [Installation Guide](./docs/en/torch/torch_rec_v1/recsdk_torch_installation_guide.md) |
-| torch_rec_v2 | [Installation Guide](./docs/en/torch/torch_rec_v2/recsdk_torch_installation_guide.md) |
+| tf_rec_v1 | [Installation Guide](./docs/en/tensorflow/tf_rec_v1/02_tf_installation_guide/recsdk_tf_installation_guide.md) |
+| tf_rec_v2 | [Installation Guide](./docs/en/tensorflow/tf_rec_v2/02_tf_installation_guide/recsdk_tf_installation_guide.md) |
+| torch_rec_v1 | [Installation Guide](./docs/en/torch/torch_rec_v1/02_torch_installation_guide/recsdk_torch_installation_guide.md) |
+| torch_rec_v2 | [Installation Guide](./docs/en/torch/torch_rec_v2/02_torch_installation_guide/recsdk_torch_installation_guide.md) |
 
 ## 📘 Usage Guide
 
-Rec SDK provides comprehensive usage and development documentation to help you understand the architecture, tuning, and usage of each component. For details, refer to the Ascend community [recommendation development documentation](https://www.hiascend.com/cn/developer/recommendation?tab=tab1).
+Rec SDK provides comprehensive usage and development documentation to help you understand the architecture, tuning, and usage of each component. For details, refer to the Ascend community [recommendation development documentation](https://www.hiascend.com/eng/developer/recommendation?tab=tab1).
 
 **Mode adaptation examples**:
 
@@ -107,10 +107,11 @@ The maintenance stages of Rec SDK version branches are as follows:
 
 The maintenance status of each torch_rec_v1 version is as follows:
 
-| **torch_rec_v1 version** | **Maintenance policy** | **Current status** | **Release date** | **Next status** | **EOL date** |
-| --- | --- | --- | --- | --- | --- |
-| 1.1.0 | Regular branch | Maintenance | July 23, 2025 | Expected to enter unmaintained status after September 30, 2026 | September 30, 2026 |
-| 1.2.0 | Regular branch | Maintenance | January 4, 2026 | Under maintenance | |
+| **torch_rec_v1 version** | **Maintenance policy** | **Current status** | **Release date** | **Next status** | **EOL date** | **Description** |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1.1.0 | Regular branch | Maintenance | Jul 23, 2025 | EOL | Jun 30, 2027 | To use this companion version, obtain the [26.1.0 Release](https://gitcode.com/Ascend/RecSDK/releases/v26.1.0) package. For compatible peripheral software versions, see [26.1.0 Version Compatibility](https://gicode.com/Ascend/RecSDK/blob/branch_v26.1.0/docs/en/release_notes/release_notes.md#version-compatibility). |
+| 1.2.0 | Regular branch | Under development | Jan 4, 2026 | Under maintenance | | |
+| 1.5.0 | Regular branch | Under development | Expected Oct 25, 2026 | Under maintenance | | |
 
 ## 🛠️ How to Contribute
 
@@ -126,15 +127,15 @@ Before contributing, sign the [Open Project Contributor License Agreement (CLA)]
 🔹 [Release notes](https://gitcode.com/Ascend/RecSDK/releases)<br>
 🔹 [License](LICENSE)<br>
 🔹 [Document license](./docs/LICENSE)<br>
-🔹 [Disclaimer](docs/zh/others/01_disclaimer.md)<br>
+🔹 [Disclaimer](./docs/en/others/01_disclaimer.md)<br>
 🔹 Component-related information
 
 | Component | FAQ | Security hardening |
 | --- | --- | --- |
-| tf_rec_v1 | [FAQ](./docs/en/tensorflow/tf_rec_v1/faq.md) | [Security hardening](./docs/en/tensorflow/tf_rec_v1/security_hardening.md) |
-| tf_rec_v2 | [FAQ](./docs/en/tensorflow/tf_rec_v2/faq.md) | [Security hardening](./docs/en/tensorflow/tf_rec_v2/security_hardening.md) |
-| torch_rec_v1 | / | [Security hardening](./docs/en/torch/torch_rec_v1/security_hardening.md) |
-| torch_rec_v2 | / | [Security hardening](./docs/en/torch/torch_rec_v2/security_hardening.md) |
+| tf_rec_v1 | [FAQ](./docs/en/tensorflow/tf_rec_v1/08_faq/faq.md) | [Security hardening](./docs/en/tensorflow/tf_rec_v1/07_security_hardening/security_hardening.md) |
+| tf_rec_v2 | [FAQ](./docs/en/tensorflow/tf_rec_v2/08_faq/faq.md) | [Security hardening](./docs/en/tensorflow/tf_rec_v2/07_security_hardening/security_hardening.md) |
+| torch_rec_v1 | / | [Security hardening](./docs/en/torch/torch_rec_v1/07_security_hardening/security_hardening.md) |
+| torch_rec_v2 | / | [Security hardening](./docs/en/torch/torch_rec_v2/07_security_hardening/security_hardening.md) |
 
 ## 🤝 Suggestions and Communication
 
@@ -148,12 +149,6 @@ You are welcome to raise questions and join discussions through the following ch
 
 ## 🙏 Acknowledgments
 
-Rec SDK is jointly contributed by the following Huawei departments:
-
-- Ascend Computing Application Enablement Development Dept
-- Software Platform Dept, Computing Product Line
-- UnifiedBus Computing Cluster Development Dept
-- Technology Development Dept, Computing Product Line
-- Poisson Lab
+Rec SDK is jointly contributed by Huawei Technologies Co., Ltd. and developers.
 
 Thank you to everyone in the community for your PRs. We warmly welcome your contributions to Rec SDK!

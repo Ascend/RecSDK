@@ -327,7 +327,7 @@ Rec SDK Torch软件包如下表：
 
    ```shell
    # 卸载已安装的算子包
-   pip3 unisntall -y fbgemm_ascend rec_cust_ops
+   pip3 uninstall -y fbgemm_ascend rec_cust_ops
    # 安装fbgemm_ascend算子包
    pip3 install fbgemm_ascend-*.whl
    # 安装rec_cust_ops算子包
