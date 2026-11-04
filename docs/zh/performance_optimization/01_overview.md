@@ -54,7 +54,7 @@ MindStudio Insight是面向昇腾AI开发者的可视化调优工具，能够可
 
 compare_tools支持比较GPU与NPU之间、NPU与NPU之间的性能差异，通过对训练耗时和内存占用的比对分析，定位到具体劣化的算子，帮助用户提升性能调优的效率。工具将训练耗时拆分为计算、通信、调度三大维度，并针对计算和通信分别进行算子级别的比对；将训练占用的总内存，拆分成算子级别的内存占用进行比对。
 
-* [compare_tools](https://gitcode.com/Ascend/mstt/tree/master/profiler/msprof_analyze/compare_tools)：性能比对工具，支持GPU与NPU、NPU与NPU之间的耗时和内存比对，从计算、通信、调度三维度定位劣化算子。
+* [compare_tools](https://gitcode.com/Ascend/msprof-analyze/tree/26.2.0/msprof_analyze/compare_tools)：性能比对工具，支持GPU与NPU、NPU与NPU之间的耗时和内存比对，从计算、通信、调度三维度定位劣化算子。
 
 ## 性能数据分析样例
 
