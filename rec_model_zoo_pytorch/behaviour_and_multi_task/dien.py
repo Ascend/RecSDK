@@ -19,6 +19,7 @@ root_path = os.path.abspath(__file__)
 root_path = os.path.sep.join(root_path.split(os.path.sep)[:-2])
 sys.path.append(root_path)
 
+import tensorflow
 from deepctr_torch.models import DIEN
 from deepctr_torch.models.dien import *
 from deepctr_torch.inputs import DenseFeat, SparseFeat, VarLenSparseFeat

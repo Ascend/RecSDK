@@ -21,6 +21,7 @@ root_path = os.path.abspath(__file__)
 root_path = os.path.sep.join(root_path.split(os.path.sep)[:-2])
 sys.path.append(root_path)
 
+import tensorflow
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
