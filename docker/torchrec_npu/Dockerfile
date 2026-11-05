@@ -120,8 +120,6 @@ RUN python3 -m venv /opt/buildtools/torchrec1.2.0 && \
     /opt/buildtools/torchrec1.2.0/bin/pip install --quiet torch-npu==2.7.1.post4 && \
     /opt/buildtools/torchrec1.2.0/bin/pip install --quiet fbgemm_gpu==1.2.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torchrec1.2.0/bin/pip install --quiet "$FBGEMM_ASCEND_WHL" && \
-    \
-    /opt/buildtools/torchrec1.2.0/bin/pip install --quiet torchrec==1.2.0 && \
     /opt/buildtools/torchrec1.2.0/bin/pip install --quiet pytest pytest-cov pytest-html pytest-metadata && \
     /opt/buildtools/torchrec1.2.0/bin/pip install --quiet click hypothesis pyyaml && \
     rm -rf /root/.cache/pip
@@ -145,8 +143,6 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torchrec1.5.0/bin/pip install --quiet torch-npu==2.10.0 && \
     /opt/buildtools/torchrec1.5.0/bin/pip install --quiet fbgemm_gpu-1.5.0*.whl && \
     /opt/buildtools/torchrec1.5.0/bin/pip install --quiet "$FBGEMM_ASCEND_WHL" && \
-    \
-    /opt/buildtools/torchrec1.5.0/bin/pip install --quiet torchrec==1.5.0 && \
     /opt/buildtools/torchrec1.5.0/bin/pip install --quiet pytest pytest-cov pytest-html pytest-metadata && \
     /opt/buildtools/torchrec1.5.0/bin/pip install --quiet click hypothesis pyyaml && \
     rm -rf /root/.cache/pip

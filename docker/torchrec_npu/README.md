@@ -1,13 +1,13 @@
 # torchrec_npu Docker 镜像
 
-基于 Ubuntu 22.04，预装 CANN 9.1.0 + PyTorch + torch_npu + torchrec 的 NPU 开发镜像。
+基于 Ubuntu 22.04，预装 CANN 9.1.0 + PyTorch + torch_npu + FBGEMM 的 NPU 开发镜像，不预装官方 torchrec 包。
 
 ## 软件栈
 
-| 虚拟环境 | PyTorch | torch_npu | torchrec | fbgemm_gpu |
-|----------|---------|-----------|----------|------------|
-| torchrec1.2.0 | 2.7.1 | 2.7.1 | 1.2.0 | 1.2.0 |
-| torchrec1.5.0 | 2.10.0 | 2.10.0 | 1.5.0 | 1.5.0 |
+| 虚拟环境 | PyTorch | torch_npu | fbgemm_gpu |
+|----------|---------|-----------|------------|
+| torchrec1.2.0 | 2.7.1 | 2.7.1 | 1.2.0 |
+| torchrec1.5.0 | 2.10.0 | 2.10.0 | 1.5.0 |
 
 ## 前期准备
 
@@ -57,17 +57,17 @@ docker run -it \
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ```
 
-根据需要激活对应的 torchrec 环境：
+根据需要激活对应的虚拟环境：
 
 ```bash
-# torchrec 1.2.0
+# torchrec1.2.0 虚拟环境
 source /opt/buildtools/torchrec1.2.0/bin/activate
 
-# torchrec 1.5.0
+# torchrec1.5.0 虚拟环境
 source /opt/buildtools/torchrec1.5.0/bin/activate
 ```
 
-退出已激活的torchrec环境可以参考如下命令：
+退出已激活的虚拟环境可以参考如下命令：
 
 ```bash
 deactivate

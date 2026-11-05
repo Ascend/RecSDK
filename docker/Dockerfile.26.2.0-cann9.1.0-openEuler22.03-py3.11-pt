@@ -120,7 +120,7 @@ RUN pip3 install --quiet pip==25.0.1 wheel "setuptools<70.0.0"
 
 # 10.下载 RecSDK 包 → 创建 venv → 安装 → 清理（全部在同一层，避免中间层占用空间）
 # 流程：按架构下载7个包 → 创建4个venv(torch_v1_pt2.7.1/torch_v1_pt2.10.0/torch_v2_pt2.7.1/torch_v2_pt2.10.0) → 清理
-# 4个venv分别对应不同PyTorch版本和RecSDK版本组合，fbgemm_ascend和rec_ops安装在pt2.7.1及以上的venv中
+# 4个venv分别对应不同PyTorch版本和RecSDK版本组合，fbgemm_ascend和rec_cust_ops安装在pt2.7.1及以上的venv中
 RUN ARCH=$(uname -m) && \
     # === 1. 按架构下载RecSDK包 ===
     if [ "$ARCH" = "x86_64" ]; then \
@@ -128,6 +128,7 @@ RUN ARCH=$(uname -m) && \
         wget -q https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0/torch_rec_v2-26.2.0-linux_x86_64.tar.gz && \
         wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.2.0/20260928.2/fbgemm_ascend-1.2.0-cp311-cp311-linux_x86_64.whl && \
         wget -q https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0/rec_cust_ops-2.7.1-cp311-cp311-linux_x86_64.whl && \
+        wget -q https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0/rec_cust_ops-2.10.0-cp311-cp311-linux_x86_64.whl && \
         wget -q "https://files.pythonhosted.org/packages/18/31/340253f1f31f86526439daba562fcd0ff9c41ccf5eebbcdb0d8a34cc38ec/fbgemm_gpu_cpu-1.5.0-cp311-cp311-manylinux_2_28_x86_64.whl" && \
         wget -q https://gitcode.com/Ascend/fbgemm-ascend/releases/download/v26.2.0-1.5.0/fbgemm_ascend-1.5.0-cp311-cp311-linux_x86_64.whl;  \
     elif [ "$ARCH" = "aarch64" ]; then \
@@ -135,13 +136,14 @@ RUN ARCH=$(uname -m) && \
         wget -q https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0/torch_rec_v2-26.2.0-linux_aarch64.tar.gz && \
         wget -q https://mindcluster.obs.cn-north-4.myhuaweicloud.com/fbgemm-ascend/daily/version/26.2.0/20260928.2/fbgemm_ascend-1.2.0-cp311-cp311-linux_aarch64.whl && \
         wget -q https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0/rec_cust_ops-2.7.1-cp311-cp311-linux_aarch64.whl && \
+        wget -q https://gitcode.com/Ascend/RecSDK/releases/download/v26.2.0/rec_cust_ops-2.10.0-cp311-cp311-linux_aarch64.whl && \
         wget -q "https://files.pythonhosted.org/packages/7b/eb/0e0dc3fb34ea751c709c429f453194d9a94c71d9e316becc6027a277328c/fbgemm_gpu_cpu-1.5.0-cp311-cp311-manylinux_2_28_aarch64.whl" && \
         wget -q https://gitcode.com/Ascend/fbgemm-ascend/releases/download/v26.2.0-1.5.0/fbgemm_ascend-1.5.0-cp311-cp311-linux_aarch64.whl; \
     else \
         echo "Error: Unsupported architecture '$ARCH'. Only x86_64 and aarch64 are supported." && exit 1; \
     fi && \
     # === 2. 创建 torch_rec_v1 环境 ===
-    # === 2.1 创建 torch_v1_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v1 + fbgemm_ascend + rec_ops) ===
+    # === 2.1 创建 torch_v1_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v1 + fbgemm_ascend + rec_cust_ops) ===
     python3 -m venv /opt/buildtools/torch_v1_pt2.7.1 && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet pip==25.0.1 && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet wheel "setuptools<70.0.0" "tensordict==0.12.4" && \
@@ -150,8 +152,8 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet fbgemm_gpu==1.2.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v1*.tar.gz && \
     /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet /tmp/fbgemm_ascend-1.2.0*.whl && \
-    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet /tmp/rec_cust_ops*.whl && \
-    # === 2.2 创建 torch_v1_pt2.10.0 (PyTorch 2.10.0 + torch_rec_v1 + fbgemm_ascend + rec_ops) ===
+    /opt/buildtools/torch_v1_pt2.7.1/bin/pip install --quiet /tmp/rec_cust_ops-2.7.1*.whl && \
+    # === 2.2 创建 torch_v1_pt2.10.0 (PyTorch 2.10.0 + torch_rec_v1 + fbgemm_ascend + rec_cust_ops) ===
     python3 -m venv /opt/buildtools/torch_v1_pt2.10.0 && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet pip==25.0.1 && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet wheel "setuptools<70.0.0" "tensordict==0.12.4" && \
@@ -170,10 +172,11 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip uninstall --quiet -y fbgemm-gpu && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_gpu_cpu-1.5.0*.whl && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_ascend-1.5.0*.whl && \
+    /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet /tmp/rec_cust_ops-2.10.0*.whl && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet pytest pytest-cov pytest-html pytest-metadata && \
     /opt/buildtools/torch_v1_pt2.10.0/bin/pip install --quiet click hypothesis pyyaml && \
     # === 3. 创建 torch_rec_v2 环境 ===
-    # === 3.1 创建 torch_v2_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v2 + fbgemm_ascend + rec_ops) ===
+    # === 3.1 创建 torch_v2_pt2.7.1 (PyTorch 2.7.1 + torch_rec_v2 + fbgemm_ascend + rec_cust_ops) ===
     python3 -m venv /opt/buildtools/torch_v2_pt2.7.1 && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet pip==25.0.1 && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet wheel "setuptools<70.0.0" "tensordict==0.12.4" && \
@@ -182,8 +185,8 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet fbgemm_gpu==1.2.0+cpu --index-url https://download.pytorch.org/whl/cpu && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v2*.tar.gz && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet /tmp/fbgemm_ascend-1.2.0*.whl && \
-    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet /tmp/rec_cust_ops*.whl && \
-    # === 3.2 创建 torch_v2_pt2.10.0 (PyTorch 2.10.0 + torchrec 1.5.0 + fbgemm_ascend 1.5.0) ===
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet /tmp/rec_cust_ops-2.7.1*.whl && \
+    # === 3.2 创建 torch_v2_pt2.10.0 (PyTorch 2.10.0 + fbgemm_ascend 1.5.0 + rec_cust_ops 2.10.0) ===
     python3 -m venv /opt/buildtools/torch_v2_pt2.10.0 && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet pip==25.0.1 && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet wheel "setuptools<70.0.0" "tensordict==0.12.4" && \
@@ -197,11 +200,9 @@ RUN ARCH=$(uname -m) && \
     else \
         /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet torch-npu==2.10.0; \
     fi && \
-    # 不预装 fbgemm-gpu：由 torch_rec_v2 sdist 安装流程处理，装完卸载并换装 PyPI 的 fbgemm-gpu-cpu 1.5.0
-    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v2*.tar.gz && \
-    /opt/buildtools/torch_v2_pt2.10.0/bin/pip uninstall --quiet -y fbgemm-gpu && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_gpu_cpu-1.5.0*.whl && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_ascend-1.5.0*.whl && \
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet /tmp/rec_cust_ops-2.10.0*.whl && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet pytest pytest-cov pytest-html pytest-metadata && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet click hypothesis pyyaml && \
     # === 4. 清理pip缓存和所有下载的临时文件 ===
