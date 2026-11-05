@@ -56,7 +56,7 @@ bash build_whl.sh
 tar -xzf Ascend-mindxsdk-hybrid-torchrec-1.2.0-pytorch2.7.1-linux-x86_64.tar.gz -C ./
 ls -al
 echo '开始安装前置依赖'
-pip3 install pytest pytest-cov pyyaml pytz tensordict
+pip3 install pytest pytest-cov pyyaml pytz 'tensordict<0.15'
 pip3 install hybrid_torchrec-1.2.0-py3-none-linux_x86_64.whl --force-reinstall --ignore-requires-python
 pip3 uninstall -y torchrec_embcache
 pip3 install torchrec_embcache-*-py3-none-linux*.whl
