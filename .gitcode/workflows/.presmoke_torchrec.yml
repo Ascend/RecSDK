@@ -92,7 +92,7 @@ jobs:
           fi
           source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
           source /usr/local/set_cann_env.sh a2
-          python3 -m pip install pytest pyyaml pytz tensordict
+          python3 -m pip install pytest pyyaml pytz 'tensordict<0.15'
           ls -1 *.whl | grep $ARCH | xargs -I {} python3 -m pip install {}
           cd ${ATOMGIT_WORKSPACE}
           echo "打印torchrec产物"
