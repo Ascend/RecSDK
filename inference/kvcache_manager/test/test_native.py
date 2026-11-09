@@ -30,6 +30,13 @@ from recsys_kvcache_manager.host_kvstorage_manager import HostKVTaskStatus
 from recsys_kvcache_manager.kvcache_config import get_kvcache_config
 from recsys_kvcache_manager.kvcache_manager import KVCacheManager
 
+from tools.perf_probe import configure as _perf_configure
+from tools.perf_probe import instrument as _instrument
+from tools.perf_probe import set_phase as _set_phase
+
+# 性能打点开关：默认关闭，KV_PERF=1 时开启；关闭时 instrument() 原样返回 manager。
+_perf_configure(torch.npu.synchronize, "NPU")
+
 NPU_AVAILABLE = False
 try:
     torch.npu.current_device()
@@ -38,6 +45,7 @@ except Exception:
     NPU_AVAILABLE = False
 
 pytestmark = pytest.mark.skipif(not NPU_AVAILABLE, reason="NPU not available")
+
 
 MAX_SEQUENCE_LENGTHS = [
     2500,
@@ -101,7 +109,7 @@ def create_testing_kvcache_manager():
 
     mgr = KVCacheManager.from_config(kvcache_config)
     print("[TEST] Created KVCache Manager")
-    return mgr
+    return _instrument(mgr)
 
 
 @pytest.fixture
@@ -154,6 +162,7 @@ def _phase_1(kvcache_mgr, g_keys, g_values):
     - put 写入 KV 数据，验证 paged cache 读写一致性
     - offload 到 Host，验证 D2H 搬运数据完整性
     """
+    _set_phase("A")
     seqlen = [700, 128, 336, 624, 486, 358, 716, 537]
 
     user_ids = torch.tensor(list(range(0, 8)), dtype=torch.int64)
@@ -256,6 +265,7 @@ def _phase_2(kvcache_mgr, g_keys, g_values):
     - 追加写入新 token 的 KV 数据
     - offload 更长的序列到 Host
     """
+    _set_phase("B")
     cachedlen = [700, 128, 336, 624, 486, 358, 716, 537]
     seqlen = [1400, 256, 672, 1248, 973, 716, 1432, 1075]
     deltalen = [seqlen[i] - cachedlen[i] for i in range(8)]
@@ -367,6 +377,7 @@ def _phase_3(kvcache_mgr, g_keys, g_values):
     - 重新分配时需要从 Host onboard（触发 H2D + scatter 流水线）
     - 验证 onboard 后 NPU 上的数据与原始数据一致
     """
+    _set_phase("C")
     cachedlen = [i // 32 * 32 for i in [1400, 256, 672, 1248, 973, 716, 1432, 1075]]
     seqlen = [2000, 512, 960, 1783, 1391, 1024, 2047, 1537]
     deltalen = [seqlen[i] - cachedlen[i] for i in range(8)]
@@ -482,6 +493,7 @@ def _phase_4(kvcache_mgr, g_keys, g_values):
     - 验证驱逐后新 user 的分配和读写正确
     - 验证新 user 的 offload 数据完整
     """
+    _set_phase("D")
     cachedlen = [0 for _ in range(8)]
     seqlen = [689, 1417, 1174, 1987, 596, 520, 1538, 1189]
     deltalen = [seqlen[i] - cachedlen[i] for i in range(8)]
@@ -587,6 +599,7 @@ def _phase_5(kvcache_mgr, g_keys, g_values):
     - onboard 后验证数据一致性
     - 最后驱逐 Host 和 NPU 上的 user，验证清理完整
     """
+    _set_phase("E")
     cachedlen = [2000, 512, 960, 1783, 1391, 1024, 2047, 1537]
     seqlen = [2500, 1024, 1280, 2377, 1854, 1365, 2729, 2049]
     deltalen = [seqlen[i] - cachedlen[i] for i in range(8)]
