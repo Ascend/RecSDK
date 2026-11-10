@@ -56,6 +56,7 @@ python run.py xxx.json --eager
 |DBMTL|[DBMTL.json](configs/DBMTL.json)|
 |DCN|[DCN.json](configs/DCN.json)|
 |DCNv2|[DCNv2.json](configs/DCNv2.json)|
+|DCNv2_train|[DCNv2_train.json](configs/DCNv2_train.json)|
 |DECISION_TRANSFORMER|[DecisionTransformer.json](configs/DecisionTransformer.json)|
 |DeepFM|[DeepFM.json](configs/DeepFM.json)|
 |DIEN|[DIEN.json](configs/DIEN.json)|
