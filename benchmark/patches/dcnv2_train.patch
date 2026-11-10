@@ -1,0 +1,378 @@
+diff --git a/tzrec/main.py b/tzrec/main.py
+index fe47b28..839fa1b 100644
+--- a/tzrec/main.py
++++ b/tzrec/main.py
+@@ -287,6 +287,28 @@ def _create_model(
+     return model
+ 
+ 
++def _compile_for_inductor(model: nn.Module) -> nn.Module:
++    """Compile model to inductor (NPU).
++
++    sparse fbgemm 算子不入图，留在 eager 执行，避免 dynamo 图捕获失败。
++    训练与推理共用此逻辑（训练侧需配合 TrainPipelineBase 使用）。
++    """
++    import torch._dynamo
++
++    # 当前算子入图功能待开发
++    torch._dynamo.disallow_in_graph(
++        torch.ops.fbgemm.split_embedding_codegen_lookup_sgd_function_pt2
++    )
++    torch._dynamo.disallow_in_graph(torch.ops.fbgemm.permute_2D_sparse_data_input1D)
++    torch._dynamo.disallow_in_graph(torch.ops.fbgemm.block_bucketize_sparse_features)
++    torch._dynamo.disallow_in_graph(torch.ops.fbgemm.get_infos_metadata)
++    torch._dynamo.disallow_in_graph(torch.ops.fbgemm.jagged_to_padded_dense)
++    acl_flag = os.environ.get("MODEL_ACLGRAPH_FLAG", "False").upper() == "TRUE"
++    if acl_flag:
++        return torch.compile(model, backend="inductor", mode="reduce-overhead")
++    return torch.compile(model, backend="inductor")
++
++
+ def _evaluate(
+     model: nn.Module,
+     eval_dataloader: DataLoader,
+@@ -300,7 +322,7 @@ def _evaluate(
+     is_rank_zero = int(os.environ.get("RANK", 0)) == 0
+     is_local_rank_zero = int(os.environ.get("LOCAL_RANK", 0)) == 0
+     model.eval()
+-    pipeline = create_train_pipeline(model)
++    pipeline = create_train_pipeline(model, use_sparse_pipeline=False)
+     model_name = os.path.basename(os.path.dirname(eval_result_filename))
+ 
+     use_step = eval_config.num_steps and eval_config.num_steps > 0
+@@ -537,6 +559,14 @@ def _log_train(
+                         )
+ 
+ 
++def _device_synchronize() -> None:
++    """Synchronize device so that per-step timing measures real kernel time."""
++    if hasattr(torch, "npu") and torch.npu.is_available():
++        torch.npu.synchronize()
++    elif torch.cuda.is_available():
++        torch.cuda.synchronize()
++
++
+ def _train_and_evaluate(
+     model: nn.Module,
+     optimizer: optim.Optimizer,
+@@ -555,6 +585,11 @@ def _train_and_evaluate(
+     is_local_rank_zero = int(os.environ.get("LOCAL_RANK", 0)) == 0
+     model.train()
+ 
++    # inductor 模式：模仿 evaluate 路径，编译模型到 inductor；sparse fbgemm 算子留在 eager。
++    INDUCTOR_FLAG = os.getenv("MODEL_COMPILE_FLAG", "False").upper() == "TRUE"
++    if INDUCTOR_FLAG:
++        model = _compile_for_inductor(model)
++
+     assert train_config.num_steps ^ train_config.num_epochs, (
+         "train_config.num_epochs or train_config.num_steps should be set, "
+         "and can not be set at the same time."
+@@ -595,26 +630,94 @@ def _train_and_evaluate(
+ 
+     eval_result_filename = os.path.join(model_dir, eval_result_filename)
+ 
+-    if train_config.is_profiling:
++    train_prof_enabled = train_config.is_profiling or (
++        os.environ.get("MODEL_PROFILING_FLAG", "false").upper() == "TRUE"
++        and not CPU_ENABLE
++    )
++    if train_prof_enabled:
+         if is_rank_zero:
+             logger.info(str(model))
+-        prof = torch.profiler.profile(
+-            schedule=torch.profiler.schedule(wait=1, warmup=1, active=10, repeat=1),
+-            on_trace_ready=torch.profiler.tensorboard_trace_handler(
+-                os.path.join(model_dir, "train_eval_trace")
+-            ),
+-            record_shapes=True,
+-            profile_memory=True,
+-            with_stack=True,
++        model_name = os.environ.get("MODEL_NAME") or os.path.basename(model_dir)
++        raw_model = getattr(model, "_orig_mod", model)
++        device_name = str(getattr(raw_model, "device", "npu")).split(":")[0]
++        model_detail_info = (
++            device_name
++            + "_"
++            + model_name
++            + "_"
++            + ("inductor" if INDUCTOR_FLAG else "eager")
+         )
+-        prof.start()
++        if NPU_ENABLE:
++            # config profiling
++            experimental_config = torch_npu.profiler._ExperimentalConfig(
++                export_type=[
++                    torch_npu.profiler.ExportType.Text,
++                    torch_npu.profiler.ExportType.Db,
++                ],
++                profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
++                msprof_tx=False,
++                aic_metrics=torch_npu.profiler.AiCMetrics.AiCoreNone,
++                l2_cache=False,
++                op_attr=False,
++                data_simplification=False,
++                record_op_args=False,
++                gc_detect_threshold=None,
++            )
++            prof = torch_npu.profiler.profile(
++                activities=[
++                    torch_npu.profiler.ProfilerActivity.CPU,
++                    torch_npu.profiler.ProfilerActivity.NPU,
++                ],
++                schedule=torch_npu.profiler.schedule(
++                    wait=1, warmup=1, active=10, repeat=1
++                ),
++                on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(
++                    os.path.join("../profiling", model_name),
++                    worker_name=model_detail_info,
++                ),
++                record_shapes=False,
++                profile_memory=False,
++                with_stack=False,
++                with_modules=False,
++                with_flops=False,
++                experimental_config=experimental_config,
++            )
++            prof.start()
++        else:
++            # GPU profiling configuration
++            prof = torch.profiler.profile(
++                activities=[
++                    torch.profiler.ProfilerActivity.CPU,
++                    torch.profiler.ProfilerActivity.CUDA,
++                ],
++                schedule=torch.profiler.schedule(
++                    wait=1, warmup=1, active=10, repeat=1
++                ),
++                on_trace_ready=torch.profiler.tensorboard_trace_handler(
++                    os.path.join("../profiling", model_name)
++                ),
++                record_shapes=False,
++                profile_memory=False,
++                with_stack=False,
++            )
++            prof.start()
+ 
+     last_ckpt_step = -1
+     i_step = 0
+     i_epoch = 0
+     losses = {}
++    train_latency_list = []
++    last_step_loss = None
++    # 预热步数对齐 benchmark/patches/easyrec_npu.patch 的 --warmup-steps 默认值
++    warmup_steps = 20
++    train_step_count = 0
+     for i_epoch in epoch_iter:
+-        pipeline = create_train_pipeline(model, optimizer)
++        # inductor 编译后的模型无法走 pipelined sparse forward/backward，退化为 TrainPipelineBase
++        pipeline = create_train_pipeline(
++            model,
++            optimizer,
++            use_sparse_pipeline=(False if INDUCTOR_FLAG else None),
++        )
+         if plogger is not None:
+             plogger.set_description(f"Training Epoch {i_epoch}")
+ 
+@@ -634,7 +737,16 @@ def _train_and_evaluate(
+             if i_step <= skip_steps:
+                 continue
+             try:
++                _t0 = time.time()
+                 losses, _, _ = pipeline.progress(train_iterator)
++                _device_synchronize()
++                _elapsed = time.time() - _t0
++                # 不在 step 内转 float，避免额外触发设备同步打断流水线
++                last_step_loss = sum(v.detach() for v in losses.values())
++                train_step_count += 1
++                # 跳过前 warmup_steps 步，排除初始化/autotune/首次编译的干扰
++                if train_step_count > warmup_steps:
++                    train_latency_list.append(_elapsed)
+ 
+                 if i_step % train_config.log_step_count_steps == 0:
+                     _log_train(
+@@ -674,7 +786,7 @@ def _train_and_evaluate(
+                             global_epoch=i_epoch,
+                         )
+                         model.train()
+-            if train_config.is_profiling:
++            if train_prof_enabled:
+                 prof.step()
+ 
+         if save_checkpoints_epochs > 0 and i_step > 0:
+@@ -715,7 +827,7 @@ def _train_and_evaluate(
+     )
+     if summary_writer is not None:
+         summary_writer.close()
+-    if train_config.is_profiling:
++    if train_prof_enabled:
+         prof.stop()
+     if last_ckpt_step != i_step:
+         checkpoint_util.save_model(
+@@ -735,6 +847,37 @@ def _train_and_evaluate(
+             )
+             model.train()
+ 
++    # 训练结束：输出 e2e 训练性能日志（仿照 _evaluate 的 e2e_result）
++    avg_step_time = (
++        sum(train_latency_list) / len(train_latency_list) if train_latency_list else 0.0
++    )
++    train_batch_size = train_dataloader.dataset.sampled_batch_size
++    # inductor 编译后 model 是 OptimizedModule，没有 .device，需解包
++    raw_model = getattr(model, "_orig_mod", model)
++    device_name = str(getattr(raw_model, "device", "npu")).split(":")[0]
++    model_name = os.environ.get("MODEL_NAME") or os.path.basename(model_dir)
++    inductor_flag = (
++        "inductor"
++        if os.environ.get("MODEL_COMPILE_FLAG", "False").upper() == "TRUE"
++        else "eager"
++    )
++    train_result = {
++        "Batch_size": train_batch_size,
++        "model_name": model_name,
++        "epoch": i_epoch + 1,
++        "step": i_step + 1,
++        "final_loss": round(float(last_step_loss), 5) if last_step_loss is not None else None,
++        "ms/step": round(avg_step_time * 1000, 4),
++    }
++    model_detail_info = device_name + "_" + model_name + "_" + inductor_flag
++    train_str = "train performance: " + model_detail_info + "_" + str(train_result)
++    os.makedirs(f"../save_results_{device_name}/", exist_ok=True)
++    with open(
++        f"../save_results_{device_name}/train_performance_result.txt", "a", encoding="utf-8"
++    ) as f:
++        f.write(train_str + "\n")
++    logger.info(train_str)
++
+ 
+ def train_and_evaluate(
+     pipeline_config_path: str,
+@@ -786,7 +929,8 @@ def train_and_evaluate(
+         data_config, features, pipeline_config.train_input_path, mode=Mode.TRAIN
+     )
+     eval_dataloader = None
+-    if pipeline_config.eval_input_path:
++    # 只跑训练：跳过推理/eval（恢复 eval 时把下面条件改回 pipeline_config.eval_input_path）
++    if False and pipeline_config.eval_input_path:
+         # pyre-ignore [16]
+         gl_cluster = train_dataloader.dataset.get_sampler_cluster()
+         eval_dataloader = _get_dataloader(
+@@ -988,7 +1132,12 @@ def evaluate(
+         logger.info(str(plan))
+ 
+     model = DistributedModelParallel(
+-        module=model, sharders=sharders, device=device, plan=plan
++        module=model,
++        sharders=sharders,
++        device=device,
++        plan=plan,
++        init_data_parallel=False,
++        init_parameters=False,
+     )
+     INDUCTOR_FLAG = os.getenv("MODEL_COMPILE_FLAG", "False").upper() == "TRUE"
+     if CPU_ENABLE:
+@@ -1026,18 +1175,7 @@ def evaluate(
+         state_dict = torch.load(f"./save_weights/{pipeline_config.model_dir}/random_init_weights.pth", map_location=device)
+         model.load_state_dict(state_dict)
+ 
+-        import torch._dynamo
+-        # 当前算子入图功能待开发
+-        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.split_embedding_codegen_lookup_sgd_function_pt2)
+-        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.permute_2D_sparse_data_input1D)
+-        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.block_bucketize_sparse_features)
+-        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.get_infos_metadata)
+-        torch._dynamo.disallow_in_graph(torch.ops.fbgemm.jagged_to_padded_dense)
+-        acl_flag = os.environ.get('MODEL_ACLGRAPH_FLAG', 'False').upper() == 'TRUE'
+-        if acl_flag:
+-            model = torch.compile(model, backend="inductor", mode="reduce-overhead")
+-        else:
+-            model = torch.compile(model, backend="inductor")
++        model = _compile_for_inductor(model)
+ 
+ 
+ 
+diff --git a/tzrec/utils/dist_util.py b/tzrec/utils/dist_util.py
+index 80dca06..651f624 100644
+--- a/tzrec/utils/dist_util.py
++++ b/tzrec/utils/dist_util.py
+@@ -133,8 +133,8 @@ def DistributedModelParallel(
+     device: Optional[torch.device] = None,
+     plan: Optional[ShardingPlan] = None,
+     sharders: Optional[List[ModuleSharder[torch.nn.Module]]] = None,
+-    init_data_parallel: bool = False,
+-    init_parameters: bool = False,
++    init_data_parallel: bool = True,
++    init_parameters: bool = True,
+     data_parallel_wrapper: Optional[DataParallelWrapper] = None,
+ ) -> _DistributedModelParallel:
+     """Entry point to model parallelism.
+@@ -190,40 +190,54 @@ class TrainPipelineSparseDist(_TrainPipelineSparseDist):
+ 
+ 
+ def create_train_pipeline(
+-    model: nn.Module, optimizer: Optional[torch.optim.Optimizer] = None
++    model: nn.Module,
++    optimizer: Optional[torch.optim.Optimizer] = None,
++    use_sparse_pipeline: Optional[bool] = None,
+ ) -> TrainPipeline:
+     """Create TrainPipeline.
+ 
+     Args:
+         model (nn.Module): a DMP model.
+         optimizer (torch.optim.Optimizer): a KeyedOptimizer.
++        use_sparse_pipeline (Optional[bool]): whether to use the sparse (fused
++            optimizer) pipeline. None means auto-detect via BFS of ShardedModule;
++            pass False for eval, which has no fused sparse optimizer and must use
++            TrainPipelineBase (multiple `progress` calls would break the sparse
++            pipelined forward).
+ 
+     Return:
+         a TrainPipeline.
+     """
+-    has_sparse_module = False
+-
+-    q = Queue()
+-    q.put(model.module)
+-    while not q.empty():
+-        m = q.get()
+-        if isinstance(m, ShardedModule):
+-            has_sparse_module = True
+-            break
+-        else:
+-            for child in m.children():
+-                q.put(child)
++    # torch.compile 返回 OptimizedModule，无 .module/.device，需解包底层 DMP
++    orig_model = getattr(model, "_orig_mod", model)
++    if use_sparse_pipeline is None:
++        has_sparse_module = False
++        q = Queue()
++        q.put(orig_model.module)
++        while not q.empty():
++            m = q.get()
++            if isinstance(m, ShardedModule):
++                has_sparse_module = True
++                break
++            else:
++                for child in m.children():
++                    q.put(child)
++    else:
++        has_sparse_module = use_sparse_pipeline
++
++    device = getattr(model, "device", None)
++    if device is None:
++        device = getattr(orig_model, "device", None)
+ 
+-    has_sparse_module = False
+     if not has_sparse_module:
+         # use TrainPipelineBase when model do not have sparse parameters.
+         # pyre-ignore [6]
+-        return TrainPipelineBase(model, optimizer, model.device)
++        return TrainPipelineBase(model, optimizer, device)
+     else:
+         return TrainPipelineSparseDist(
+             model,
+             # pyre-ignore [6]
+             optimizer,
+-            model.device,
++            device,
+             execute_all_batches=True,
+         )
