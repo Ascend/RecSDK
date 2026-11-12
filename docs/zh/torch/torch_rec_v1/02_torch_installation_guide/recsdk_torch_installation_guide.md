@@ -15,7 +15,7 @@
 >
 > - PyTorch：深度学习训练框架，相关资料请参见[PyTorch文档](https://docs.pytorch.org/docs/stable/index.html)。
 > - TorchNPU：PyTorch框架适配NPU设备的扩展插件，相关资料请参见[TorchNPU](https://gitcode.com/Ascend/pytorch)。
-> - fbgemm\_gpu：TorchRec框架依赖的加速库，相关资料请参见[fbgemm\_gpu](https://github.com/pytorch/FBGEMM)。
+> - fbgemm\_gpu：TorchRec框架依赖的加速库，相关资料请参见[fbgemm\_gpu](https://github.com/pytorch/FBGEMM)。该包1.5.0版本存在问题，运行时需安装fbgemm-gpu-cpu进行规避，详见[容器内训练加速库依赖](#section146113514600)。
 > - fbgemm\_ascend：Ascend平台上的加速库，相关资料请参见[fbgemm\_ascend](https://gitcode.com/Ascend/fbgemm-ascend)。
 > - rec\_cust\_ops：Ascend平台上的Rec SDK Torch自定义算子库，相关资料请参见[rec\_cust\_ops](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)。
 
@@ -72,6 +72,24 @@ Rec SDK Torch基于NPU环境运行，如下为宿主机依赖软件说明。若�
 | --------- | ---------------------------------------------------------------------------- |
 | 1.2.0+cpu | `pip3 install fbgemm_gpu==1.2.0+cpu -i https://download.pytorch.org/whl/cpu` |
 | 1.5.0+cpu | `pip3 install fbgemm_gpu==1.5.0+cpu -i https://download.pytorch.org/whl/cpu` |
+
+> [!NOTE]
+> 当前[https://download.pytorch.org/whl/cpu](https://download.pytorch.org/whl/cpu)仓库中归档的fbgemm_gpu 1.5.0+cpu版本包和torch 2.10.0+cpu版本包搭配使用时存在冲突（fbgemm_gpu 1.2.0+cpu版本无问题，正常安装即可），在`import torchrec`时出现类似 `undefined symbol: _ZN3c1013MessageLoggerC1ENS_14SourceLocationEib` 错误。
+>
+> 解决方式：在安装依赖阶段，正常安装fbgemm_gpu 1.5.0+cpu版本（用于安装其他包时正常解析依赖）。在所有依赖和软件包安装完成后，运行样例/模型前，卸载已安装的fbgemm_gpu，并安装fbgemm-gpu-cpu的1.5.0版本包。流程/指令参考如下：
+>
+> ```bash
+> # 1 安装fbgemm_gpu 1.5.0及其他依赖
+> pip3 install fbgemm_gpu==1.5.0+cpu -i https://download.pytorch.org/whl/cpu
+> # 2 安装Rec SDK Torch或torchrec等包，此处省略具体操作
+> # 3 运行样例/模型前，卸载fbgemm_gpu并安装fbgemm-gpu-cpu包
+> pip3 uninstall -y fbgemm_gpu
+> pip3 install fbgemm-gpu-cpu==1.5.0 -i https://mirrors.aliyun.com/pypi/simple
+> ```
+>
+> fbgemm-gpu-cpu包为FBGEMM项目官方发布，和fbgemm_gpu包cpu版本内容、导包路径均相同，仅包名差异，安装后可正常使用。
+>
+> 后续若重装Rec SDK Torch或torchrec包，先卸载fbgemm-gpu-cpu：`pip3 uninstall -y fbgemm-gpu-cpu`，再按照上述流程操作。
 
 ### Rec SDK Torch软件包说明
 
