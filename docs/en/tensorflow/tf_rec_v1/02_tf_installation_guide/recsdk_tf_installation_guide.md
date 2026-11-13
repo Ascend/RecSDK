@@ -144,8 +144,8 @@ You can deploy the Rec SDK TensorFlow development environment in a container by 
 
 Refer to the Dockerfiles in the [docker directory](https://gitcode.com/Ascend/RecSDK/tree/develop/docker) to build the training image. The directory contains the following files:
 
-- `Dockerfile.26.1.0-ubuntu20.04-tf-py3.7`: TensorFlow training image based on Ubuntu 20.04
-- `Dockerfile.26.1.0-openEuler22.03-tf-py3.7`: TensorFlow training image based on openEuler 22.03
+- `Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf`: TensorFlow training image based on Ubuntu 20.04
+- `Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.7-tf`: TensorFlow training image based on openEuler 22.03
 
 When building the image, you can specify the chip architecture with `--build-arg CORE_TYPE=a2|a3|a5`.
 

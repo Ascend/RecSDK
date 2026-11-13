@@ -33,7 +33,7 @@ source /usr/local/Ascend/cann/set_env.sh
 
 ### 3. Build RecSDK
 
-The torch_rec_v1 packages are pre-installed by default. For source build and installation, refer to the [Source Installation Guide](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/en/torch/torch_rec_v1/recsdk_torch_installation_guide.md#installing-from-source).
+The torch_rec_v1 packages are pre-installed by default. For source build and installation, refer to the [Source Installation Guide](https://gitcode.com/Ascend/RecSDK/blob/develop/docs/en/torch/torch_rec_v1/02_torch_installation_guide/recsdk_torch_installation_guide.md#installing-from-source).
 
 ## Notes
 

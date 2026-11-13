@@ -144,8 +144,8 @@
 
 请参考 [docker 目录](https://gitcode.com/Ascend/RecSDK/tree/develop/docker) 下的 Dockerfile 制作训练镜像，包含以下文件：
 
-- `Dockerfile.26.1.0-ubuntu20.04-tf-py3.7`：基于 Ubuntu 20.04 的 TensorFlow 训练镜像
-- `Dockerfile.26.1.0-openEuler22.03-tf-py3.7`：基于 openEuler 22.03 的 TensorFlow 训练镜像
+- `Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf`：基于 Ubuntu 20.04 的 TensorFlow 训练镜像
+- `Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.7-tf`：基于 openEuler 22.03 的 TensorFlow 训练镜像
 
 构建时可通过 `--build-arg CORE_TYPE=a2|a3|a5` 指定芯片架构。
 

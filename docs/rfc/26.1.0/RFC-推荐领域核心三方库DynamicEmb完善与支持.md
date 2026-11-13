@@ -376,7 +376,7 @@ DynamicEmb API 完善与支持主要分为**框架适配层 + 稀疏算子适配
 1. DynamicEmb 社区官方说明：[https://github.com/NVIDIA/recsys-examples/blob/v25.09](https://github.com/NVIDIA/recsys-examples/blob/v25.09)
 2. RecSDK 开源仓库：[https://gitcode.com/Ascend/RecSDK](https://gitcode.com/Ascend/RecSDK)
 3. 昇腾 CANN 开发文档：[https://www.hiascend.com/document/](https://www.hiascend.com/document/)
-4. PyTorch TorchRec 分布式框架：[https://pytorch.org/torchrec/](https://pytorch.org/torchrec/)
+4. PyTorch TorchRec 分布式框架：[https://meta-pytorch.org/torchrec/](https://meta-pytorch.org/torchrec/)
 5. Issue #1111：[https://gitcode.com/Ascend/RecSDK/issues/1111](https://gitcode.com/Ascend/RecSDK/issues/1111)
 
 **术语表：**
