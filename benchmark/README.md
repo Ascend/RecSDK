@@ -248,10 +248,9 @@ HSTU NPU 适配补丁通过 Python `import` 导入依赖库并注册自定义算
 | 依赖库 | 导入方式 | 用途 |
 |--|--|--|
 | `fbgemm_ascend` | `import fbgemm_ascend` | 注册 `torch.ops.fbgemm` 下的 Jagged Tensor 等算子 |
-| `rec_cust_ops` | `import rec_cust_ops` | 注册 `torch.ops.mxrec` 下的 RecSDK 自定义算子 |
-| `ops_rec` | `import ops_rec` | 提供 `ops_rec.ascendc.attention.hstu_jagged` 等 HSTU 融合算子 |
+| `ops_rec` | `import ops_rec` | 提供 `ops_rec.ascendc.attention.hstu_jagged` 等 HSTU 融合算子；`NPU_FUSED_INDEX_SELECT=1` 时还调用 `ops_rec.ascendc.embedding.index_select_for_rank1_backward` |
 
-`fbgemm_ascend` 安装说明请参考 [fbgemm-ascend README](https://gitcode.com/Ascend/fbgemm-ascend/blob/v1.5.0/README.md)，`rec_cust_ops` 编译安装说明请参考 [RecSDK 自定义算子 README](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md)。
+`fbgemm_ascend` 安装说明请参考 [fbgemm-ascend README](https://gitcode.com/Ascend/fbgemm-ascend/blob/v1.5.0/README.md)。
 
 #### 精度模式依赖
 
