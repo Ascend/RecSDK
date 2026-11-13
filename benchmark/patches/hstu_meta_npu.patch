@@ -134,7 +134,7 @@ index 3c89245..8a573eb 100644
  from typing import Callable, Dict, List, Optional, Tuple, Union
  
  import torch
-@@ -42,10 +43,146 @@ from generative_recommenders.research.modeling.similarity_module import (
+@@ -42,10 +43,145 @@ from generative_recommenders.research.modeling.similarity_module import (
      SequentialEncoderWithLearnedSimilarityModule,
  )
  from generative_recommenders.research.rails.similarities.module import SimilarityModule
@@ -152,7 +152,6 @@ index 3c89245..8a573eb 100644
 +
 +if NPU_ENABLE:
 +    import fbgemm_ascend
-+    import rec_cust_ops
 +    import ops_rec
 +
 +try:
@@ -176,7 +175,7 @@ index 3c89245..8a573eb 100644
 +    @staticmethod
 +    def backward(ctx, grad_output):
 +        x, index = ctx.saved_tensors
-+        grad_x, grad_index = torch.ops.mxrec.index_select_for_rank1_backward(
++        grad_x, grad_index = ops_rec.ascendc.embedding.index_select_for_rank1_backward(
 +            grad_output, x, index
 +        )
 +        return grad_x, grad_index
@@ -282,13 +281,13 @@ index 3c89245..8a573eb 100644
  
  class RelativeAttentionBiasModule(torch.nn.Module):
      @abc.abstractmethod
-@@ -93,4 +237,5 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
+@@ -93,4 +236,5 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
          max_seq_len: int,
          num_buckets: int,
          bucketization_fn: Callable[[torch.Tensor], torch.Tensor],
 +        precision_mode: bool = False,
      ) -> None:
-@@ -99,8 +244,16 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
+@@ -99,8 +243,16 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
          self._max_seq_len: int = max_seq_len
 +        ts_w = torch.empty(num_buckets + 1)
 +        pos_w = torch.empty(2 * max_seq_len - 1)
@@ -307,7 +306,7 @@ index 3c89245..8a573eb 100644
 +            pos_w,
          )
          self._num_buckets: int = num_buckets
-@@ -131,15 +284,21 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
+@@ -131,15 +283,21 @@ class RelativeBucketedTimeAndPositionBasedBias(RelativeAttentionBiasModule):
          # causal masking. Otherwise [:, :-1] - [:, 1:] works
          bucketed_timestamps = torch.clamp(
              self._bucketization_fn(
@@ -333,7 +332,7 @@ index 3c89245..8a573eb 100644
          return rel_pos_bias + rel_ts_bias
  
  
-@@ -200,26 +350,34 @@ def _hstu_attention_maybe_from_cache(
+@@ -200,26 +349,34 @@ def _hstu_attention_maybe_from_cache(
              values=k, offsets=[x_offsets], max_lengths=[n], padding_value=0.0
          )
  
@@ -388,7 +387,7 @@ index 3c89245..8a573eb 100644
  
  
  class SequentialTransductionUnitJagged(torch.nn.Module):
-@@ -238,6 +396,7 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+@@ -238,6 +395,7 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
          concat_ua: bool = False,
          epsilon: float = 1e-6,
          max_length: Optional[int] = None,
@@ -396,7 +395,7 @@ index 3c89245..8a573eb 100644
      ) -> None:
          super().__init__()
          self._embedding_dim: int = embedding_dim
-@@ -252,15 +411,15 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+@@ -252,15 +410,15 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
          self._normalization: str = normalization
          self._linear_config: str = linear_config
          if self._linear_config == "uvqk":
@@ -420,7 +419,7 @@ index 3c89245..8a573eb 100644
          else:
              raise ValueError(f"Unknown linear_config {self._linear_config}")
          self._linear_activation: str = linear_activation
-@@ -340,7 +499,6 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+@@ -340,7 +498,6 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
  
          B: int = x_offsets.size(0) - 1
          if self._normalization == "rel_bias" or self._normalization == "hstu_rel_bias":
@@ -428,7 +427,7 @@ index 3c89245..8a573eb 100644
              attn_output, padded_q, padded_k = _hstu_attention_maybe_from_cache(
                  num_heads=self._num_heads,
                  attention_dim=self._attention_dim,
-@@ -400,12 +558,15 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
+@@ -400,12 +557,15 @@ class SequentialTransductionUnitJagged(torch.nn.Module):
                  qk_attn = qk_attn + self._rel_attn_bias(all_timestamps)
              qk_attn = F.softmax(qk_attn / math.sqrt(self._attention_dim), dim=-1)
              qk_attn = qk_attn * invalid_attn_mask
@@ -445,7 +444,7 @@ index 3c89245..8a573eb 100644
              )[0]
          else:
              raise ValueError(f"Unknown normalization method {self._normalization}")
-@@ -480,7 +641,7 @@ class HSTUJagged(torch.nn.Module):
+@@ -480,7 +640,7 @@ class HSTUJagged(torch.nn.Module):
          cache_states: List[HSTUCacheState] = []
  
          with torch.autocast(
@@ -454,7 +453,7 @@ index 3c89245..8a573eb 100644
              enabled=self._autocast_dtype is not None,
              dtype=self._autocast_dtype or torch.float16,
          ):
-@@ -518,8 +679,9 @@ class HSTUJagged(torch.nn.Module):
+@@ -518,8 +678,9 @@ class HSTUJagged(torch.nn.Module):
          Returns:
              x' = f(x), (B, N, D) x float
          """
@@ -465,7 +464,7 @@ index 3c89245..8a573eb 100644
  
          jagged_x, cache_states = self.jagged_forward(
              x=x,
-@@ -571,6 +733,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -571,6 +732,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
          enable_relative_attention_bias: bool = True,
          concat_ua: bool = False,
          verbose: bool = True,
@@ -473,7 +472,7 @@ index 3c89245..8a573eb 100644
      ) -> None:
          super().__init__(ndp_module=similarity_module)
  
-@@ -589,7 +752,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -589,7 +751,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
          self._linear_activation: str = linear_activation
          self._linear_dropout_rate: float = linear_dropout_rate
          self._attn_dropout_rate: float = attn_dropout_rate
@@ -482,7 +481,7 @@ index 3c89245..8a573eb 100644
          self._hstu = HSTUJagged(
              modules=[
                  SequentialTransductionUnitJagged(
-@@ -610,12 +782,14 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -610,12 +781,14 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
                                  torch.log(torch.abs(x).clamp(min=1)) / 0.301
                              ).long(),
 +                            precision_mode=precision_mode,
@@ -498,7 +497,7 @@ index 3c89245..8a573eb 100644
                  )
                  for _ in range(num_blocks)
              ],
-@@ -636,6 +800,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -636,6 +799,7 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
              ),
          )
          self._verbose: bool = verbose
@@ -506,7 +505,7 @@ index 3c89245..8a573eb 100644
          self.reset_params()
  
      def reset_params(self) -> None:
-@@ -645,7 +810,11 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
+@@ -645,7 +809,11 @@ class HSTU(SequentialEncoderWithLearnedSimilarityModule):
                      print(f"Skipping init for {name}")
                  continue
              try:
