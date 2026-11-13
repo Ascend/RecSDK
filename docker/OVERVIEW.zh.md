@@ -38,10 +38,10 @@ RecSDK的功能涉及：
 
 | Tag | Dockerfile |
 |-----|------------|
-|26.1.0-ubuntu20.04-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu20.04-tf-py3.7)|
-|26.1.0-ubuntu22.04-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-ubuntu22.04-pt-py3.11)|
-|26.1.0-openEuler22.03-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-openEuler22.03-tf-py3.7)|
-|26.1.0-openEuler22.03-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-openEuler22.03-pt-py3.11)|
+|26.1.0-ubuntu20.04-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-ubuntu20.04-py3.7-tf)|
+|26.1.0-ubuntu22.04-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-ubuntu22.04-py3.11-pt)|
+|26.1.0-openEuler22.03-tf-py3.7|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.7-tf)|
+|26.1.0-openEuler22.03-pt-py3.11|[Dockerfile](https://gitcode.com/Ascend/RecSDK/blob/develop/docker/Dockerfile.26.1.0-cann9.1.0-openEuler22.03-py3.11-pt)|
 
 ## 快速开始
 
