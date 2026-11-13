@@ -54,7 +54,7 @@ The tool provides timeline views, memory analysis, operator duration analysis, c
 
 `compare_tools` supports comparing performance differences between GPU and NPU, and between different NPUs. By comparing training duration and memory usage, it pinpoints specific degraded operators and helps improve tuning efficiency. The tool breaks training duration down into three dimensions: computation, communication, and scheduling. It performs operator-level comparisons for computation and communication separately. It also breaks down the total memory used for training into operator-level memory usage for comparison.
 
-* [compare_tools](https://gitcode.com/Ascend/msprof-analyze/tree/26.2.0/msprof_analyze/compare_tools): A performance comparison tool that supports duration and memory comparison between GPU and NPU and between different NPUs, and locates degraded operators from the three dimensions of computation, communication, and scheduling.
+* `compare_tools`: A performance comparison tool that supports duration and memory comparison between GPU and NPU and between different NPUs, and locates degraded operators from the three dimensions of computation, communication, and scheduling. Install guide: compare_tools is integrated in msprof-analyze. You need to install [msprof-analyze](https://gitcode.com/Ascend/msprof-analyze/blob/26.2.0/README_EN.md#-installation-guide). Usage guide: [compare_tool_instruct](https://gitcode.com/Ascend/msprof-analyze/blob/26.2.0/docs/en/user_guide/compare_tool_instruct.md).
 
 ## Performance Data Analysis Examples
 
