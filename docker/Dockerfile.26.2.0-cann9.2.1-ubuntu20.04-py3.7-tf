@@ -160,8 +160,8 @@ ENV CORE_TYPE=${CORE_TYPE}
 # 流程：下载toolkit → 根据CORE_TYPE选择ops包 → 安装到默认路径 /usr/local/Ascend → 清理.run文件
 # CORE_TYPE映射：a2→910b-ops, a3→A3-ops, a5→950-ops
 RUN ARCH=$(uname -m) && \
-    TOOLKIT_URL_PREFIX="https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.1.T6" && \
-    TOOLKIT_SUFFIX="9.1.0-beta.3_linux-${ARCH}.run" && \
+    TOOLKIT_URL_PREFIX="https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.2.1" && \
+    TOOLKIT_SUFFIX="9.2.1_linux-${ARCH}.run" && \
     TOOLKIT_URL="${TOOLKIT_URL_PREFIX}/Ascend-cann-toolkit_${TOOLKIT_SUFFIX}" && \
     wget -q "$TOOLKIT_URL" && \
     # 根据CORE_TYPE选择对应的ops包
@@ -178,7 +178,7 @@ RUN ARCH=$(uname -m) && \
     wget -q "$OPS_URL" && \
     # 静默安装toolkit和ops到默认路径 /usr/local/Ascend
     chmod +x Ascend-cann-toolkit_*.run && \
-    bash Ascend-cann-toolkit_9.1.0*.run --quiet --install && \
+    bash Ascend-cann-toolkit_9.2.1*.run --quiet --install && \
     chmod +x Ascend-cann-*ops*.run && \
     bash Ascend-cann-*ops*.run --quiet --install && \
     # 清理安装包

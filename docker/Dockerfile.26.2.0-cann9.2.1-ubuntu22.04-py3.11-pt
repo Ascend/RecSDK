@@ -96,8 +96,8 @@ ENV CORE_TYPE=${CORE_TYPE}
 # 流程：下载toolkit → 根据CORE_TYPE选择ops包 → 安装到默认路径 /usr/local/Ascend → 清理.run文件
 # CORE_TYPE映射：a2→910b-ops, a3→A3-ops, a5→950-ops
 RUN ARCH=$(uname -m) && \
-    TOOLKIT_URL_PREFIX="https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.1.T6" && \
-    TOOLKIT_SUFFIX="9.1.0-beta.3_linux-${ARCH}.run" && \
+    TOOLKIT_URL_PREFIX="https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.2.1" && \
+    TOOLKIT_SUFFIX="9.2.1_linux-${ARCH}.run" && \
     TOOLKIT_URL="${TOOLKIT_URL_PREFIX}/Ascend-cann-toolkit_${TOOLKIT_SUFFIX}" && \
     wget -q "$TOOLKIT_URL" && \
     # 根据CORE_TYPE选择对应的ops包
@@ -114,7 +114,7 @@ RUN ARCH=$(uname -m) && \
     wget -q "$OPS_URL" && \
     # 静默安装toolkit和ops到默认路径 /usr/local/Ascend
     chmod +x Ascend-cann-toolkit_*.run && \
-    bash Ascend-cann-toolkit_9.1.0*.run --quiet --install && \
+    bash Ascend-cann-toolkit_9.2.1*.run --quiet --install && \
     chmod +x Ascend-cann-*ops*.run && \
     bash Ascend-cann-*ops*.run --quiet --install && \
     # 清理安装包
@@ -199,6 +199,8 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet --no-build-isolation /tmp/torch_rec_v2*.tar.gz && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet /tmp/fbgemm_ascend-1.2.0*.whl && \
     /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet /tmp/rec_cust_ops-2.7.1*.whl && \
+    # triton-ascend 3.2.2 与 torch_npu 2.7.1 配套（自动拉取依赖的 triton 本体）
+    /opt/buildtools/torch_v2_pt2.7.1/bin/pip install --quiet triton-ascend==3.2.2 --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi && \
     # === 3.2 创建 torch_v2_pt2.10.0 (PyTorch 2.10.0 + fbgemm_ascend 1.5.0 + rec_cust_ops 2.10.0) ===
     python3 -m venv /opt/buildtools/torch_v2_pt2.10.0 && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet pip==25.0.1 && \
@@ -216,6 +218,8 @@ RUN ARCH=$(uname -m) && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_gpu_cpu-1.5.0*.whl && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet /tmp/fbgemm_ascend-1.5.0*.whl && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet /tmp/rec_cust_ops-2.10.0*.whl && \
+    # triton-ascend 3.6.0 与 torch_npu 2.10.0 配套（自动拉取 triton==3.6.0）
+    /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet triton-ascend==3.6.0 --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet pytest pytest-cov pytest-html pytest-metadata && \
     /opt/buildtools/torch_v2_pt2.10.0/bin/pip install --quiet click hypothesis pyyaml && \
     # === 4. 清理pip缓存和所有下载的临时文件 ===
