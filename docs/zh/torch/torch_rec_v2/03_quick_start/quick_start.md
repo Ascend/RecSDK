@@ -174,7 +174,8 @@
     进入样例代码目录：
 
     ```bash
-    cd /RecSDK/torch_rec_v2_examples/little_demo
+    git clone -b develop_examples_and_tools https://gitcode.com/Ascend/RecSDK.git
+    cd RecSDK/torch_rec_v2_examples/little_demo
     ```
 
     下载 MovieLens-1M 数据集并解压到当前目录的 ml-1m 文件夹。
