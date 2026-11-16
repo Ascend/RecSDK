@@ -61,8 +61,19 @@ echo "CPU_AFFINITY_CONF="$CPU_AFFINITY_CONF
 
 #---------------------------------------------
 # prof related
+# 默认关闭；可通过 benchmark/configs 中 run_cmd 的 env 前缀或 profiling_flag 字段覆盖
 #---------------------------------------------
-export MODEL_PROFILING_FLAG=0
+export MODEL_PROFILING_FLAG=${MODEL_PROFILING_FLAG:-0}
+
+#---------------------------------------------
+# hccl related
+# HCCL 确定性开关，默认关闭；精度比对时设为 TRUE
+#---------------------------------------------
+export HCCL_DETERMINISTIC=${HCCL_DETERMINISTIC:-FALSE}
+# profiling 模式下强制开启 HCCL 确定性，保证多次采集结果可比
+case "${MODEL_PROFILING_FLAG}" in
+    1|true|TRUE|True) export HCCL_DETERMINISTIC=TRUE ;;
+esac
 
 #---------------------------------------------
 # train job related

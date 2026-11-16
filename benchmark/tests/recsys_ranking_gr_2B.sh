@@ -48,8 +48,13 @@ echo "CPU_AFFINITY_CONF="$CPU_AFFINITY_CONF
 
 #---------------------------------------------
 # precision config
+# 默认关闭；可通过 benchmark/configs 中 run_cmd 的 env 前缀覆盖，例如 PRECISION_FLAG=1
 #---------------------------------------------
-export PRECISION_FLAG=0
+export PRECISION_FLAG=${PRECISION_FLAG:-0}
+# 精度模式下开启 HCCL 通信确定性
+case "${PRECISION_FLAG}" in
+    1|true|TRUE|True) export HCCL_DETERMINISTIC=TRUE ;;
+esac
 
 #---------------------------------------------
 # train job related

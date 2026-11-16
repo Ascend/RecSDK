@@ -26,8 +26,9 @@ export PYTHONPATH=${PYTHONPATH}:${RECSYS_DIR}:${HSTU_DIR}:${MEGATRON_DIR}
 
 #---------------------------------------------
 # prof related
+# 默认关闭；可通过 benchmark/configs 中 run_cmd 的 env 前缀或 profiling_flag 字段覆盖
 #---------------------------------------------
-export MODEL_PROFILING_FLAG=0
+export MODEL_PROFILING_FLAG=${MODEL_PROFILING_FLAG:-0}
 
 #---------------------------------------------
 # train job related

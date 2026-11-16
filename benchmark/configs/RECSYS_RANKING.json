@@ -10,6 +10,8 @@
     "aclgraph_flag": false,
     "data_type": "float32",
     "run_cmd": [
+        "env",
+        "PRECISION_FLAG=0",
         "bash",
         "-c",
         "cd ./examples/hstu && bash recsys_ranking.sh"
@@ -20,9 +22,9 @@
         "cp -r ../../../tests/recsys_ranking.sh ./examples/hstu/",
         "mkdir -p ./examples/hstu/tmp_data",
         "cp -r ../../../dataset/recsys-examples/. ./examples/hstu/tmp_data",
-        "git clone https://gitcode.com/Ascend/MindSpeed.git ../MindSpeed",
+        "bash -c 'test -d ../MindSpeed/.git || git clone https://gitcode.com/Ascend/MindSpeed.git ../MindSpeed'",
         "git -C ../MindSpeed checkout core_r0.14.0",
-        "git clone https://github.com/NVIDIA/Megatron-LM.git ../Megatron-LM",
+        "bash -c 'test -d ../Megatron-LM/.git || git clone https://github.com/NVIDIA/Megatron-LM.git ../Megatron-LM'",
         "git -C ../Megatron-LM checkout core_r0.14.0"
     ]
 }

@@ -23,8 +23,9 @@ export PYTHONPATH=${PYTHONPATH}:${RECSYS_DIR}:${HSTU_DIR}:${MEGATRON_DIR}
 
 #---------------------------------------------
 # precision config
+# 默认关闭；可通过 benchmark/configs 中 run_cmd 的 env 前缀覆盖，例如 PRECISION_FLAG=1
 #---------------------------------------------
-export PRECISION_FLAG=0
+export PRECISION_FLAG=${PRECISION_FLAG:-0}
 
 #---------------------------------------------
 # train job related

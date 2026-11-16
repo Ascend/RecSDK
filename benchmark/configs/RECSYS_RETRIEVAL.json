@@ -20,9 +20,9 @@
         "cp -r ../../../tests/recsys_retrieval.sh ./examples/hstu/",
         "mkdir -p ./examples/hstu/tmp_data",
         "cp -r ../../../dataset/recsys-examples/. ./examples/hstu/tmp_data",
-        "git clone https://gitcode.com/Ascend/MindSpeed.git ../MindSpeed",
+        "bash -c 'test -d ../MindSpeed/.git || git clone https://gitcode.com/Ascend/MindSpeed.git ../MindSpeed'",
         "git -C ../MindSpeed checkout core_r0.14.0",
-        "git clone https://github.com/NVIDIA/Megatron-LM.git ../Megatron-LM",
+        "bash -c 'test -d ../Megatron-LM/.git || git clone https://github.com/NVIDIA/Megatron-LM.git ../Megatron-LM'",
         "git -C ../Megatron-LM checkout core_r0.14.0"
     ]
 }
