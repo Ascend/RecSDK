@@ -95,6 +95,16 @@ rm -rf ./profiler
 export GLOG_stderrthreshold=0
 
 #---------------------------------------------
+# precision config
+# 默认关闭；设为 1 时固定随机种子、关闭 shuffle 并固定参数初值，用于精度比对
+#---------------------------------------------
+export PRECISION_FLAG=${PRECISION_FLAG:-0}
+# 精度模式下开启 HCCL 通信确定性
+case "${PRECISION_FLAG}" in
+    1|true|TRUE|True) export HCCL_DETERMINISTIC=TRUE ;;
+esac
+
+#---------------------------------------------
 # train job related
 #---------------------------------------------
 py_file=pretrain_gr_ranking.py

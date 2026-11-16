@@ -497,9 +497,18 @@ index 4389a45..77d4321 100644
      model, dense_optimizer = apply_megatron_ddp(
          model, config, dense_optimizer_param, device
 diff --git a/examples/hstu/kuairand_1k_ranking.gin b/examples/hstu/kuairand_1k_ranking.gin
-index 7c980be..62c631f 100644
+index 7c980be..12d96c4 100644
 --- a/examples/hstu/kuairand_1k_ranking.gin
 +++ b/examples/hstu/kuairand_1k_ranking.gin
+@@ -3,7 +3,7 @@ TrainerArgs.eval_batch_size = 8
+ TrainerArgs.log_interval = 10
+ TrainerArgs.eval_interval = 10
+ TrainerArgs.log_interval = 10
+-TrainerArgs.max_train_iters = 550
++TrainerArgs.max_train_iters = 1000
+ 
+ DatasetArgs.dataset_name = 'kuairand-1k'
+ DatasetArgs.max_sequence_length = 4096
 @@ -14,6 +14,8 @@ NetworkArgs.num_layers = 3
  NetworkArgs.num_attention_heads = 4
  NetworkArgs.hidden_size = 512
@@ -521,12 +530,13 @@ index d6fe667..7c2fd3e 100644
  TrainerArgs.log_interval = 50
  TrainerArgs.eval_interval = 50
  
-@@ -12,6 +12,9 @@ NetworkArgs.num_layers = 1
+@@ -12,6 +12,10 @@ NetworkArgs.num_layers = 1
  NetworkArgs.num_attention_heads = 4
  NetworkArgs.hidden_size = 128
  NetworkArgs.kv_channels = 128
 +NetworkArgs.kernel_backend = 'npu_fused'
 +NetworkArgs.layer_type = 'native'
++TrainerArgs.max_train_iters = 1000
 +
  
  RankingArgs.prediction_head_arch = [
@@ -535,12 +545,13 @@ diff --git a/examples/hstu/kuairand_pure_ranking.gin b/examples/hstu/kuairand_pu
 index 884bc7a..95cb7db 100644
 --- a/examples/hstu/kuairand_pure_ranking.gin
 +++ b/examples/hstu/kuairand_pure_ranking.gin
-@@ -14,6 +14,8 @@ NetworkArgs.num_attention_heads = 4
+@@ -14,6 +14,9 @@ NetworkArgs.num_attention_heads = 4
  NetworkArgs.hidden_size = 128
  # per head dim
  NetworkArgs.kv_channels = 128
 +NetworkArgs.kernel_backend = 'npu_fused'
 +NetworkArgs.layer_type = 'native'
++TrainerArgs.max_train_iters = 1000
  
  RankingArgs.prediction_head_arch = [
      512, 8
@@ -713,7 +724,7 @@ diff --git a/examples/hstu/modules/hstu_attention.py b/examples/hstu/modules/hst
 index 8aa6894..ab83c97 100644
 --- a/examples/hstu/modules/hstu_attention.py
 +++ b/examples/hstu/modules/hstu_attention.py
-@@ -13,12 +13,14 @@
+@@ -13,12 +13,15 @@
  # See the License for the specific language governing permissions and
  # limitations under the License.
  import abc
@@ -723,13 +734,14 @@ index 8aa6894..ab83c97 100644
  import torch
  from commons.utils.nvtx_op import output_nvtx_hook
  from configs import KernelBackend
++import ops_rec
  
 +torch.npu.config.allow_internal_format = False
 +
  
  class HSTUAttention(torch.nn.Module):
      """
-@@ -132,6 +134,74 @@ class TorchHSTUAttention(HSTUAttention):
+@@ -132,6 +134,75 @@ class TorchHSTUAttention(HSTUAttention):
              target_group_size=target_group_size,
          ).view(-1, self.num_heads * self.linear_dim)
  
@@ -786,20 +798,21 @@ index 8aa6894..ab83c97 100644
 +            torch.Tensor: Output tensor of shape (T, d).
 +        """
 +
-+        return torch.ops.mxrec.hstu_jagged(tq.view(-1, self.num_heads, self.attention_dim), 
-+                                          tk.view(-1, self.num_heads, self.attention_dim), 
-+                                          tv.view(-1, self.num_heads, self.attention_dim),
-+                                          None,
-+                                          None,
-+                                          0,  # 0默认为下三角，跟TorchHSTUAttention的mask实现不一致
-+                                          max_seqlen,
-+                                          1.0 / max_seqlen,
-+                                          offsets.long(),
-+                                          num_contextuals,
-+                                          num_candidates,
-+                                          target_group_size,
-+                                          1.0 / (self.attention_dim**0.5),
-+                                          ).view(-1, self.num_heads * self.attention_dim)
++        return torch.ops.ops_rec.hstu_jagged.equal(
++            tq.view(-1, self.num_heads, self.attention_dim),
++            tk.view(-1, self.num_heads, self.attention_dim),
++            tv.view(-1, self.num_heads, self.attention_dim),
++            None,
++            None,
++            0,  # 0：下三角 causal mask
++            max_seqlen,
++            1.0 / max_seqlen,
++            offsets,
++            num_contextuals,
++            num_candidates,
++            target_group_size,
++            1.0 / (self.attention_dim ** 0.5),
++        ).view(-1, self.num_heads * self.attention_dim)
 +
  
  class TritonHSTUAttention(HSTUAttention):
@@ -2405,7 +2418,7 @@ index 1715109..1385aaa 100644
 +from megatron.training.yaml_arguments import validate_yaml
 +from megatron.training.global_vars import set_global_variables
 +import fbgemm_ascend
-+import rec_cust_ops
++import ops_rec
 +
 +from ops.pt_ops.pt_jagged_dense_convert import jagged_to_padded_dense_wrapper, dense_to_jagged_wrapper
  
@@ -2434,7 +2447,7 @@ index 1715109..1385aaa 100644
      ranking_args = RankingArgs()
  
      return RankingConfig(
-@@ -93,50 +88,78 @@ def create_ranking_config() -> RankingConfig:
+@@ -93,50 +88,89 @@ def create_ranking_config() -> RankingConfig:
          eval_metrics=ranking_args.eval_metrics,
      )
  
@@ -2468,6 +2481,12 @@ index 1715109..1385aaa 100644
          tensor_model_parallel_size=tp_args.tensor_model_parallel_size
      )
      init.set_random_seed(trainer_args.seed)
++    if os.environ.get("PRECISION_FLAG", "0").lower() in ("1", "true"):
++        from msprobe.pytorch import seed_all
++        seed_all(trainer_args.seed, mode=True, rm_dropout=True)
++        # 精度比对要求数据顺序一致，关闭数据集 shuffle
++        dataset_args.shuffle = False
++        print_rank_0("PRECISION_FLAG=1: dataset shuffle is disabled for precision comparison")
 -    free_memory, total_memory = torch.cuda.mem_get_info()
 +    free_memory, total_memory = torch_npu.npu.mem_get_info()
      print_rank_0(
@@ -2478,6 +2497,11 @@ index 1715109..1385aaa 100644
 +    task_config = create_ranking_config(network_args, embedding_args)
      model = get_ranking_model(hstu_config=hstu_config, task_config=task_config)
  
++    # 精度比对时固定模型参数为常量，消除随机初始化差异
++    if os.environ.get("PRECISION_FLAG", "0").lower() in ("1", "true"):
++        print_rank_0("Precision mode enabled: fixing all model parameters to fixed values")
++        for name, param in model.named_parameters():
++            param.data.fill_(0.01)
 -    dynamic_options_dict = create_dynamic_optitons_dict(
 -        embedding_args, network_args.hidden_size
 -    )
@@ -2531,13 +2555,14 @@ index 1715109..1385aaa 100644
  
  
 diff --git a/examples/hstu/utils.py b/examples/hstu/utils.py
-index 09b1a55..b259f7a 100644
+index 09b1a55..5f20e71 100644
 --- a/examples/hstu/utils.py
 +++ b/examples/hstu/utils.py
-@@ -12,22 +12,25 @@
+@@ -12,22 +12,26 @@
  # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  # See the License for the specific language governing permissions and
  # limitations under the License.
++import csv
 +import itertools
  import os
  import sys
@@ -2565,7 +2590,7 @@ index 09b1a55..b259f7a 100644
  from commons.utils.logging import print_rank_0
  from commons.utils.stringify import stringify_dict
  from configs import (
-@@ -37,13 +40,38 @@ from configs import (
+@@ -37,13 +41,38 @@ from configs import (
      PositionEncodingConfig,
      get_hstu_config,
  )
@@ -2607,7 +2632,7 @@ index 09b1a55..b259f7a 100644
  
  @gin.configurable
  @dataclass
-@@ -176,7 +204,7 @@ class NetworkArgs:
+@@ -176,7 +205,7 @@ class NetworkArgs:
              "float16",
          ], "Only support bfloat16 and float16 precision for Network."
  
@@ -2616,7 +2641,7 @@ index 09b1a55..b259f7a 100644
          assert self.layer_type.lower() in ["fused", "native"]
  
  
-@@ -211,6 +239,8 @@ def create_hstu_config(network_args: NetworkArgs):
+@@ -211,6 +240,8 @@ def create_hstu_config(network_args: NetworkArgs):
          kernel_backend = KernelBackend.TRITON
      elif network_args.kernel_backend == "pytorch":
          kernel_backend = KernelBackend.PYTORCH
@@ -2625,7 +2650,7 @@ index 09b1a55..b259f7a 100644
      else:
          raise ValueError(
              f"Kernel backend {network_args.kernel_backend} is not supported."
-@@ -346,39 +376,38 @@ def create_embedding_config(
+@@ -346,39 +377,38 @@ def create_embedding_config(
      )
  
  
@@ -2686,11 +2711,12 @@ index 09b1a55..b259f7a 100644
              eval_iter += 1
              model.evaluate_one_batch(batch)
              if max_eval_iters is not None and eval_iter == max_eval_iters:
-@@ -391,45 +420,179 @@ def evaluate(
+@@ -391,45 +421,242 @@ def evaluate(
          f"[eval] [eval {eval_iter * dp_size * trainer_args.eval_batch_size} samples]:\n    "
          + stringify_dict(eval_metric_dict, prefix="Metrics", sep="\n    ")
      )
 -    torch.cuda.nvtx.range_pop()
++    return eval_metric_dict
  
  
 -def maybe_load_ckpts(
@@ -2740,6 +2766,41 @@ index 09b1a55..b259f7a 100644
 +def batched(it: Iterator, n: int):
 +    for x in it:
 +        yield itertools.chain((x,), itertools.islice(it, n - 1))
++
++
++def report_final_results(step, epoch, batch_size, final_loss_value, train_times, metrics):
++    if train_times:
++        avg_ms = sum(train_times) / len(train_times) * 1000
++    else:
++        avg_ms = 0.0
++    try:
++        dataset_name = gin.query_parameter("DatasetArgs.dataset_name")
++    except ValueError:
++        dataset_name = "unknown"
++    auc_value = (metrics or {}).get("task0.AUC", 0.0)
++    if hasattr(auc_value, "item"):
++        auc_value = auc_value.item()
++    final_results = {
++        "dataset_name": dataset_name,
++        "batch_size": batch_size,
++        "epoch": epoch,
++        "step": step,
++        "final_loss": final_loss_value.cpu().item(),
++        "ms/step": float(avg_ms),
++        "metrics": {
++            "AUC": float(auc_value)
++        }
++    }
++    model_detail_info = "NPU" + "_" + "ranking" + "_" + "eager"
++    output_str = model_detail_info + "_" + str(final_results)
++    print_rank_0(f"The Final Result: {output_str}")
++    if dist.get_rank() == 0:
++        os.makedirs("../save_results_NPU", exist_ok=True)
++        with open("../save_results_NPU/precision_result.txt", "a", encoding="utf-8") as f:
++            f.write(output_str + "\n")
++        del final_results["ms/step"]
++        os.makedirs("../save_results_NPU/ranking", exist_ok=True)
++        torch.save(final_results, f"../save_results_NPU/ranking/predictions_ranking_eager_{step}.pt")
  
 -    assert os.path.exists(
 -        ckpt_load_dir
@@ -2798,6 +2859,20 @@ index 09b1a55..b259f7a 100644
 +    tokens_logged = torch.zeros(1).npu().float()
 +    npu_device = torch.device('npu', torch_npu.npu.current_device())
 +    last_td = time.time()
++    # 精度比对：记录每步 loss，供多次训练结果对比
++    precision_enabled = os.environ.get("PRECISION_FLAG", "0").lower() in ("1", "true")
++    precision_losses = []
++    train_times = []
++    final_loss_value = torch.zeros(1)
++    last_metrics = None
++    epoch = 0
++
++    def custom_model_bwd(losses, output):
++        nonlocal tokens_logged, last_td, final_loss_value
++        collective_assert(not torch.isnan(losses).any(), "loss has nan value")
++        _, logits, labels = output
++        jagged_size = logits.size(0)
++        local_tokens = torch.tensor(jagged_size).npu().float()
  
 -    if dist.get_rank() == 0:
 -        if os.path.exists(ckpt_save_dir):
@@ -2809,21 +2884,19 @@ index 09b1a55..b259f7a 100644
 -    dist.barrier(device_ids=[torch.cuda.current_device()])
 -    checkpoint.save(ckpt_save_dir, model, dense_optimizer=dense_optimizer)
 -    print_rank_0(f"Checkpoints saved!!")
-+    def custom_model_bwd(losses, output):
-+        nonlocal tokens_logged, last_td
-+        collective_assert(not torch.isnan(losses).any(), "loss has nan value")
-+        _, logits, labels = output
-+        jagged_size = logits.size(0)
-+        local_tokens = torch.tensor(jagged_size).npu().float()
-+
 +        losses = torch.sum(losses, dim=0)
 +        local_loss = torch.cat([torch.sum(losses).view(1), local_tokens.view(1)])
 +        reporting_loss = local_loss.clone().detach()
- 
++
 +        torch.distributed.all_reduce(
 +            reporting_loss, group=parallel_state.get_data_parallel_group()
 +        )
 +        tokens_logged += reporting_loss[1]
++        final_loss_value = (reporting_loss[0] / reporting_loss[1]).detach()
++        if precision_enabled and dist.get_rank() == 0 and train_iter < 100:
++            precision_losses.append(
++                {"step": train_iter, "loss": (reporting_loss[0] / reporting_loss[1]).item()}
++            )
 +        if train_iter >= 0 and train_iter % trainer_args.log_interval == 0:
 +            cur_td = time.time() - last_td
 +            print_rank_0(
@@ -2835,7 +2908,7 @@ index 09b1a55..b259f7a 100644
 +        # backward, loss_sum / total_tokens * mcore_dp_size
 +        local_loss_average = local_loss[0] / reporting_loss[1] * dp_size
 +        local_loss_average.backward()
-+
+ 
 +        # dense gradient allreduce
 +        finalize_model_grads([model.module], None)
 +
@@ -2868,6 +2941,7 @@ index 09b1a55..b259f7a 100644
 +
 +    for batched_iterator in batched(train_loader_iter, trainer_args.eval_interval):
 +        for train_iter in itertools.count(start_it):
++            step_start = time.time()
 +            try:
 +                pipeline.progress(batched_iterator)
 +                if prof_enabled:
@@ -2875,10 +2949,12 @@ index 09b1a55..b259f7a 100644
 +            except StopIteration:
 +                start_it = train_iter
 +                break
++            if train_iter > 100 and train_iter % 10 == 0:
++                train_times.append(time.time() - step_start)
 +        if start_it % trainer_args.eval_interval == 0:
 +            original_model = pipeline.detach()
 +            original_model.eval()
-+            evaluate(
++            last_metrics = evaluate(
 +                get_unwrapped_module(model),
 +                trainer_args=trainer_args,
 +                eval_loader=eval_loader,
@@ -2886,17 +2962,29 @@ index 09b1a55..b259f7a 100644
 +            )
 +            original_model.train()
 +            pipeline.attach()
++        epoch += 1
 +    
 +    print_rank_0("Training done!")
 +    if prof_enabled:
 +        prof.stop()
 +        print_rank_0("Profiler stopped!")
 +
++    if precision_enabled and precision_losses:
++        precision_csv_path = "../save_results_NPU/precision_losses.csv"
++        os.makedirs(os.path.dirname(precision_csv_path), exist_ok=True)
++        with open(precision_csv_path, "w", newline="", encoding="utf-8") as f:
++            writer = csv.DictWriter(f, fieldnames=["step", "loss"])
++            writer.writeheader()
++            writer.writerows(precision_losses)
++        print_rank_0(f"Precision losses saved to {precision_csv_path}")
++
++    report_final_results(train_iter, epoch, trainer_args.train_batch_size, final_loss_value, train_times, last_metrics)
++
 +    
  
  def train(
      model: DistributedModelParallel,
-@@ -438,26 +601,42 @@ def train(
+@@ -438,26 +665,49 @@ def train(
      eval_loader: torch.utils.data.DataLoader,
      dense_optimizer: torch.optim.Optimizer,
  ):
@@ -2938,6 +3026,12 @@ index 09b1a55..b259f7a 100644
 +        tokens_logged = torch.zeros(1).npu().float()
 +    else:
 +        raise ValueError("No GPU or NPU available")
++    # 精度比对：记录每步 loss，供多次训练结果对比
++    precision_enabled = os.environ.get("PRECISION_FLAG", "0").lower() in ("1", "true")
++    precision_losses = []
++    train_times = []
++    final_loss_value = torch.zeros(1)
++    last_metrics = None
      train_loader_iter = iter(train_loader)
      for train_iter in range(max_train_iters):
 -        if trainer_args.profile and train_iter == trainer_args.profile_step_start:
@@ -2951,10 +3045,11 @@ index 09b1a55..b259f7a 100644
 -
 -        torch.cuda.nvtx.range_push(f"step {train_iter}")
 -
++        step_start = time.time()
          try:
              batch = next(train_loader_iter)
          except StopIteration:
-@@ -465,7 +644,7 @@ def train(
+@@ -465,7 +715,7 @@ def train(
              train_loader_iter = iter(train_loader)
              batch = next(train_loader_iter)
  
@@ -2963,7 +3058,7 @@ index 09b1a55..b259f7a 100644
          model.module.zero_grad_buffer()
          dense_optimizer.zero_grad()
  
-@@ -473,7 +652,12 @@ def train(
+@@ -473,7 +723,12 @@ def train(
          losses, (_, logits, labels) = model(batch)
          collective_assert(not torch.isnan(losses).any(), "loss has nan value")
          jagged_size = logits.size(0)
@@ -2977,9 +3072,15 @@ index 09b1a55..b259f7a 100644
  
          losses = torch.sum(losses, dim=0)
          local_loss = torch.cat([torch.sum(losses).view(1), local_tokens.view(1)])
-@@ -484,10 +668,9 @@ def train(
+@@ -483,11 +738,15 @@ def train(
+             reporting_loss, group=parallel_state.get_data_parallel_group()
          )
          tokens_logged += reporting_loss[1]
++        final_loss_value = (reporting_loss[0] / reporting_loss[1]).detach()
++        if precision_enabled and dist.get_rank() == 0 and train_iter < 100:
++            precision_losses.append(
++                {"step": train_iter, "loss": (reporting_loss[0] / reporting_loss[1]).item()}
++            )
          if train_iter >= 0 and train_iter % trainer_args.log_interval == 0:
 -            gpu_timer.stop()
 -            cur_td = gpu_timer.elapsed_time() - last_td
@@ -2990,7 +3091,7 @@ index 09b1a55..b259f7a 100644
              )
              last_td = cur_td + last_td
              tokens_logged.zero_()
-@@ -498,9 +681,10 @@ def train(
+@@ -498,22 +757,37 @@ def train(
  
          # dense gradient allreduce
          finalize_model_grads([model.module], None)
@@ -2999,27 +3100,42 @@ index 09b1a55..b259f7a 100644
 -        torch.cuda.nvtx.range_pop()
 +        if prof_enabled:
 +            prof.step()
++        if train_iter > 100 and train_iter % 10 == 0:
++            train_times.append(time.time() - step_start)
 +
          if train_iter > 0 and train_iter % trainer_args.eval_interval == 0:
              model.eval()
-             evaluate(
-@@ -510,10 +694,11 @@ def train(
+-            evaluate(
++            last_metrics = evaluate(
+                 get_unwrapped_module(model),
+                 trainer_args=trainer_args,
+                 eval_loader=eval_loader,
                  max_eval_iters=None,
              )
              model.train()
 -        torch.cuda.nvtx.range_pop()
--
--        if trainer_args.profile and train_iter == trainer_args.profile_step_end:
--            torch.cuda.profiler.stop()
 +        
 +        print_rank_0("train end")
 +        if prof_enabled:
 +            prof.stop()
 +            print_rank_0("Profiler stopped!")
++
++    if precision_enabled and precision_losses:
++        precision_csv_path = "../save_results_NPU/precision_losses.csv"
++        os.makedirs(os.path.dirname(precision_csv_path), exist_ok=True)
++        with open(precision_csv_path, "w", newline="", encoding="utf-8") as f:
++            writer = csv.DictWriter(f, fieldnames=["step", "loss"])
++            writer.writeheader()
++            writer.writerows(precision_losses)
++        print_rank_0(f"Precision losses saved to {precision_csv_path}")
+ 
+-        if trainer_args.profile and train_iter == trainer_args.profile_step_end:
+-            torch.cuda.profiler.stop()
++    report_final_results(train_iter, 1, trainer_args.train_batch_size, final_loss_value, train_times, last_metrics)
  
  
  def get_dataset_and_embedding_args() -> (
-@@ -531,41 +716,41 @@ def get_dataset_and_embedding_args() -> (
+@@ -531,41 +805,41 @@ def get_dataset_and_embedding_args() -> (
      HASH_SIZE = 10_000_000
      if dataset_args.dataset_name == "kuairand-pure":
          return dataset_args, [
@@ -3073,7 +3189,7 @@ index 09b1a55..b259f7a 100644
              ),
              DynamicEmbeddingArgs(
                  feature_names=["video_id"],
-@@ -582,41 +767,41 @@ def get_dataset_and_embedding_args() -> (
+@@ -582,41 +856,41 @@ def get_dataset_and_embedding_args() -> (
          ]
      elif dataset_args.dataset_name == "kuairand-1k":
          return dataset_args, [
@@ -3127,7 +3243,7 @@ index 09b1a55..b259f7a 100644
              ),
              DynamicEmbeddingArgs(
                  feature_names=["video_id"],
-@@ -633,41 +818,41 @@ def get_dataset_and_embedding_args() -> (
+@@ -633,41 +907,41 @@ def get_dataset_and_embedding_args() -> (
          ]
      elif dataset_args.dataset_name == "kuairand-27k":
          return dataset_args, [
@@ -3181,7 +3297,7 @@ index 09b1a55..b259f7a 100644
              ),
              DynamicEmbeddingArgs(
                  feature_names=["video_id"],
-@@ -684,35 +869,35 @@ def get_dataset_and_embedding_args() -> (
+@@ -684,35 +958,35 @@ def get_dataset_and_embedding_args() -> (
          ]
      elif dataset_args.dataset_name == "ml-1m":
          return dataset_args, [
@@ -3227,7 +3343,7 @@ index 09b1a55..b259f7a 100644
              ),
              DynamicEmbeddingArgs(
                  feature_names=["movie_id"],
-@@ -729,11 +914,11 @@ def get_dataset_and_embedding_args() -> (
+@@ -729,11 +1003,11 @@ def get_dataset_and_embedding_args() -> (
          ]
      elif dataset_args.dataset_name == "ml-20m":
          return dataset_args, [

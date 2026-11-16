@@ -835,13 +835,16 @@ index 446ce12..e63169c 100644
  
  # Ignore all FutureWarnings
  warnings.filterwarnings("ignore", category=FutureWarning)
-@@ -107,6 +108,10 @@ def main():
+@@ -107,6 +108,13 @@ def main():
          tensor_model_parallel_size=tp_args.tensor_model_parallel_size
      )
      init.set_random_seed(trainer_args.seed)
-+    if os.environ.get("PRECISION_FLAG", "0") == "1":
++    if os.environ.get("PRECISION_FLAG", "0").lower() in ("1", "true"):
 +        from msprobe.pytorch import seed_all
-+        seed_all(trainer_args.seed, mode=True, rm_dropout=False)
++        seed_all(trainer_args.seed, mode=True, rm_dropout=True)
++        # 精度比对要求数据顺序一致，关闭数据集 shuffle
++        dataset_args.shuffle = False
++        print_rank_0("PRECISION_FLAG=1: dataset shuffle is disabled for precision comparison")
 +
      free_memory, total_memory = torch.cuda.mem_get_info()
      print_rank_0(
@@ -852,7 +855,7 @@ index 446ce12..e63169c 100644
  
 +    
 +    # Fix model parameters to fixed values when precision flag is enabled
-+    if os.environ.get("PRECISION_FLAG", "0") == "1":
++    if os.environ.get("PRECISION_FLAG", "0").lower() in ("1", "true"):
 +        print_rank_0("Precision mode enabled: fixing all model parameters to fixed values")
 +
 +        for name, param in model.named_parameters():

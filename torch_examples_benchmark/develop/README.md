@@ -128,6 +128,27 @@ pip3 install rec_cust_ops*.whl
 
 rec_cust_ops算子包更多编译安装说明请参见[rec_cust_ops编译安装](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md#build_recsdk_cust_ops)。
 
+#### 3.3 安装ops_rec
+
+`ops_rec`提供`hstu_jagged`等HSTU融合算子，从[ops-rec](https://gitcode.com/Ascend/ops-rec)源码编译安装。算子依赖CATLASS源码，编译前需初始化submodule：
+
+```bash
+git clone https://gitcode.com/Ascend/ops-rec.git
+cd ops-rec
+git submodule update --init --recursive
+# 编译并安装；--socs 可按平台选择 atlas_a2 / atlas_a3 / atlas_950，默认编译三个SOC变体
+bash build.sh --install -j16
+```
+
+生成的whl位于`dist/`目录，也可手动安装：
+
+```bash
+pip3 uninstall -y ops_rec
+pip3 install dist/ops_rec-*.whl
+```
+
+安装后`import ops_rec`会通过`acl.get_soc_name()`自动检测芯片型号并加载对应SOC变体的算子，无需手工设置`ASCEND_CUSTOM_OPP_PATH`。
+
 ## 附录
 
 ### 升级PyTorch 2.7.1版本配套
