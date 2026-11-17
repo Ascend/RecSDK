@@ -2,12 +2,8 @@
 
 | 模型名称 | 开源模型参考 | 模型简介 | 说明 | 适配路径 |
 |---------|---------|---------|---------|---------|
-| DIN (Deep Interest Network) | [alibaba/TorchEasyRec](https://github.com/alibaba/TorchEasyRec.git) | 深度兴趣网络模型，用于推荐系统中的兴趣建模 | 使用NPU算子进行训练加速。<br>开源代码依赖的三方库只有x86架构，该迁移样例只支持在x86上运行。 | [din/README](./din/README.md) |
 | DLRM (Deep Learning Recommendation Model)  | [facebookresearch/dlrm](https://github.com/facebookresearch/dlrm/tree/main/torchrec_dlrm/) | Facebook开源的深度学习推荐模型，广泛应用于推荐系统 | 适配torchrec框架并在NPU上进行训练。 | [dlrm/README](./dlrm/README.md) |
-| GR (Generative Recommendations) - Meta版 | [facebookresearch/generative-recommenders](https://github.com/facebookresearch/generative-recommenders) | Meta开源的生成式推荐模型 | 使用NPU的HSTU融合算子来实现性能优化。 | [gr/README](./gr/gr_meta/README.md) |
 | GR (Generative Recommendations) - NV版 | [NVIDIA/recsys-examples](https://github.com/NVIDIA/recsys-examples/tree/main/examples) | NVIDIA基于recsys-gr的生成式推荐模型 | 使用NPU的HSTU融合算子来实现性能优化。 | [gr_nv/README](./gr_nv/README.md) |
-| MMoE (Multi-gate Mixture-of-Experts) | [shenweichen/DeepCTR](https://github.com/shenweichen/DeepCTR/) | 多门控混合专家模型，常用于多任务学习场景 | 包含数据预处理和模型训练脚本。 | [README](./model_zoo/README.md) |
-| ETA (End-to-end Target Attention) | [End-to-End User Behavior Retrieval in Click-Through Rate Prediction Model](https://arxiv.org/pdf/2108.04468.pdf) | 适用于超长序列建模，同时具有较高的预测准确率和较低的计算复杂度 | 包含数据预处理和模型训练脚本。 | [README](./model_zoo/README.md) |
 
 # RecSDK-Torch 模型样例运行环境说明
 
