@@ -12,19 +12,24 @@
 
 ## 配套版本
 
-| 配套版本  | PyTorch | torch-npu | torchrec  | dynamic\_emb | fbgemm\_gpu | MindSpeed     | Megatron-LM   |
+| 配套软件  | PyTorch | torch-npu | torchrec  | dynamic\_emb | fbgemm\_gpu | MindSpeed     | Megatron-LM   |
 | ----- | ------- | --------- | --------- | ------------ | ----------- | ------------- | ------------- |
-| 配套版本1 | 2.7.1   | 2.7.1     | 1.2.0+npu | 25.09        | 1.2.0       | core\_v0.14.0 | core\_v0.14.0 |
+| 配套版本 | 2.7.1   | 2.7.1     | 1.2.0+npu | 25.09        | 1.2.0       | core\_v0.14.0 | core\_v0.14.0 |
 
 ## 安装依赖项
 
 ### 1. 模型特定依赖安装
 
-安装gin-config：
+安装其他依赖：
 
 ```shell
-pip3 install gin-config
+pip3 install nvtx gin-config einops regex
+pip3 install triton==3.9.0
 ```
+
+安装torchrec_npu:
+
+可参考 <https://gitcode.com/Ascend/RecSDK/tree/develop/training/torch_rec_v2/torchrec_npu> 安装 torchrec_npu。
 
 ### 2. MindSpeed和Megatron-LM安装
 
@@ -69,6 +74,13 @@ cp -f ../gr_npu.patch ./ && git apply gr_npu.patch
 ```shell
 cp ../run.sh ./examples/hstu/
 cd ./examples/hstu
+```
+
+将site-packages路径加入到LD_LIBRARY_PATH
+
+```shell
+SP=$(python3 -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
+export LD_LIBRARY_PATH=$SP:$LD_LIBRARY_PATH
 ```
 
 ### 2. 修改运行参数
