@@ -17,9 +17,11 @@
 # ==============================================================================
 
 from typing import Optional
+import dataclasses
 from dataclasses import dataclass, field
 
 from torchrec.distributed.planner.types import ParameterConstraints
+from torchrec.distributed.types import ShardingType
 from dynamic_emb.distributed.dynamicemb_config import DynamicEmbTableOptions
 from rec_sdk_common.validator.safe_checker import class_safe_check
 
@@ -43,5 +45,31 @@ class DynamicEmbParameterConstraints(ParameterConstraints):
 
     def __post_init__(self):
         class_safe_check("use_dynamicemb", self.use_dynamicemb, (bool,))
+        if not self.use_dynamicemb:
+            raise ValueError("use_dynamicemb should be True")
         class_safe_check("dynamicemb_options", self.dynamicemb_options, (DynamicEmbTableOptions,))
-        super().__post_init__()
+
+        if self.sharding_types != [ShardingType.ROW_WISE.value]:
+            raise ValueError(
+                "DynamicEmbParameterConstraints only supports sharding_types=[ShardingType.ROW_WISE.value]"
+            )
+        if self.compute_kernels != ["fused"]:
+            raise ValueError("DynamicEmbParameterConstraints only supports compute_kernels=['fused']")
+
+        try:
+            default_constraints = ParameterConstraints(
+                sharding_types=self.sharding_types,
+                compute_kernels=self.compute_kernels,
+            )
+        except (TypeError, ValueError):
+            default_constraints = ParameterConstraints()
+        for constraint_field in dataclasses.fields(ParameterConstraints):
+            field_name = constraint_field.name
+            if field_name in ("sharding_types", "compute_kernels"):
+                continue
+            if getattr(self, field_name) != getattr(default_constraints, field_name):
+                raise ValueError(f"DynamicEmbParameterConstraints only supports the default value for {field_name}")
+
+        super_post_init = getattr(super(), "__post_init__", None)
+        if super_post_init is not None:
+            super_post_init()

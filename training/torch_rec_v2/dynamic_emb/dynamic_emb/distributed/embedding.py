@@ -131,13 +131,20 @@ class DynamicEmbeddingCollectionContext(EmbeddingCollectionContext):
         seq_vbe_ctx: Optional[List] = None,
         frequency_counters: Optional[List[torch.Tensor]] = None,
     ) -> None:
-        super().__init__(sharding_contexts, input_features, reverse_indices, seq_vbe_ctx)
+        super().__init__(
+            sharding_contexts,
+            input_features if input_features is not None else [],
+            reverse_indices if reverse_indices is not None else [],
+            seq_vbe_ctx if seq_vbe_ctx is not None else [],
+        )
         self.frequency_counters: List[torch.Tensor] = frequency_counters or []
 
 
 class ShardedDynamicEmbeddingCollection(ShardedEmbeddingCollection):
     def __init__(self, *args, score_strategy: Optional[DynamicEmbScoreStrategy] = None, **kwargs):
         super().__init__(*args, **kwargs)
+        if not hasattr(self, "_has_uninitialized_input_dist"):
+            self._has_uninitialized_input_dist = True
         # Store the global score strategy.
         self._score_strategy = score_strategy
         self._is_lfu_enabled = (score_strategy == DynamicEmbScoreStrategy.LFU) if score_strategy else False
@@ -187,11 +194,11 @@ class ShardedDynamicEmbeddingCollection(ShardedEmbeddingCollection):
             if self._use_index_dedup:
                 features_by_shards = self._dedup_indices(ctx, features_by_shards)
             awaitables = []
-            for input_dist, features in zip(self._input_dists, features_by_shards):
-                awaitables.append(input_dist(features))
+            for input_dist, shard_features in zip(self._input_dists, features_by_shards):
+                awaitables.append(input_dist(shard_features))
                 ctx.sharding_contexts.append(
                     SequenceShardingContext(
-                        features_before_input_dist=features,
+                        features_before_input_dist=shard_features,
                         unbucketize_permute_tensor=(
                             input_dist.unbucketize_permute_tensor
                             if hasattr(input_dist, "unbucketize_permute_tensor")
@@ -224,10 +231,6 @@ class ShardedDynamicEmbeddingCollection(ShardedEmbeddingCollection):
         ctx: Optional[EmbeddingCollectionContext] = None,
     ) -> None:
         super()._create_hash_size_info(feature_names)
-        if self._use_index_dedup:
-            reserve_keys = torch.tensor(2, dtype=torch.int64, device=self._device)
-            reserve_vals = torch.tensor(2, dtype=torch.uint64, device=self._device)
-            counter = torch.tensor(1, dtype=torch.uint64, device=self._device)
 
         for i, sharding in enumerate(self._sharding_type_to_sharding.values()):
             nonfuse_table_feature_offsets: List[int] = []
@@ -279,15 +282,13 @@ class ShardedDynamicEmbeddingCollection(ShardedEmbeddingCollection):
                 lengths = input_feature.lengths()
                 dtype_convert = False
                 if indices.dtype != torch.int64:
-                    indices.dtype
                     indices_input = indices.to(torch.int64)
                     dtype_convert = True
                 else:
                     indices_input = indices
                 reverse_idx = torch.empty_like(indices, dtype=torch.int64, device=self._device)
                 unique_idx_list = [
-                    torch.empty_like(indices, dtype=torch.int64, device=self._device)
-                    for _ in range(table_num)
+                    torch.empty_like(indices, dtype=torch.int64, device=self._device) for _ in range(table_num)
                 ]
                 d_unique_nums = torch.empty(table_num, dtype=torch.int64, device=self._device)
                 d_unique_offsets = torch.zeros(table_num + 1, dtype=torch.int64, device=self._device)

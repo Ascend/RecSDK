@@ -23,6 +23,7 @@ from collections import defaultdict, OrderedDict
 
 import torch
 import torch.distributed as dist
+from torch.distributed.remote_device import _remote_device
 from torch import nn
 
 from torchrec.distributed.embedding_types import (
@@ -123,7 +124,10 @@ def get_state_dict(
             )
             key_to_global_metadata[key] = global_metadata
             local_metadata = local_metadatas[pg.rank()]
-            local_metadata.placement._device = param.device  # 多机环境下设备设置
+            if local_metadata.placement is None:
+                local_metadata.placement = _remote_device(param.device)
+            else:
+                local_metadata.placement._device = param.device  # 多机环境下设备设置
             key_to_local_shards[key].append(Shard(param, local_metadata))
         else:
             destination[key] = param

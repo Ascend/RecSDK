@@ -36,6 +36,12 @@ from torchrec.distributed.planner.types import (
     Topology,
 )
 from torchrec.distributed.planner.utils import sharder_name
+
+try:
+    from torchrec.distributed.planner.utils import build_sharder_data_map
+except ImportError:  # torchrec < 1.7
+    build_sharder_data_map = None
+
 from torchrec.distributed.sharding_plan import calculate_shard_sizes_and_offsets
 from torchrec.distributed.types import (
     BoundsCheckMode,
@@ -122,6 +128,7 @@ class DynamicEmbeddingEnumerator(EmbeddingEnumerator):
         super().__init__(topology, batch_size, constraints, estimator, use_exact_enumerate_order)
         self._constraints = constraints
         self._sharder_map = None
+        self._sharder_data_map = None
 
     def enumerate(
         self,
@@ -191,6 +198,8 @@ class DynamicEmbeddingEnumerator(EmbeddingEnumerator):
                     )
 
         self._sharder_map = {sharder_name(sharder.module_type): sharder for sharder in sharders}
+        if build_sharder_data_map is not None:
+            self._sharder_data_map = build_sharder_data_map(self._sharder_map)
         sharding_options: List[ShardingOption] = []
 
         named_modules_queue = [("", module)]

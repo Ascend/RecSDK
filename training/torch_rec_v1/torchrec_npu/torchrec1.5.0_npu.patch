@@ -30,19 +30,18 @@ index c6ec32bf..85b85b84 100644
          keywords=[
              "pytorch",
 diff --git a/torchrec/__init__.py b/torchrec/__init__.py
-index 29258f6f..5bfe1a4c 100644
+index 29258f6..38f6e24 100644
 --- a/torchrec/__init__.py
 +++ b/torchrec/__init__.py
-@@ -7,6 +7,8 @@
-
+@@ -7,6 +7,7 @@
+ 
  # pyre-strict
-
+ 
 +import enum
-+from fbgemm_gpu import split_table_batched_embeddings_ops_training
  import torchrec.distributed  # noqa
  import torchrec.quant  # noqa
  from torchrec.fx import tracer  # noqa
-@@ -34,3 +36,12 @@ try:
+@@ -34,3 +35,10 @@ try:
      from .version import __version__, github_version  # noqa
  except ImportError:
      pass
@@ -53,14 +52,12 @@ index 29258f6f..5bfe1a4c 100644
 +    CUDA = 1
 +    MTIA = 2
 +    NPU = 3
-+
-+split_table_batched_embeddings_ops_training.ComputeDevice = ComputeDevice
 diff --git a/torchrec/distributed/batched_embedding_kernel.py b/torchrec/distributed/batched_embedding_kernel.py
-index e0316ef2..13a361b5 100644
+index e0316ef..6393a54 100644
 --- a/torchrec/distributed/batched_embedding_kernel.py
 +++ b/torchrec/distributed/batched_embedding_kernel.py
 @@ -9,6 +9,8 @@
-
+ 
  import abc
  import copy
 +import enum
@@ -68,157 +65,10 @@ index e0316ef2..13a361b5 100644
  import inspect
  import itertools
  import logging
-@@ -29,6 +31,9 @@ from typing import (
-     TypeVar,
-     Union,
- )
-+import uuid
-+from itertools import accumulate
-+from math import log2
-
- import torch
- import torch.distributed as dist
-@@ -54,6 +59,7 @@ from fbgemm_gpu.tbe.ssd import ASSOC, SSDTableBatchedEmbeddingBags
- from fbgemm_gpu.tbe.ssd.utils.partially_materialized_tensor import (
-     PartiallyMaterializedTensor,
- )
-+from fbgemm_gpu.config import FeatureGate, FeatureGateName
- from torch import nn
- from torch.autograd.profiler import record_function
- from torch.distributed._tensor import DTensor, Replicate, Shard as DTensorShard
-@@ -107,6 +113,143 @@ from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
-
+@@ -107,6 +109,14 @@ from torchrec.sparse.jagged_tensor import KeyedJaggedTensor
+ 
  logger: logging.Logger = logging.getLogger(__name__)
-
-+
-+def custom_init(
-+    self,
-+    embedding_specs: List[Tuple[int, int]],  # tuple of (rows, dims)
-+    feature_table_map: Optional[List[int]] = None,  # [T]
-+    weights_precision: SparseType = SparseType.FP32,
-+    pooling_mode: PoolingMode = PoolingMode.SUM,
-+    use_cpu: bool = False,
-+    output_dtype: SparseType = SparseType.FP32,
-+    use_mtia: bool = False,
-+) -> None:  # noqa C901  # tuple of (rows, dims,)
-+    super(DenseTableBatchedEmbeddingBagsCodegen, self).__init__()
-+    self.uuid = str(uuid.uuid4())
-+
-+    self.log(
-+        f"Feature Gates: {[(feature.name, feature.is_enabled()) for feature in FeatureGateName]}"
-+    )
-+
-+    self.pooling_mode = pooling_mode
-+    self.weights_precision = weights_precision
-+    self.output_dtype: int = output_dtype.as_int()
-+    table_embedding_dtype = weights_precision.as_dtype()
-+
-+    self.use_cpu: bool = use_cpu
-+    self.use_mtia: bool = use_mtia
-+
-+    assert not (use_cpu and use_mtia), "Cannot use CPU and MTIA at the same time"
-+
-+    if self.use_cpu or self.pooling_mode == PoolingMode.NONE:
-+        assert output_dtype in [
-+            SparseType.FP32,
-+            SparseType.FP16,
-+            SparseType.BF16,
-+        ], "Fused pooled embedding quantization only supported for cuda."
-+
-+    self.current_device: torch.device = (
-+        torch.device("cpu")
-+        if self.use_cpu
-+        else (
-+            torch.device(f"mtia:{torch.mtia.current_device()}")
-+            if self.use_mtia
-+            else (
-+                torch.device(f"npu:{torch.npu.current_device()}")
-+                if hasattr(torch, "npu") and torch.npu.is_available()
-+                else torch.device(f"cuda:{torch.cuda.current_device()}")
-+            )
-+        )
-+    )
-+
-+    self.embedding_specs = embedding_specs
-+    (rows, dims) = zip(*embedding_specs)
-+    T_ = len(self.embedding_specs)
-+    assert T_ > 0
-+
-+    feature_table_map = (
-+        feature_table_map if feature_table_map is not None else list(range(T_))
-+    )
-+    T = len(feature_table_map)
-+    assert T_ <= T
-+
-+    feature_dims = [dims[t] for t in feature_table_map]
-+    D_offsets = [0] + list(accumulate(feature_dims))
-+    self.total_D = D_offsets[-1]
-+    self.max_D = max(dims)
-+    self.register_buffer(
-+        "D_offsets",
-+        torch.tensor(D_offsets, device=self.current_device, dtype=torch.int32),
-+    )
-+    assert self.D_offsets.numel() == T + 1
-+
-+    self.register_buffer(
-+        "feature_dims",
-+        torch.tensor(feature_dims, device="cpu", dtype=torch.int64),
-+    )
-+
-+    hash_size_cumsum = [0] + list(accumulate(rows))
-+    if hash_size_cumsum[-1] == 0:
-+        self.total_hash_size_bits: int = 0
-+    else:
-+        self.total_hash_size_bits: int = int(log2(float(hash_size_cumsum[-1])) + 1)
-+    hash_size_cumsum = [hash_size_cumsum[t] for t in feature_table_map] + [
-+        hash_size_cumsum[-1]
-+    ]
-+    self.register_buffer(
-+        "hash_size_cumsum",
-+        torch.tensor(
-+            hash_size_cumsum, device=self.current_device, dtype=torch.int64
-+        ),
-+    )
-+    weights_offsets = [0] + list(
-+        accumulate([row * dim for (row, dim) in embedding_specs])
-+    )
-+    self.weights = nn.Parameter(
-+        torch.randn(
-+            weights_offsets[-1],
-+            device=self.current_device,
-+            dtype=table_embedding_dtype,
-+        )
-+    )
-+    for feature in range(T):
-+        t = feature_table_map[feature]
-+        row, dim = embedding_specs[t]
-+        if (
-+            self.weights[weights_offsets[t] : weights_offsets[t + 1]].numel()
-+            != row * dim
-+        ):
-+            self.log(
-+                f"row {row} dim {dim} feature {feature} t {t} {self.weights[weights_offsets[t] : weights_offsets[t + 1]].numel()}"
-+            )
-+        assert (
-+            self.weights[weights_offsets[t] : weights_offsets[t + 1]].numel()
-+            == row * dim
-+        )
-+        assert self.hash_size_cumsum[feature] == sum(
-+            row for (row, _) in embedding_specs[:t]
-+        )
-+
-+    self.weights_physical_offsets: List[int] = weights_offsets
-+    weights_offsets = [weights_offsets[t] for t in feature_table_map]
-+    self.register_buffer(
-+        "weights_offsets",
-+        torch.tensor(
-+            weights_offsets, device=self.current_device, dtype=torch.int64
-+        ),
-+    )
-+
-+
-+DenseTableBatchedEmbeddingBagsCodegen.__init__ = custom_init
-+
+ 
 +
 +class ComputeDevice(enum.IntEnum):
 +    CPU = 0
@@ -230,7 +80,7 @@ index e0316ef2..13a361b5 100644
  RES_ENABLED_TABLES_STR = "res_enabled_tables"
  RES_STORE_SHARDS_STR = "res_store_shards"
  ENABLE_RAW_EMBEDDING_STREAMING_STR = "enable_raw_embedding_streaming"
-@@ -2433,6 +2576,11 @@ class BatchedFusedEmbedding(BaseBatchedEmbedding[torch.Tensor], FusedOptimizerMo
+@@ -2433,6 +2443,11 @@ class BatchedFusedEmbedding(BaseBatchedEmbedding[torch.Tensor], FusedOptimizerMo
                  # Set EmbeddingLocation.HOST to make embedding op in FBGEMM choose CPU path.
                  # But the tensor will still be created on MTIA with device type "mtia".
                  managed.append(EmbeddingLocation.HOST)
@@ -242,10 +92,10 @@ index e0316ef2..13a361b5 100644
              else:
                  compute_devices.append(ComputeDevice.CPU)
                  managed.append(EmbeddingLocation.HOST)
-@@ -2567,11 +2715,15 @@ class ShardedBatchedFusedEmbedding(BatchedFusedEmbedding):
+@@ -2567,11 +2582,15 @@ class ShardedBatchedFusedEmbedding(BatchedFusedEmbedding):
          self._shard_buf_nbytes: int = 0
          self._shard_buf: Optional[torch.Tensor] = None
-
+ 
 -        self._async_stream: torch.cuda.Stream = torch.cuda.Stream(
 -            device=self._emb_module.weights_dev.device
 -        )
@@ -260,12 +110,12 @@ index e0316ef2..13a361b5 100644
 +        else:
 +            self._async_event: Optional[torch.cuda.Event] = None
          self._rs_awaitable: Optional[ReduceScatterResizeAwaitable] = None
-
+ 
          self.register_full_backward_pre_hook(
-@@ -2716,7 +2868,10 @@ class ShardedBatchedFusedEmbedding(BatchedFusedEmbedding):
+@@ -2716,7 +2735,10 @@ class ShardedBatchedFusedEmbedding(BatchedFusedEmbedding):
                      async_op=True,
                  )
-
+ 
 -            self._async_event = torch.cuda.Event(enable_timing=False, blocking=False)
 +            if self._emb_module.weights_dev.device.type == "npu":
 +                self._async_event = torch.npu.Event(enable_timing=False, blocking=False)
@@ -273,8 +123,8 @@ index e0316ef2..13a361b5 100644
 +                self._async_event = torch.cuda.Event(enable_timing=False, blocking=False)
              # pyre-ignore[16]
              self._async_event.record(self._async_stream)
-
-@@ -2751,7 +2906,13 @@ class BatchedDenseEmbedding(BaseBatchedEmbedding[torch.Tensor]):
+ 
+@@ -2751,7 +2773,13 @@ class BatchedDenseEmbedding(BaseBatchedEmbedding[torch.Tensor]):
          use_cpu: bool = (
              device is None
              or device.type == "cpu"
@@ -289,7 +139,7 @@ index e0316ef2..13a361b5 100644
          )
          self._emb_module: DenseTableBatchedEmbeddingBagsCodegen = (
              DenseTableBatchedEmbeddingBagsCodegen(
-@@ -3544,6 +3705,11 @@ class BatchedFusedEmbeddingBag(
+@@ -3544,6 +3572,11 @@ class BatchedFusedEmbeddingBag(
                  # Set EmbeddingLocation.HOST to make embedding op in FBGEMM choose CPU path.
                  # But the tensor will still be created on MTIA with device type "mtia".
                  managed.append(EmbeddingLocation.HOST)
@@ -301,10 +151,10 @@ index e0316ef2..13a361b5 100644
              else:
                  compute_devices.append(ComputeDevice.CPU)
                  managed.append(EmbeddingLocation.HOST)
-@@ -3679,11 +3845,15 @@ class ShardedBatchedFusedEmbeddingBag(BatchedFusedEmbeddingBag):
+@@ -3679,11 +3712,15 @@ class ShardedBatchedFusedEmbeddingBag(BatchedFusedEmbeddingBag):
          self._shard_buf_nbytes: int = 0
          self._shard_buf: Optional[torch.Tensor] = None
-
+ 
 -        self._async_stream: torch.cuda.Stream = torch.cuda.Stream(
 -            device=self._emb_module.weights_dev.device
 -        )
@@ -319,12 +169,12 @@ index e0316ef2..13a361b5 100644
 +        else:
 +            self._async_event: Optional[torch.cuda.Event] = None
          self._rs_awaitable: Optional[ReduceScatterResizeAwaitable] = None
-
+ 
          self.register_full_backward_pre_hook(
-@@ -3829,7 +3999,10 @@ class ShardedBatchedFusedEmbeddingBag(BatchedFusedEmbeddingBag):
+@@ -3829,7 +3866,10 @@ class ShardedBatchedFusedEmbeddingBag(BatchedFusedEmbeddingBag):
                      async_op=True,
                  )
-
+ 
 -            self._async_event = torch.cuda.Event(enable_timing=False, blocking=False)
 +            if self._emb_module.weights_dev.device.type == "npu":
 +                self._async_event = torch.npu.Event(enable_timing=False, blocking=False)
@@ -332,8 +182,8 @@ index e0316ef2..13a361b5 100644
 +                self._async_event = torch.cuda.Event(enable_timing=False, blocking=False)
              # pyre-ignore[16]
              self._async_event.record(self._async_stream)
-
-@@ -3865,7 +4038,13 @@ class BatchedDenseEmbeddingBag(BaseBatchedEmbeddingBag[torch.Tensor]):
+ 
+@@ -3865,7 +3905,13 @@ class BatchedDenseEmbeddingBag(BaseBatchedEmbeddingBag[torch.Tensor]):
          use_cpu: bool = (
              device is None
              or device.type == "cpu"

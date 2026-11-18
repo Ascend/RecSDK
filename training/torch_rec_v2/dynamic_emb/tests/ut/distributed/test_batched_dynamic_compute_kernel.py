@@ -49,12 +49,7 @@ class MockOptimizerType(enum.Enum):
 
 def init_distributed():
     if not dist.is_initialized():
-        dist.init_process_group(
-            backend="gloo",
-            init_method="tcp://127.0.0.1:23457",
-            world_size=1,
-            rank=0
-        )
+        dist.init_process_group(backend="gloo", init_method="tcp://127.0.0.1:23457", world_size=1, rank=0)
     return dist.group.WORLD
 
 
@@ -64,21 +59,35 @@ class TestBatchedDynamicEmbedding(unittest.TestCase):
         self.mock_table1.name = "table_0"
         self.mock_table1.fused_params = {"dynamicemb_options": DynamicEmbTableOptions()}
         self.mock_table1.global_metadata = ShardedTensorMetadata(
-            shards_metadata=[ShardMetadata(shard_offsets=[0, 0], shard_sizes=[1, 1])])
+            shards_metadata=[ShardMetadata(shard_offsets=[0, 0], shard_sizes=[1, 1])]
+        )
         self.mock_table1.global_metadata.tensor_properties = Mock()
         self.mock_table1.num_features = Mock(return_value=1)
         self.mock_table1.num_embeddings = 1024
         self.mock_table1.feature_names = ["t0"]
+        self.mock_table1.embedding_dim = 8
+        self.mock_table1.local_rows = 1024
+        self.mock_table1.local_cols = 8
+        self.mock_table1.local_metadata = None
+        self.mock_table1.get_weight_init_min = Mock(return_value=-0.01)
+        self.mock_table1.get_weight_init_max = Mock(return_value=0.01)
 
         self.mock_table2 = Mock(spec=ShardedEmbeddingTable)
         self.mock_table2.name = "table_1"
         self.mock_table2.fused_params = {"dynamicemb_options": DynamicEmbTableOptions()}
         self.mock_table2.global_metadata = ShardedTensorMetadata(
-            shards_metadata=[ShardMetadata(shard_offsets=[0, 0], shard_sizes=[1, 1])])
+            shards_metadata=[ShardMetadata(shard_offsets=[0, 0], shard_sizes=[1, 1])]
+        )
         self.mock_table2.global_metadata.tensor_properties = Mock()
         self.mock_table2.num_features = Mock(return_value=1)
         self.mock_table2.num_embeddings = 1024
         self.mock_table2.feature_names = ["t1"]
+        self.mock_table2.embedding_dim = 8
+        self.mock_table2.local_rows = 1024
+        self.mock_table2.local_cols = 8
+        self.mock_table2.local_metadata = None
+        self.mock_table2.get_weight_init_min = Mock(return_value=-0.01)
+        self.mock_table2.get_weight_init_max = Mock(return_value=0.01)
 
         self.mock_config = Mock(spec=GroupedEmbeddingConfig)
         self.mock_config.embedding_tables = [self.mock_table1, self.mock_table2]
@@ -108,11 +117,7 @@ class TestBatchedDynamicEmbedding(unittest.TestCase):
         mock_batched_emb_tables.return_value = mock_emb_module
 
         # 初始化被测试类
-        emb_layer = BatchedDynamicEmbedding(
-            config=self.mock_config,
-            pg=self.pg,
-            device=self.device
-        )
+        emb_layer = BatchedDynamicEmbedding(config=self.mock_config, pg=self.pg, device=self.device)
 
         # 验证 BatchedDynamicEmbeddingTablesV2 被正确初始化
         mock_batched_emb_tables.assert_called_once()
@@ -126,11 +131,7 @@ class TestBatchedDynamicEmbedding(unittest.TestCase):
         mock_batched_emb_tables.return_value = mock_emb_module
 
         # 初始化被测试类
-        emb_layer = BatchedDynamicEmbedding(
-            config=self.mock_config,
-            pg=self.pg,
-            device=self.device
-        )
+        emb_layer = BatchedDynamicEmbedding(config=self.mock_config, pg=self.pg, device=self.device)
 
         # mock split_embedding_weights 返回值
         mock_weight1 = torch.tensor([[1.0]], device=self.device)
@@ -138,8 +139,8 @@ class TestBatchedDynamicEmbedding(unittest.TestCase):
         emb_layer.split_embedding_weights = Mock(return_value=[mock_weight1, mock_weight2])
         with patch(
             "torchrec.distributed.types.ShardedTensor._init_from_local_shards_and_global_metadata",
-            return_value=MagicMock(name="mocked_sharded_tensor")
-        ) as mock_target_method:
+            return_value=MagicMock(name="mocked_sharded_tensor"),
+        ):
             state_dict = emb_layer.state_dict()
             self.assertIn("table_0.weight", state_dict)
             self.assertIn("table_1.weight", state_dict)
