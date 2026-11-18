@@ -12,9 +12,9 @@
 
 ## 配套版本
 
-| 配套软件  | PyTorch | torch-npu | torchrec  | dynamic\_emb | fbgemm\_gpu | MindSpeed     | Megatron-LM   |
-| ----- | ------- | --------- | --------- | ------------ | ----------- | ------------- | ------------- |
-| 配套版本 | 2.7.1   | 2.7.1     | 1.2.0+npu | 25.09        | 1.2.0       | core\_v0.14.0 | core\_v0.14.0 |
+| 配套软件  | PyTorch | torch-npu | ops_rec  | torchrec | dynamic\_emb | fbgemm\_gpu | MindSpeed     | Megatron-LM   |
+| ----- | ------- | --------- | --------- | ------------ | ----------- | ------------- | ------------- |------------- |
+| 配套版本 | 2.7.1   | 2.7.1     | 2.7.1 | 1.2.0+npu  | 25.09        | 1.2.0       | core\_v0.14.0 | core\_v0.14.0 |
 
 ## 安装依赖项
 
@@ -27,9 +27,10 @@ pip3 install nvtx gin-config einops regex
 pip3 install triton==3.9.0
 ```
 
-安装torchrec_npu:
+安装torchrec_npu及ops_rec:
 
-可参考 <https://gitcode.com/Ascend/RecSDK/tree/develop/training/torch_rec_v2/torchrec_npu> 安装 torchrec_npu。
+- 参考 <https://gitcode.com/Ascend/RecSDK/tree/develop/training/torch_rec_v2/torchrec_npu> 安装 torchrec_npu。
+- 参考 <https://gitcode.com/Ascend/ops-rec/releases> 安装 ops_rec。
 
 ### 2. MindSpeed和Megatron-LM安装
 
