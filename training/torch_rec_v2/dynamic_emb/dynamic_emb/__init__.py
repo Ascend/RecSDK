@@ -15,6 +15,20 @@
 # limitations under the License.
 # ==============================================================================
 
+# Must be imported before any torchrec/fbgemm_gpu consumer is bound: it loads the
+# NPU operators (torch.ops.fbgemm.*) and runs fbgemm_ascend._fbgemm_patch.setup(),
+# which injects ComputeDevice.NPU and the DenseTableBatchedEmbeddingBagsCodegen
+# device branch into fbgemm_gpu. Importing it later is still handled by the
+# patch's direct/retrofix paths, but importing early takes the hook path.
+try:
+    import fbgemm_ascend  # noqa: F401
+except Exception as e:  # noqa: BLE001
+    raise ImportError(
+        "dynamic_emb requires fbgemm_ascend (NPU operator package). "
+        "It provides the torch.ops.fbgemm NPU dispatch and the fbgemm_gpu "
+        "python-side NPU adapter."
+    ) from e
+
 __version__ = "v25.09"
 
 from dynamic_emb.distributed.dynamicemb_config import (

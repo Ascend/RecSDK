@@ -371,6 +371,10 @@ def backend_session():
         torch.npu.set_device(int(os.environ["LOCAL_RANK"]))
     yield
     if not was_initialized and dist.is_initialized():
+        import gc
+
+        gc.collect()
+        torch.npu.synchronize()
         dist.destroy_process_group()
 
 
