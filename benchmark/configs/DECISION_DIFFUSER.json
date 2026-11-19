@@ -1,0 +1,17 @@
+{
+    "name": "DECISION_DIFFUSER",
+    "model_name": "decision-diffuser",
+    "url": "https://github.com/anuragajay/decision-diffuser.git",
+    "commit_id": "01ce528c30b4733dc59aa6203e46ec165561158d",
+    "patch_path": "patches/decision-diffuser.patch",
+    "mode": "infer",
+    "data_type": "float32",
+    "run_cmd": [
+        "bash",
+        "-c",
+        "cd code/analysis && exec bash launch.sh"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": []
+}

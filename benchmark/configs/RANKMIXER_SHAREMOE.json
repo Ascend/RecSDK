@@ -1,0 +1,19 @@
+{
+    "name": "RANKMIXER_SHAREMOE",
+    "model_name": "rankmixer-sharemoe",
+    "url": "https://gitcode.com/Ascend/RecSDK.git",
+    "commit_id": "6c088e4451ae2b93cd52928b4d3bd25f1574ef01",
+    "patch_path": "patches/rankmixer-sharemoe.patch",
+    "mode": "infer",
+    "data_type": "bfloat16",
+    "run_cmd": [
+        "bash",
+        "-c",
+        "cd benchmark/models/rankmixer-sharemoe/ScalingLaw && bash run.sh npu"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": [
+        "bash -c 'if [ ! -d benchmark/models/rankmixer-sharemoe/ScalingLaw ]; then cp -r benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw benchmark/models/rankmixer-sharemoe/; fi'"
+    ]
+}

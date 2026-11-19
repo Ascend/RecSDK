@@ -1,0 +1,17 @@
+{
+    "name": "HLLM_INFER",
+    "model_name": "hllm-infer",
+    "url": "https://github.com/bytedance/HLLM.git",
+    "commit_id": "864f17221c04a2d3082d9a072df00616bc7e6dab",
+    "patch_path": "patches/hllm-infer.patch",
+    "mode": "infer",
+    "data_type": "bfloat16",
+    "run_cmd": [
+        "bash",
+        "-c",
+        "cd code && bash launch_npu.sh"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": []
+}

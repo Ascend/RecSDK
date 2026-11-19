@@ -2,7 +2,7 @@
     "name": "RANKMIXER",
     "url": "https://gitcode.com/Ascend/RecSDK.git",
     "model_name": "rankmixer",
-    "commit_id": "97a61056fca443c3246f1838404cfded5122151b",
+    "commit_id": "6c088e4451ae2b93cd52928b4d3bd25f1574ef01",
     "patch_path": "patches/rankmixer.patch",
     "mode": "train",
     "epoch": 2,
@@ -16,12 +16,12 @@
         "BATCH_SIZE=128",
         "bash",
         "-c",
-        "cd ./rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/ && bash run.sh"
+        "cd ./benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/ && bash run.sh"
     ],
     "pip_install_self": false,
     "pip_install_requirements": false,
     "extra_cmd": [
-        "mkdir -p ./rec_model_zoo_pytorch/RankMixer/amzn_books.ori",
-        "cp -r ../../../dataset/rankmixer/. ./rec_model_zoo_pytorch/RankMixer/amzn_books.ori"
+        "mkdir -p ./benchmark/models/rankmixer/original/amzn_books.ori",
+        "cp -r ../../../dataset/rankmixer/. ./benchmark/models/rankmixer/original/amzn_books.ori"
     ]
 }
