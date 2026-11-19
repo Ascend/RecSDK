@@ -88,6 +88,16 @@ def generate_data(day):
     np.save(f"day_{day}_sparse.npy", day_0_sparse)
 
 
-thrad_pool = ProcessPoolExecutor(DAYS)
-for a_day in range(DAYS):
-    thrad_pool.submit(generate_data, a_day)
+def main():
+    # 固定worker数量为7，避免并发进程过多导致峰值内存过高
+    thread_pool = ProcessPoolExecutor(7)
+    try:
+        futures = [thread_pool.submit(generate_data, day) for day in range(DAYS)]
+        for future in futures:
+            future.result()
+    finally:
+        thread_pool.shutdown(wait=True)
+
+
+if __name__ == "__main__":
+    main()
