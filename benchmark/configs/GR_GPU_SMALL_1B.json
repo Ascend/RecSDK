@@ -1,0 +1,25 @@
+{
+    "name": "GR_GPU_SMALL_1B",
+    "model_name": "gr/gpu-small-1b",
+    "url": "https://github.com/NVIDIA/recsys-examples.git",
+    "commit_id": "062659385e5fffc249a89a9f1abd814dc23f9abb",
+    "patch_path": [],
+    "pre_cmd": [
+        "bash -o pipefail -c 'sed \"s/[[:space:]]*$//\" ../../../../patches/gr/GPU/GR_Base/GPU_GR.patch | git apply -'",
+        "git apply ../../../../patches/gr/GPU/GR_SparseMOE/GPU_GR_SparseMOE.patch",
+        "bash -o pipefail -c 'dos2unix < ../../../../patches/gr/GPU/GR_SparseMOE/rab_module.patch | git apply -'",
+        "git apply ../../../../patches/gr/GPU/GR_SparseMOE_Small/GR_SparseMOE_Small.patch"
+    ],
+    "mode": "infer",
+    "data_type": "bfloat16",
+    "run_cmd": [
+        "bash",
+        "-c",
+        "cd examples/hstu && exec bash run_random_2k_1B.sh"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": [
+        "mkdir -p examples/hstu/input_output"
+    ]
+}

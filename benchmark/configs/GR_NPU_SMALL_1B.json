@@ -1,0 +1,26 @@
+{
+    "name": "GR_NPU_SMALL_1B",
+    "model_name": "gr/npu-small-1b",
+    "url": "https://github.com/NVIDIA/recsys-examples.git",
+    "commit_id": "062659385e5fffc249a89a9f1abd814dc23f9abb",
+    "patch_path": [
+        "patches/gr/NPU/GR_Base/NPU_GR.patch",
+        "patches/gr/NPU/GR_SparseMOE/NPU_GR_SparseMOE.patch"
+    ],
+    "pre_cmd": [
+        "bash -o pipefail -c 'dos2unix < ../../../../patches/gr/NPU/GR_SparseMOE/rab_module.patch | git apply -'",
+        "git apply ../../../../patches/gr/NPU/GR_SparseMoE_Small/GR_SparseMOE_Small.patch"
+    ],
+    "mode": "infer",
+    "data_type": "bfloat16",
+    "run_cmd": [
+        "bash",
+        "-c",
+        "cd examples/hstu && exec bash run_random_2k_1B.sh"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": [
+        "mkdir -p examples/hstu/input_output"
+    ]
+}

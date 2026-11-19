@@ -1,7 +1,7 @@
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py
 index ce52f9d98..c5666391e 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/concat_dataset.py
 @@ -16,3 +16,3 @@ class MultiCSVIterator:
                   itemid_column_name='item_id', file_format='csv', split_chunks_by_worker_id=False, chunksize=10000000,
 -                 use_column_names=False, use_cols = None, shuffle=False, epoch_num=0) -> None:
@@ -56,10 +56,10 @@ index ce52f9d98..c5666391e 100644
  
 -        
 \ No newline at end of file
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
 index 5b9ece253..2a1ba8dfa 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
 @@ -1,3 +1,5 @@
  import os
 +import random
@@ -112,19 +112,19 @@ index 5b9ece253..2a1ba8dfa 100644
          worker_init_fn=worker_init_fn,
 +        generator=generator,
          pin_memory=True,
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py
 index 795451304..94bee80fd 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/eval.py
 @@ -441,2 +441,4 @@ def avg_eval(x: torch.Tensor, world_size: int) -> float:
  def gather_all_list(x: list, world_size: int) -> torch.Tensor:
 +    if world_size <= 1:
 +        return x
      obj_list = [None for _ in range(world_size)]
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py
 index d6e00c990..2dd3190e1 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/reco_dataset.py
 @@ -37,3 +37,4 @@ def get_reco_dataset(
          cut_off_time: int = None,        
 -        token_per_item: int = 2
@@ -159,10 +159,10 @@ index d6e00c990..2dd3190e1 100644
              shuffle=True,
 +            global_seed=global_seed,
          )
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
-index acb4e3df6..32be41dc2 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
+index b69346db7..32be41dc2 100644
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
 @@ -42,10 +42,9 @@ from utils.common_utils import get_unique_path, to_clean_cpu_tensor
  
 -NPU_ENABLE = True
@@ -339,6 +339,11 @@ index acb4e3df6..32be41dc2 100644
 -    profiling_flag = False if int(os.environ.get("PROFILING_FLAG", 0)) == 0 else True
 +    profiling_flag = False if int(os.environ.get("MODEL_PROFILING_FLAG", 0)) == 0 else True
      enable_compile = False if int(os.environ.get("ENABLE_COMPILE", 0)) == 0 else True
+@@ -591,3 +638,3 @@
+                     ],
+-                schedule=torch_npu.profiler.schedule(wait=1, active=10, warmup=8, repeat=1, skip_first=1),    # 与prof.step()配套使用
++                schedule=torch_npu.profiler.schedule(wait=1, active=10, warmup=3, repeat=1, skip_first=1),    # 与prof.step()配套使用
+                 on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(profiler_save_path),
 @@ -642,3 +689,4 @@ def evaluate_step(model, exec_cb: Callable[[int], Tuple[torch.Tensor, Sequential
                  scores, ground_truth, group_keys = process_rank_scores(
 -                    model.module, eval_seq_features, feature_conf.get('save_score_csv_item_cols', {}),
@@ -653,10 +658,10 @@ index acb4e3df6..32be41dc2 100644
 +            global_seed=global_seed,
 +            rank=rank,
          )
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py
 index 585196125..12eb04153 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/initialization.py
 @@ -3,2 +3,19 @@ import torch
  
 +FIXED_WEIGHT_VALUE = 0.01
@@ -677,10 +682,10 @@ index 585196125..12eb04153 100644
 +
 +
  def truncated_normal(x: torch.Tensor, mean: float, std: float) -> torch.Tensor:
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
 index befbf7531..7b6660bdb 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
 @@ -2,9 +2,11 @@ from numpy import add
  import torch
 -ENABLE_NPU=False
@@ -1143,10 +1148,10 @@ index befbf7531..7b6660bdb 100644
 -        return {"deep_outputs": torch.zeros((B, N, D), device=device), "deep_loss": 0.0, "deep_sparsity": 0.0}
 \ No newline at end of file
 +        return {"deep_outputs": torch.zeros((B, N, D), device=device), "deep_loss": 0.0, "deep_sparsity": 0.0}
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
 index aab1e849c..90d3ddedb 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
 @@ -7,2 +7,3 @@ from regex import F
  import torch
 +from modeling.generic.initialization import fixed_init_
@@ -1251,10 +1256,10 @@ index aab1e849c..90d3ddedb 100644
 +
 +        return loss
  
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py
 index 9015ec53b..585f8d6ca 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/embedding_modules.py
 @@ -8,3 +8,3 @@ import pandas as pd
  from modeling.generic.sequential_v2.base_model import BaseModel
 -from modeling.generic.initialization import truncated_normal
@@ -1274,10 +1279,10 @@ index 9015ec53b..585f8d6ca 100644
 +                fixed_init_(name, params)
 +            elif ('emb' in name and name not in not_init_names) or (name in not_init_names and (self.use_trained_emb == False or self.is_recall == True)):
                  logging.info("Initialize %s as truncated normal: %s params" % (name, params.data.size()))
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
 index 26a8467aa..412713477 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/local_trainer.py
 @@ -15,9 +15,8 @@ from modeling.generic.sequential_v2.features import seq_features_from_row_cpu, S
  
 -
@@ -1314,10 +1319,10 @@ index 26a8467aa..412713477 100644
          if model.training:
 +            output.backward()
              opt.step()
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
 index 69b6273d5..dad531e86 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
 @@ -14,8 +14,8 @@ from modeling.generic.sequential_v2 import HAS_ATTN_FUSION_OPS
  
 -NPU_ENABLE = True
@@ -1336,10 +1341,10 @@ index 69b6273d5..dad531e86 100644
              raise ValueError("Unknown string %s", qk_attn_denominator)  
 -        logging.info(f'denominator value is {self.qk_attn_denominator_value}')
  
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
 index 8dde43fce..9e98a7b65 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/utils/almightygosu_utils.py
 @@ -4,8 +4,8 @@ import os
  import torch
 -NPU_ENABLE = True
@@ -1354,10 +1359,10 @@ index 8dde43fce..9e98a7b65 100644
 +except:
 +    import torch
  
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py
 index c2ab72d51..16046a4c9 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/model_registry.py
 @@ -55,4 +55,2 @@ class ModelRegistry:
              module_name = name if name else cls.__name__
 -            if module_name in ModelRegistry.__module_meta_dict:
@@ -1367,10 +1372,10 @@ index c2ab72d51..16046a4c9 100644
              ModelRegistry.__module_meta_dict[module_name] = gr_module_meta
 -            logging.info("'%s' register succeed.", module_name)
              return cls
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
-index b530d773c..818afd8c9 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
+index c61152ca2..818afd8c9 100644
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
 @@ -1,5 +1,2 @@
  #!/bin/bash
 -echo -e "\n--> Generative Recommenders on ROMA environment\n"
@@ -1440,7 +1445,7 @@ index b530d773c..818afd8c9 100644
 -    --is_train=False \
 +    --is_train=True \
      --save_user_emb=False \
-@@ -94,66 +53,34 @@ PYTHON_ARGS="
+@@ -94,69 +53,34 @@ PYTHON_ARGS="
      --tensorboard_log_dir=${save_dir}/ScalingLaw/runs/exp_amzn_all/"
 -#按需添加--eval_batch_size=128修改batch size
 -export PYTHONPATH=$(dirname $(realpath $(find ${cur_dir} -name "DLRM.py"))):${PYTHONPATH}
@@ -1473,6 +1478,9 @@ index b530d773c..818afd8c9 100644
  
 -# inductor相关环境变量
 -export ENABLE_COMPILE=0
+-if [[ ${MODEL_COMPILE_FLAG:-} == True ]]; then
+-    export ENABLE_COMPILE=1
+-fi
 -export ENABLE_GRAPH=0
 -export ENABLE_SYNC_LOADER=1
 -export CHECK_PRECISION=0
@@ -1538,11 +1546,11 @@ index b530d773c..818afd8c9 100644
 +        $PYTHON_SCRIPT \
 +        $PYTHON_ARGS
 \ No newline at end of file
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/utils/npu_grouped_matmul_ops.py b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/utils/npu_grouped_matmul_ops.py
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/utils/npu_grouped_matmul_ops.py b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/utils/npu_grouped_matmul_ops.py
 new file mode 100644
 index 000000000..c454feee2
 --- /dev/null
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/ScalingLaw/utils/npu_grouped_matmul_ops.py
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/utils/npu_grouped_matmul_ops.py
 @@ -0,0 +1,54 @@
 +from typing import Tuple
 +
@@ -1598,10 +1606,10 @@ index 000000000..c454feee2
 +    group_list: torch.Tensor,
 +) -> Tuple[torch.Tensor, torch.Tensor]:
 +    return x.new_empty(x.shape), weight.new_empty(weight.shape)
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini
 index 6a17a8859..c203e6605 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.2B.ini
 @@ -58,3 +58,3 @@
      "eval_batch_size": 128,
 -    "eval_interval": 100,
@@ -1623,10 +1631,10 @@ index 6a17a8859..c203e6605 100644
 -}
 \ No newline at end of file
 +}
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini
 index 04c8aa810..0f12be20f 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_0.5B.ini
 @@ -58,3 +58,3 @@
      "eval_batch_size": 128,
 -    "eval_interval": 100,
@@ -1648,10 +1656,10 @@ index 04c8aa810..0f12be20f 100644
 -}
 \ No newline at end of file
 +}
-diff --git a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini
+diff --git a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini
 index d4bb9c3dd..080d53f62 100644
---- a/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini
-+++ b/rec_model_zoo_pytorch/RankMixer/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini
+--- a/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini
++++ b/benchmark/models/rankmixer/original/ScalingLaw-Rank-Generic-recall/sample_configs/train_amazon_books_1B.ini
 @@ -58,3 +58,3 @@
      "eval_batch_size": 64,
 -    "eval_interval": 100,

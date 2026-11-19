@@ -1,7 +1,7 @@
-diff --git a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
+diff --git a/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py b/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
 index 5b9ece25..fc6991e1 100644
---- a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
-+++ b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
+--- a/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
++++ b/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/data/data_loader.py
 @@ -4,82 +4,67 @@ import torch
  
 -def create_data_loader(
@@ -281,10 +281,10 @@ index 5b9ece25..fc6991e1 100644
 -        drop_last=True
 +        **_base_loader_kwargs(num_workers, prefetch_factor, pin_memory=True, persistent_workers=True)
      )
-diff --git a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
+diff --git a/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py b/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
 index acb4e3df..6f9ae23b 100644
---- a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
-+++ b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
+--- a/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
++++ b/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/main.py
 @@ -171,5 +171,11 @@ def get_optimizer_callback(train_conf) -> Callable[
  
 +def time_wrap_xpu():
@@ -789,10 +789,10 @@ index acb4e3df..6f9ae23b 100644
 +        torch.save(final_results, f"../save_results_{device_name}/{model_name}/predictions_{model_name}_{inductor_flag}_ep{epochs}.pt")
 +
  def eval_fn(config, data_dir, save_dir, feature_map_dir_or_path, period, already_init=False) -> None:
-diff --git a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
+diff --git a/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py b/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
 index befbf753..93215c3f 100644
---- a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
-+++ b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
+--- a/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
++++ b/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/DLRM.py
 @@ -24,3 +24,3 @@ torch._dynamo.disallow_in_graph(F.one_hot)
  
 -@ModelRegistry.register(req_subs={"RankMixer"})
@@ -865,10 +865,10 @@ index befbf753..93215c3f 100644
 -        return {"deep_outputs": torch.zeros((B, N, D), device=device), "deep_loss": 0.0, "deep_sparsity": 0.0}
 \ No newline at end of file
 +        return {"deep_outputs": torch.zeros((B, N, D), device=device), "deep_loss": 0.0, "deep_sparsity": 0.0}
-diff --git a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
+diff --git a/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py b/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
 index aab1e849..cecc6797 100644
---- a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
-+++ b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
+--- a/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
++++ b/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/GR_model.py
 @@ -15,3 +15,4 @@ from modeling.generic.sequential_v2.output_postprocessors import OutputPostproce
  from modeling.generic.sequential_v2.prediction_modules import FeedForwardModule
 -from modeling.generic.sequential_v2.DLRM import DLRModule, RankMixer
@@ -888,10 +888,10 @@ index aab1e849..cecc6797 100644
 -                                                x_offsets=x_offsets)
 \ No newline at end of file
 +                                                x_offsets=x_offsets)
-diff --git a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
+diff --git a/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py b/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
 index 69b6273d..d3bf8b98 100644
---- a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
-+++ b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
+--- a/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
++++ b/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/modeling/generic/sequential_v2/transformers.py
 @@ -98,2 +98,16 @@ class RMSNormNPU(torch.nn.Module):
  
 +    def add_and_norm(self, residual: torch.Tensor, x: torch.Tensor):
@@ -925,10 +925,10 @@ index 69b6273d..d3bf8b98 100644
 -        return x, cache_states
 \ No newline at end of file
 +        return x, cache_states
-diff --git a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
-index b530d773..a34f6ebb 100644
---- a/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
-+++ b/rec_model_zoo_pytorch/tokenmixer-large/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
+diff --git a/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh b/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
+index b530d773..a27c4002 100644
+--- a/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
++++ b/benchmark/models/tokenmixer-large/original/ScalingLaw-Rank-Generic-recall/ScalingLaw/run.sh
 @@ -1,5 +1,2 @@
  #!/bin/bash
 -echo -e "\n--> Generative Recommenders on ROMA environment\n"
@@ -1054,7 +1054,7 @@ index b530d773..a34f6ebb 100644
  
 +if [ ! -d "${data_dir}" ]; then
 +    echo "ERROR: data_dir does not exist: ${data_dir}" >&2
-+    echo "Pass --data_dir=/path/to/amzn_books.ori or place data under rec_model_zoo_pytorch/tokenmixer-large/amzn_books.ori." >&2
++    echo "Pass --data_dir=/path/to/amzn_books.ori or place data under benchmark/models/tokenmixer-large/original/amzn_books.ori." >&2
 +    exit 1
 +fi
 +
@@ -1090,7 +1090,7 @@ index b530d773..a34f6ebb 100644
 -# Define the Python script
 +# Python entrypoint
  PYTHON_SCRIPT=${train_workdir}/main.py
-@@ -90,70 +139,84 @@ PYTHON_ARGS="
+@@ -90,70 +139,89 @@ PYTHON_ARGS="
      --save_dir=${save_dir}/modelfile/ \
 -    --is_train=False \
 -    --save_user_emb=False \
@@ -1230,6 +1230,11 @@ index b530d773..a34f6ebb 100644
 +    export NPU_DATALOADER_START_METHOD
 +    export NPU_DATALOADER_PIN_MEMORY
 +fi
++
++case "${MODEL_COMPILE_FLAG:-}" in
++    True) export ENABLE_COMPILE=1 ;;
++    False) export ENABLE_COMPILE=0 ;;
++esac
 +
 +echo "======== start torchrec =========="
 +torchrun --nproc_per_node=$NGPUS_PER_NODE \

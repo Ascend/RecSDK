@@ -1,0 +1,17 @@
+{
+    "name": "GR_TP4",
+    "model_name": "gr-tp4-native",
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": [],
+    "run_cmd": [
+        "bash",
+        "-c",
+        "cd model_zoo && bash run.sh"
+    ],
+    "url": "https://gitee.com/omniai/omniinfer.git",
+    "commit_id": "7f666aba07a8e98213954be40521876862555281",
+    "patch_path": "patches/gr-tp4.patch",
+    "mode": "infer",
+    "data_type": "bfloat16"
+}
