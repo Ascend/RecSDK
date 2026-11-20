@@ -27,8 +27,6 @@
 # 在当前目录下载源码并编译
 git clone -b release/v1.2.0 https://github.com/pytorch/torchrec.git
 cd torchrec && git checkout 5db1a21 && cd ..
-# 将`build_whl_torchrec1.2.0.sh`和`torchrec1.2.0_npu.patch`置于torchrec同级目录下
-# 执行torchrec v1.2.0 NPU适配
 dos2unix build_whl_torchrec1.2.0.sh && bash build_whl_torchrec1.2.0.sh
 # 安装
 cd torchrec/dist
