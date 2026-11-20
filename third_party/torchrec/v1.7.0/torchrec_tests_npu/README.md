@@ -24,9 +24,9 @@
 ```shell
 
 # 前提：已完成torchrec v1.7.0的NPU适配（参考说明完成适配）
-# 将`build_torchrec1.7.0_tests.sh`、`run_tests.sh`和`torchrec1.7.0_tests_npu.patch`置于torchrec同级目录下
+# 将`build_torchrec1.7.0_tests.sh`、`run_tests.sh`和`torchrec1.7.0_tests_npu.patch`置于third_party/torchrec/v1.7.0/torchrec_npu/torchrec同级目录下
 # 执行torchrec v1.7.0测试用例适配
 dos2unix build_torchrec1.7.0_tests.sh && bash build_torchrec1.7.0_tests.sh
-# 在torchrec根目录下执行测试用例（torchrec/run_tests.sh）
+# 在torchrec根目录下执行测试用例（third_party/torchrec/v1.7.0/torchrec_npu/torchrec/run_tests.sh）
 cd torchrec && bash run_tests.sh
 ```
