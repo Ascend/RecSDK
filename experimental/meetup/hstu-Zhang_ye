@@ -1,0 +1,175 @@
+# HSTU 算子编译运行 总结报告
+
+> **一句话结论**：已在昇腾 A5（Ascend950PR，1 卡）上完成 HSTU v2（forward/backward）算子编译、安装与用例运行，全部用例通过；关键阻塞点：有——CANN 9.1.0-beta.3 缺少 `acl/acl_platform.h`、镜像未预装 triton-ascend；关键指标：pytest `32 passed` + `35 passed`，torch/aclnn 样例 4 项全部 `PASSED`。
+
+## 1 文档信息
+
+| 项目 | 内容 |
+| --- | --- |
+| 文档类型 | 验证报告 |
+| 提交人 | GitCode ID：Zhang_ye 2501_93592809 chengyufeng888 Lyxyr 朋也|
+| 文档版本 / 日期 | v1 / 2026-11-20 |
+
+## 2 任务背景与目标
+
+- **任务目标**：在 Ascend950PR 单卡环境按 `ops-rec` 官方文档完成 HSTU v2 attention 算子的编译与安装，并运行 torch / aclnn 样例及 pytest 精度用例，保留全过程日志。
+- **任务结果**：已达成目标。关键阻塞点：有——(1) 镜像未安装 numpy/pyyaml/triton，torch_npu 无法导入；(2) CANN 9.1.0-beta.3 不提供 `acl/acl_platform.h`，适配层编译报错。关键指标：构建产物 `ops_rec-2.7.1-cp311-cp311-linux_x86_64.whl` 编译安装成功；`test_forward_precision.py` 32 项通过，`test_hstu_autograd.py` 35 项通过；torch 样例 2 项、aclnn 样例 2 项均 PASSED。
+
+## 3 环境准备
+
+### 3.1 环境创建步骤
+
+> 本次验证环境为远程容器实例（无图形桌面），无法对平台控制台页面截屏。下列截图均由**真实终端输出**渲染生成，内容与 `logs/` 中日志逐字一致，未做任何美化或改写。
+
+**步骤 1：申请 / 创建算力环境**
+- 操作：应用使能 RecSDK 容器实例，Ascend950PR × 1 卡，HBM 131072 MB
+- 截图：`screenshots/01_env_create.png`（npu-smi 输出，设备健康、显存容量）
+
+**步骤 2：选择镜像**
+- 操作：RecSDK 镜像（CANN 9.1.0-beta.3 + Python 3.11.0 + torch 2.7.1 + torch_npu 2.7.1.post10）
+- 截图：`screenshots/02_env_image.png`
+
+**步骤 3：启动并登录开发环境**
+- 操作：进入容器，`source /usr/local/Ascend/ascend-toolkit/set_env.sh`
+- 截图：`screenshots/03_env_login.png`
+
+### 3.2 环境信息
+
+| 项目 | 值 |
+| --- | --- |
+| NPU | Ascend950PR × 1（`npu-smi info` 正常，Health OK） |
+| CANN | 9.1.0-beta.3（`ASCEND_HOME_PATH=/usr/local/Ascend/cann-9.1.0-beta.3`） |
+| Python | 3.11.0 |
+| PyTorch / torch_npu | 2.7.1+cpu / 2.7.1.post10 |
+| 编译器 / 构建 | gcc 11.2.0 / cmake 3.22.6 |
+| 补充依赖 | numpy 1.26.4、pyyaml 6.0.3、triton-ascend 3.2.0、pybind11 3.1.0、pytest 9.2.0、openpyxl 3.1.5 |
+
+完整 `npu-smi info` 见 `screenshots/04_npu_smi.png` 与 `logs/01_env_info.log`。
+
+## 4 实际执行步骤
+
+- **任务入口文档**：https://gitcode.com/Ascend/ops-rec/blob/master/ascendc/attention/hstu_v2/README.md
+- **仓库地址**：https://gitcode.com/Ascend/ops-rec
+- **样例 / 代码路径**：`ascendc/attention/hstu_v2/examples/{torch,aclnn}`、`ascendc/attention/hstu_v2/test/pytest`
+- **是否修改样例代码**：是（仅 1 处，可回退）
+  - `examples/aclnn/test_aclnn_hstu_backward_v2.cpp`：原代码硬编码 `int32_t deviceId = 5;`，单卡环境 `aclrtSetDevice` 返回 107001。改为与 forward 样例一致的 `ASCEND_DEVICE_ID` 环境变量（缺省 0）。回退方式：还原为 `int32_t deviceId = 5;` 并删除新增的 `#include <cstdlib>`。
+  - 另在仓库外新增 `/workspace/compat/acl/acl_platform.h` 兼容头（通过 `CPLUS_INCLUDE_PATH` 生效），不修改仓库源码，见第 6 节问题 2。
+
+### 步骤 1：安装缺失依赖
+
+```bash
+python3 -m pip install --user numpy==1.26.4 pyyaml
+python3 -m pip install --user triton-ascend==3.2.0 pybind11
+python3 -m pip install --user pytest openpyxl
+```
+
+- **预期**：`import torch_npu` 成功、`torch.npu.is_available()==True`
+- **实际**：成功。无 triton 时 `torch_npu` 导入在构建阶段会抛 `Failed to load the backend extension: torch_npu`；补齐后正常。
+- **截图**：`screenshots/02_env_image.png`
+
+### 步骤 2：编译并安装算子
+
+```bash
+export TORCH_DEVICE_BACKEND_AUTOLOAD=0
+export CPLUS_INCLUDE_PATH=/workspace/compat
+bash build.sh --socs atlas_950 --ops hstu_v2,arbitrary_func,block_sparse_func,packed_block_sparse,atten_metadata --install
+```
+
+- **预期**：产出并安装 `ops_rec-2.7.1` wheel，无报错
+- **实际**：成功。`[INFO] Build successful: dist/ops_rec-2.7.1-cp311-cp311-linux_x86_64.whl`，随后 `pip install` 因容器内 site-packages 权限受限，改用 `python3 -m pip install --no-deps --force-reinstall dist/ops_rec-....whl` 完成安装。
+- **截图**：`screenshots/05_step1_build.png`
+- **日志**：`logs/02_build_hstu_v2.log`
+
+### 步骤 3：运行 torch 样例
+
+```bash
+bash run_examples.sh --type torch --ops hstu_v2
+```
+
+- **预期**：forward/backward 样例全部 PASSED
+- **实际**：成功，`[INFO] [PASSED] test_torch_hstu_backward_v2`、`[INFO] [PASSED] test_torch_hstu_forward_v2`
+- **截图**：`screenshots/06_step2_torch.png`
+- **日志**：`logs/04_run_torch_examples.log`
+
+### 步骤 4：运行 aclnn 样例
+
+```bash
+export ASCEND_DEVICE_ID=0
+bash run_examples.sh --type aclnn --ops hstu_v2
+```
+
+- **预期**：forward/backward 样例全部 PASSED
+- **实际**：成功，backward `PASSED`；forward 覆盖 causal/no-mask × rab 有/无共 4 组，均 `PASSED`
+- **截图**：`screenshots/07_step3_aclnn.png`
+- **日志**：`logs/05_run_aclnn_examples.log`
+
+### 步骤 5：运行 pytest 精度与 autograd 用例
+
+```bash
+pytest ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py -m ci -v
+pytest ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py -m ci -v
+```
+
+- **预期**：全部通过
+- **实际**：成功，`32 passed, 1158 deselected in 7.00s`；`35 passed, 32 deselected in 4.43s`
+- **截图**：`screenshots/08_step4_pytest.png`
+- **日志**：`logs/06_pytest_forward_precision.log`、`logs/07_pytest_autograd.log`
+
+## 5 执行结果
+
+- **结论**：通过
+- **判据**：构建产出 wheel 并安装成功；torch/aclnn 样例无异常退出；pytest 全部用例 PASSED，无 traceback。
+
+关键输出（日志原文）：
+
+```text
+[INFO] Build successful: dist/ops_rec-2.7.1-cp311-cp311-linux_x86_64.whl
+Successfully installed ops-rec-2.7.1
+
+[INFO] [PASSED] test_torch_hstu_backward_v2
+PASSED: unequal=False, rab=False, causal=False, training=False
+PASSED: unequal=True,  rab=True,  causal=True,  training=True
+[INFO] [PASSED] test_torch_hstu_forward_v2
+
+HSTU Forward V2: causal=0 rab=0 PASSED
+HSTU Forward V2: causal=1 rab=1 PASSED
+[INFO] [PASSED] test_aclnn_hstu_forward_v2
+
+===================== 32 passed, 1158 deselected in 7.00s ======================
+====================== 35 passed, 32 deselected in 4.43s =======================
+```
+
+## 6 发现的问题
+
+> 以下问题均按 Issue 模板整理，需使用提交人 GitCode 账号在 https://gitcode.com/Ascend/RecSDK/issues 提交（标题前缀【MeetUp】），提交后回填链接。
+
+| 问题 | 提交 issue |
+| --- | --- |
+| 环境未预装 triton-ascend，`torch_npu` 导入偶发 `Failed to load the backend extension: torch_npu`；README 要求 3.2.2，但可用镜像仅有 3.2.0，文档未给出依赖安装步骤 | 待提交 |
+| CANN 9.1.0-beta.3 缺少 `acl/acl_platform.h`，编译 `attn_plan.cpp` / `atten_metadata` / `attn_tile_size_plugin.cpp` 直接失败；文档未注明所需 CANN 最低版本 | 待提交 |
+| `examples/aclnn/test_aclnn_hstu_backward_v2.cpp` 硬编码 `deviceId=5`，单卡环境 `aclrtSetDevice` 失败（107001）；建议与 forward 样例统一读取 `ASCEND_DEVICE_ID` | 待提交 |
+| `build.sh` 用 `python3 -c "import torch; ..."` 取 ABI，stdout 可能混入驱动日志（`DrvMngGetConsoleLogLevel failed`），导致 `flags.make` 报 `missing separator`；建议加 `TORCH_DEVICE_BACKEND_AUTOLOAD=0` | 待提交 |
+| 在仓库根目录直接执行 `python3 .../test_torch_hstu_forward_v2.py` 会被源码树 `ops_rec/` 包遮蔽（缺 `.so`），报 `ops_rec_atlas_950.so not found`；文档建议明确要求经 `run_examples.sh` 或 `cd build` 运行 | 待提交 |
+
+Issue 模板要点：
+- **现状问题**：如上行描述，含触发条件与报错原文。
+- **优化方案**：文档补充依赖安装与 CANN 版本要求；样例 deviceId 改环境变量；build.sh 导入 torch 时关闭后端自动加载。
+- **附件**：对应 `logs/` 日志与 `screenshots/` 截图。
+
+## 7 总结
+
+1. HSTU v2 forward/backward 在 Ascend950PR 单卡上编译安装成功，pytest 共 67 项（32+35）全部通过，torch 与 aclnn 样例 4 项全部 PASSED。
+2. 主要卡点集中在环境依赖与 CANN 头文件版本差异（triton、`acl_platform.h`），补齐后全流程可复现；仅需对 1 个 aclnn 样例做 1 行 deviceId 适配。
+3. 建议文档补充依赖清单、CANN 版本要求与样例运行目录说明，可显著降低新开发者首次跑通成本。
+
+## 8 体验总结
+
+| 维度 | 评价 | 说明 |
+| --- | --- | --- |
+| 文档易懂度 | 一般 | 核心命令清晰，但未列出 numpy/pyyaml/triton 依赖与 CANN 版本要求，首次执行会在导入和编译阶段连续卡住 |
+| 流程顺畅度 | 一般 | 环境依赖补齐较费时；编译约需数分钟；样例与 pytest 命令本身顺畅 |
+| 报错可读性 | 一般 | 107001、`missing separator`、`ops_rec_atlas_950.so not found` 均未直接指向根因，需要结合日志推断 |
+| 整体评价 | 4 / 5 | 功能与用例完备、精度校验充分；文档的环境前置条件仍有改进空间 |
+
+- **最耗时的一步**：步骤 1 依赖补齐（离线镜像源受限，需手工下载 wheel 并处理 site-packages 写权限）。
+- **最值得改进的点**：README 增加「环境依赖与版本矩阵」小节（CANN/triton/torch_npu 对应关系 + 安装命令），并在样例说明中注明需在 `build/` 目录运行或使用 `run_examples.sh`。
