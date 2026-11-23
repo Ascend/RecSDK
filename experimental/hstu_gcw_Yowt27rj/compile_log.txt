@@ -1,0 +1,41 @@
+===== HSTU-v2 编译与运行日志（节选） =====
+完整编译日志：/workspace/11_hstu_v2_full.log（共 50276 行）
+
+----- 构建配置 -----
+===========================================================
+[INFO] Build Configuration:
+  - Install Mode        : false
+  - SOCs                : atlas_950
+  - Op Vendors          : hstu_v2
+  - Ascend Home         : /usr/local/Ascend/cann-9.1.0-beta.3
+  - Concurrent op builds: 1
+  - CMake Generator     : Unix Makefiles
+===========================================================
+[INFO] 1 op builds total, 1 parallel ops, inner make -j64 (agg_target 192)
+
+
+----- 关键构建结果 -----
+43814:[100%] Built target HstuForwardV2_ascend950
+50074:[100%] Built target HstuBackwardV2_ascend950
+50254:[INFO] Built adapter for atlas_950 -> /workspace/ops-rec/dist_merge/stage/atlas_950/adapter
+50255:[INFO] Collected ops_rec_atlas_950.so
+50271:[INFO] Merged whl: /workspace/ops-rec/dist/ops_rec-2.10.0-cp311-cp311-linux_x86_64.whl
+50272:[INFO] Build successful: dist/ops_rec-2.10.0-cp311-cp311-linux_x86_64.whl
+50275:[INFO] All Tasks Completed Successfully!
+
+----- 运行验证 test_aclnn_hstu -----
+Running HSTU Forward V2: causal=0 rab=0
+output sample [0..3]: 1.1572 1.1787 1.1992 1.1914
+HSTU Forward V2: causal=0 rab=0 PASSED
+Running HSTU Forward V2: causal=0 rab=1
+output sample [0..3]: 0.9795 0.9976 1.0146 1.0068
+HSTU Forward V2: causal=0 rab=1 PASSED
+Running HSTU Forward V2: causal=1 rab=0
+output sample [0..3]: 0.3843 0.4045 0.4255 0.4172
+HSTU Forward V2: causal=1 rab=0 PASSED
+Running HSTU Forward V2: causal=1 rab=1
+output sample [0..3]: 0.2898 0.3049 0.3210 0.3140
+HSTU Forward V2: causal=1 rab=1 PASSED
+
+----- 编译日志中 error 行数 -----
+0
