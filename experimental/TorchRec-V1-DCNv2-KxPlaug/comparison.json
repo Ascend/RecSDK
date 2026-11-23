@@ -1,0 +1,62 @@
+{
+  "metric": "global samples/s after warmup using the slowest rank; profiling disabled",
+  "baseline_samples_per_second": 16410.321041443003,
+  "candidate_samples_per_second": 18171.60606259985,
+  "throughput_uplift_pct": 10.732788326985542,
+  "goal_pct": 10.0,
+  "goal_met": true,
+  "runs": [
+    {
+      "warmup_steps": 32,
+      "measured_steps": 24,
+      "global_batch": 16384,
+      "world_size": 2,
+      "samples": 393216,
+      "seconds_slowest_rank": 24.284343719482422,
+      "samples_per_second": 16192.160864719497,
+      "profiled": false,
+      "variant": "baseline",
+      "test_auroc": 0.500465,
+      "run": "01-baseline"
+    },
+    {
+      "warmup_steps": 32,
+      "measured_steps": 24,
+      "global_batch": 16384,
+      "world_size": 2,
+      "samples": 393216,
+      "seconds_slowest_rank": 21.283279418945312,
+      "samples_per_second": 18475.34828913531,
+      "profiled": false,
+      "variant": "tuned",
+      "test_auroc": 0.500322,
+      "run": "01-tuned"
+    },
+    {
+      "warmup_steps": 32,
+      "measured_steps": 24,
+      "global_batch": 16384,
+      "world_size": 2,
+      "samples": 393216,
+      "seconds_slowest_rank": 22.00688362121582,
+      "samples_per_second": 17867.863836064393,
+      "profiled": false,
+      "variant": "tuned",
+      "test_auroc": 0.501451,
+      "run": "02-tuned"
+    },
+    {
+      "warmup_steps": 32,
+      "measured_steps": 24,
+      "global_batch": 16384,
+      "world_size": 2,
+      "samples": 393216,
+      "seconds_slowest_rank": 23.647138595581055,
+      "samples_per_second": 16628.48121816651,
+      "profiled": false,
+      "variant": "baseline",
+      "test_auroc": 0.4956,
+      "run": "02-baseline"
+    }
+  ]
+}
