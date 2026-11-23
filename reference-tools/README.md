@@ -9,6 +9,7 @@
 ├── graph_partition # 图分割工具
 ├── model_convert   # 模型转换工具
 ├── parse_data      # 数据解析工具
+├── rec_benchmark_utils  # benchmark 日志与 GPU 性能数据解析工具
 ├── perf            # 性能分析工具
 ├── perfrec-python  # 性能记录工具
 └── precrec-python  # 精度验证工具
@@ -18,6 +19,7 @@
 ## 子目录详细说明
 
 ### atomic（原子操作）
+
 - **功能**：提供稀疏操作支持，包含生成多热点数据、模型信息展示等功能
 - **主要文件**：
   - `sparse_ops/`：稀疏操作实现模块
@@ -28,6 +30,7 @@
   - `sparse_lookup_with_grad.py`：带梯度的稀疏查找示例
 
 ### graph_partition（图分割）
+
 - **功能**：图分割工具，用于分布式训练中的计算图划分
 - **主要文件**：
   - `gen_config.py`：生成配置文件
@@ -35,6 +38,7 @@
   - `template.cfg`：配置模板
 
 ### model_convert（模型转换）
+
 - **功能**：模型格式转换工具，支持多任务模型版本
 - **主要文件**：
   - `model_convert.py`：主转换脚本
@@ -43,12 +47,23 @@
   - `README.md`：使用说明
 
 ### parse_data（数据解析）
+
 - **功能**：TensorFlow数据解析性能分析工具
 - **主要文件**：
   - `data_parser.py`：数据解析性能测试主程序
   - `run.sh`：多worker执行脚本
 
+### rec_benchmark_utils（基准测试工具）
+
+- **功能**：解析 GPU 性能数据和 pattern 测试日志
+- **主要文件**：
+  - `parse_gpu_prof_json.py`：解析 GPU trace，导出 kernel 明细和每步耗时
+  - `parse_pattern_log.py`：解析 pattern 测试日志，将失败用例写入 CSV
+  - `logger.py`：配置日志级别和输出文件
+  - `path_util.py`：获取指定文件所在的目录
+
 ### perf（性能分析）
+
 - **功能**：性能分析工具集合
 - **主要文件**：
   - `fast.sh`：快速性能测试
@@ -57,6 +72,7 @@
   - `perf_flame_graph.sh`：火焰图生成脚本
 
 ### perfrec-python（性能记录）
+
 - **功能**：性能追踪与融合分析工具
 - **主要文件**：
   - `fusion_tracing.py`：融合操作追踪
@@ -65,6 +81,7 @@
   - `README.md`：使用说明
 
 ### precrec-python（精度验证）
+
 - **功能**：精度验证工具，支持稠密和稀疏检查点比较
 - **主要文件**：
   - `precision_check.py`：精度对比工具

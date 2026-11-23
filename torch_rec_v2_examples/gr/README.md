@@ -8,7 +8,7 @@
 
 ## 运行环境准备
 
-请参考：[模型样例运行环境说明](../../torch_examples/README.md)
+请参考：[模型样例运行环境说明](../../torch_rec_v1_examples/README.md)
 
 ## 配套版本
 
