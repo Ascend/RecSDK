@@ -163,8 +163,8 @@ See [OVERVIEW](../../../../../docker/OVERVIEW.md) for instructions on starting t
     Run the following commands to configure the environment in the container:
 
     ```bash
-    # Set the CANN version
-    source /usr/local/set_cann_env.sh a5 # Switch to and enable the Atlas 950 Toolkit and related environment variables
+    # Enable the CANN environment variables (only one CANN package is installed in the image, so no version switching is required)
+    source /usr/local/Ascend/ascend-toolkit/set_env.sh
     # Activate the Python virtual environment
     source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
     ```
