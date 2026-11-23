@@ -1,0 +1,51 @@
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in '_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'distance_in_linear_silu'
+WARNING:ops_rec.autograd:ops_rec.autograd: failed to import 'concat_jagged_tensor_autograd': '_OpNamespace' 'ops_rec' object has no attribute 'concat_2d_jagged'
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in 'gather_for_rank1_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'gather_for_rank1'
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in 'hstu_v1_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'hstu_dense'
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in 'norm_multiply_dropout_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'norm_multiply_dropout_forward'
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in 'relative_attn_bias_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'relative_attn_bias_time_with_index'
+WARNING:root:ops_rec: failed to import plugin module 'ops_rec.autograd.concat_jagged_tensor_autograd': '_OpNamespace' 'ops_rec' object has no attribute 'concat_2d_jagged'
+
+===========================================================
+[INFO] Running ACLNN C++ Examples...
+===========================================================
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in '_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'distance_in_linear_silu'
+WARNING:ops_rec.autograd:ops_rec.autograd: failed to import 'concat_jagged_tensor_autograd': '_OpNamespace' 'ops_rec' object has no attribute 'concat_2d_jagged'
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in 'gather_for_rank1_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'gather_for_rank1'
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in 'hstu_v1_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'hstu_dense'
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in 'norm_multiply_dropout_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'norm_multiply_dropout_forward'
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in 'relative_attn_bias_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'relative_attn_bias_time_with_index'
+WARNING:root:ops_rec: failed to import plugin module 'ops_rec.autograd.concat_jagged_tensor_autograd': '_OpNamespace' 'ops_rec' object has no attribute 'concat_2d_jagged'
+[INFO] Using ops_rec from /opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/ops_rec
+[INFO] Detected SOC variant: atlas_950
+[INFO] Extracted hstu_v2 op_api to run_tmp
+[INFO] Extracted arbitrary_func op_api to run_tmp
+[INFO] Extracted block_sparse_func op_api to run_tmp
+[INFO] Extracted packed_block_sparse op_api to run_tmp
+[INFO] Extracted atten_metadata op_api to run_tmp
+[INFO] Extracted aclnn headers and libs to /workspace/ops-rec/build/run_tmp
+[INFO] Building aclnn example: test_aclnn_hstu_backward_v2 (hstu_v2)...
+[INFO] Running aclnn example: test_aclnn_hstu_backward_v2...
+HSTU Backward V2 test completed successfully!
+q_grad sample [0,0,0..3]: 0.0000 0.0000 0.0000 0.0000
+k_grad sample [0,0,0..3]: 2.7285 2.7852 2.8398 2.8965
+v_grad sample [0,0,0..3]: 2.5195 2.5195 2.5195 2.5215
+rab_grad sample [0,0,0,0..3]: 0.0001 0.0000 0.0000 0.0000
+[INFO] [PASSED] test_aclnn_hstu_backward_v2
+
+[INFO] Building aclnn example: test_aclnn_hstu_forward_v2 (hstu_v2)...
+[INFO] Running aclnn example: test_aclnn_hstu_forward_v2...
+Running HSTU Forward V2: causal=0 rab=0
+output sample [0..3]: 1.1572 1.1787 1.1992 1.1914
+HSTU Forward V2: causal=0 rab=0 PASSED
+Running HSTU Forward V2: causal=0 rab=1
+output sample [0..3]: 0.9795 0.9976 1.0146 1.0068
+HSTU Forward V2: causal=0 rab=1 PASSED
+Running HSTU Forward V2: causal=1 rab=0
+output sample [0..3]: 0.3843 0.4045 0.4255 0.4172
+HSTU Forward V2: causal=1 rab=0 PASSED
+Running HSTU Forward V2: causal=1 rab=1
+output sample [0..3]: 0.2898 0.3049 0.3210 0.3140
+HSTU Forward V2: causal=1 rab=1 PASSED
+[INFO] [PASSED] test_aclnn_hstu_forward_v2
+
