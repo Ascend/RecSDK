@@ -1,0 +1,111 @@
+1 文档信息
+      项目
+      内容
+      文档类型
+      验证报告
+      提交人
+      GitCode ID：code4
+      文档版本 / 日期
+      v1 / 2026-11-20
+2 任务背景与目标
+任务目标：在 HiDevLab 平台 Ascend 950PR 单卡环境，基于 RecSDK Torch 镜像完成环境变量配置与依赖安装，运行官方 little-demo 样例，验证环境配置正确性，输出 Demo done.。
+任务结果：部分达成——环境配置、依赖激活、NPU 识别、样例与数据集准备均成功；运行阶段失败。关键阻塞点：有，HCCL 初始化报 error 19（缺 /etc/hccl_rootInfo.json，平台侧问题）。关键指标：npu-smi info 正常、torch.npu.is_available() 为 True、数据集与样例就绪；模型运行未产出 Demo done.。
+3 环境准备
+3.1 环境创建步骤
+  按实际创建顺序记录，每步必须配截图，截图命名 NN_内容.png。
+步骤 1：申请 / 创建算力环境
+操作：HiDevLab 平台（https://hidevlab.huawei.com/online-develop），创建开发环境，算力类型选昇腾 950PR（昇腾 A5），单卡 1 张。
+截图：平台创建页或实例列表 01_env_create.png
+步骤 2：选择镜像
+操作：镜像选【应用使能】RecSDK / RecSDK Torch（社区提供的 Torch 镜像，已上传 HiDevLab）。
+截图：镜像选择页 02_env_image.png
+步骤 3：启动并登录开发环境
+操作：点【开机】，等进度条 100%，用 Trae 远程连接服务器（工作路径 /workspace），打开终端。
+截图：登录成功后的终端提示符 03_env_login.png
+3.2 环境信息
+npu-smi info
+（此处粘贴 npu-smi info 输出：NPU 0 / Ascend 950PR / Health OK / 显存信息）
+截图：04_npu_smi.png
+补充环境：
+Python 虚拟环境：/opt/buildtools/torch_v2_pt2.7.1（PyTorch 2.7.1）
+CANN：9.1.0-beta.3（/usr/local/Ascend/cann-9.1.0-beta.3）
+4 实际执行步骤
+任务入口文档：https://docs.qq.com/doc/DS3dTbEdqWkx5ZmNt?nlc=1
+样例 / 代码路径：https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/little_demo （quick_start：https://gitcode.com/Ascend/RecSDK/blob/develop/docs/zh/torch/torch_rec_v2/03_quick_start/quick_start.md）
+是否修改样例代码：是（最后阶段为绕过 HCCL error 19 做过 workaround 尝试：将 main.py 中 backend 由 hccl 改为 gloo、dist.barrier(device_ids=[local_rank]) 改为 dist.barrier()；已备份 main.py.bak，可回退。详见步骤 6 与第 6 节）
+步骤 1：激活 CANN 环境
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+预期：CANN 环境变量生效，NPU 相关库可见。
+实际：成功（无输出为正常）。注：任务书/quick_start 给的 source /usr/local/set_cann_env.sh a5 在本镜像不存在，报 No such file or directory，改用上述路径。
+截图：05_step1_setenv.png
+步骤 2：激活 Python 虚拟环境
+source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
+预期：提示符出现 (torch_v2_pt2.7.1)，torch 可用。
+实际：成功。未激活时直接跑 python 会报 libpython3.11.so.1.0: cannot open shared object file，激活后消失。
+
+步骤 3：验证 NPU 可用
+python -c "import torch; print(torch.__version__)"
+python -c "import torch; print(torch.npu.is_available())"
+预期：打印版本号，torch.npu.is_available() 为 True。
+实际：成功，输出 2.7.1 与 True。
+
+步骤 4：下载样例代码与数据集
+git clone -b develop_examples_and_tools https://gitcode.com/Ascend/RecSDK.git
+cd RecSDK/torch_rec_v2_examples/little_demo
+wget https://files.grouplens.org/datasets/movielens/ml-1m.zip
+unzip ml-1m.zip
+预期：样例目录含 main.py/run.sh 等，当前目录生成 ./ml-1m 数据集。
+实际：成功，数据集与样例就绪。
+截图：08_step4_dataset.png
+步骤 5：运行官方样例（核心步骤）
+bash run.sh
+预期：模型训练与端到端验证完成，终端输出 Demo done.。
+实际：失败。在 main.py:296 的 dist.barrier(device_ids=[local_rank]) 处抛 RuntimeError: create_config:../torch_npu/csrc/distributed/HCCLUtils.cpp:140 NPU function error: device error type 0, error code is 19，随后 ChildFailedError: main.py FAILED。
+截图：
+步骤 6：error 19 排查与绕过尝试
+依次尝试（均未解决）：
+# a) 绑定 lo 网卡
+export HCCL_SOCKET_IFNAME="lo" && unset HCCL_IF_IP
+export GLOO_SOCKET_IFNAME=lo && export TP_SOCKET_IFNAME=lo
+# b) 清理残留进程
+pkill -f main.py ; pkill -f torchrun ; sleep 5
+# c) 显式指定可见卡
+export ASCEND_RT_VISIBLE_DEVICES=0
+# d) 检查 950PR 专用 rootInfo 文件
+ls -l /etc/hccl_rootInfo.json     # 结果：No such file or directory
+which mindcluster-tools           # 无输出（工具未装）
+pip install mindcluster-tools     # No matching distribution found
+# e) 代码层绕过：单卡改 gloo 后端
+cp main.py main.py.bak
+python -c "
+p='main.py'; s=open(p).read()
+s=s.replace('backend = \"hccl\"','backend = \"gloo\"')
+s=s.replace('dist.barrier(device_ids=[local_rank])','dist.barrier()')
+open(p,'w').write(s)"
+bash run.sh
+预期：定位并绕过 error 19，跑出 Demo done.。
+实际：a–d 均无效（error 19 依旧）；e（gloo 绕过）结果：<待填写——若成功填 Demo done.，若仍失败填新的报错>。
+
+  步骤按实际执行顺序编号，命令保持原样、不改写、不美化；每步必须配截图。
+5 执行结果
+结论：不通过（阻塞于平台环境问题）。
+判据：bash run.sh 未正常结束，输出异常栈（HCCL error 19），未产出 Demo done.；环境准备与依赖验证各项均正常。
+关键输出（日志原文）：
+[rank0]: File "main.py", line 296, in main
+[rank0]:     dist.barrier(device_ids=[local_rank])
+[rank0]: RuntimeError: create_config:../torch_npu/csrc/distributed/HCCLUtils.cpp:140
+         NPU function error: device error type 0, error code is 19
+[rank0]: [ERROR] ERR00100 PTA call acl api failed
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: main.py FAILED
+6 发现的问题
+  若发现问题，请提交 issue 并在本节列出链接；未发现则写「本次未发现问题」并说明覆盖范围。
+      问题
+      提交 issue
+      HiDevLab 950PR 单卡环境缺失 /etc/hccl_rootInfo.json，导致 little_demo 的 dist.barrier 报 HCCL error 19，无法输出 Demo done.（官方已有关联 issue #5324、工单 D2026100522673）
+      待提交后填写 #xxxx
+      quick_start 文档给出的 CANN 激活命令 source /usr/local/set_cann_env.sh a5 在 HiDevLab 镜像中不存在，应为 source /usr/local/Ascend/ascend-toolkit/set_env.sh，易误导新手
+      待提交后填写 #xxxx
+  说明：上述问题 1 的详细复现、排查过程与优化建议见同批提交的 Issue《【MeetUp】HiDevLab 950PR 单卡环境运行 TorchRec-V2 little_demo 报 HCCL error 19 无法跑通》。
+7 总结
+环境配置类步骤全部完成：npu-smi info 正常、torch.npu.is_available() 为 True、PyTorch 2.7.1 与 little-demo 数据集就绪，共 3 项验证通过。
+模型运行 0/1 未通过，唯一阻塞点为 HiDevLab 950PR 单卡平台的 HCCL 初始化 error 19（缺 rootInfo 文件），属平台侧问题，已提交 Issue 反馈。
