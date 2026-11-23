@@ -1,0 +1,48 @@
+VISIBLE_NPU_COUNT=1
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/workspace/RecSDK/torch_rec_v2_examples/little_demo/main.py", line 307, in <module>
+[rank0]:     main()
+[rank0]:   File "/workspace/RecSDK/torch_rec_v2_examples/little_demo/main.py", line 296, in main
+[rank0]:     dist.barrier(device_ids=[local_rank])
+[rank0]:   File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+[rank0]:     return func(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/distributed_c10d.py", line 4635, in barrier
+[rank0]:     work = group.barrier(opts=opts)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]: RuntimeError: create_config:../torch_npu/csrc/distributed/HCCLUtils.cpp:140 NPU function error: device error type 0, error code is 19
+[rank0]: [ERROR] 2026-11-20-06:55:28 (PID:19342, Device:0, RankID:0) ERR00100 PTA call acl api failed
+E1120 06:55:36.066000 19272 torch/distributed/elastic/multiprocessing/api.py:874] failed (exitcode: 1) local_rank: 0 (pid: 19342) of binary: /opt/buildtools/torch_v2_pt2.7.1/bin/python3
+Traceback (most recent call last):
+  File "/opt/buildtools/torch_v2_pt2.7.1/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 355, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/run.py", line 892, in main
+    run(args)
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/run.py", line 883, in run
+    elastic_launch(
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 139, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 270, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+main.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-11-20_06:55:36
+  host      : fbbc18c49111
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 19342)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
+[ERROR] 2026-11-20-06:55:36 (PID:19272, Device:-1, RankID:-1) ERR99999 UNKNOWN applicaiton exception
