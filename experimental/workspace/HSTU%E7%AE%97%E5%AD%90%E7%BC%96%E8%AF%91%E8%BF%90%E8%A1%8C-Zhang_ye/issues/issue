@@ -1,0 +1,216 @@
+# 【MeetUp】环境未预装 triton-ascend，torch_npu 导入失败，文档缺少依赖安装说明
+
+## 现状问题
+
+在 Ascend950PR + CANN 9.1.0-beta.3 镜像中，按 `ascendc/attention/hstu_v2/README.md` 直接执行编译，`build.sh` 在探测 torch 版本阶段失败：
+
+```
+File "/usr/local/python3.11.0/lib/python3.11/site-packages/torch/_inductor/runtime/triton_compat.py", line 15, in <module>
+    import triton.language as tl
+ModuleNotFoundError: No module named 'triton.language'
+...
+RuntimeError: Failed to load the backend extension: torch_npu. You can disable extension auto-loading with TORCH_DEVICE_BACKEND_AUTOLOAD=0.
+```
+
+同时 `import torch_npu` 前还缺少 numpy、pyyaml（依次报 `No module named 'numpy'`、`No module named 'yaml'`）。README 仅说明"配置 CANN、PyTorch 和 torch_npu"，未给出依赖清单；文中提到的 triton-ascend 3.2.2 在可用镜像源中也取不到（仅有 3.2.0）。
+
+触发条件：全新 RecSDK 镜像，未手工安装 Python 依赖，直接执行 README 的 `build.sh`。
+
+## 优化方案
+
+- 在 README「构建安装」前增加"环境依赖"小节，明确版本矩阵：
+  - numpy、pyyaml（基础依赖）
+  - triton-ascend（与 torch_npu 2.7.1 配套；注明 3.2.2 的获取地址，或说明 3.2.0 可用）
+- 给出可直接执行的安装命令，例如：
+  ```bash
+  pip install numpy pyyaml
+  pip install triton-ascend==3.2.2
+  ```
+- 或在镜像构建阶段预装上述依赖，避免开发者逐个试错。
+- 建议 `build.sh` 在依赖缺失时给出明确提示，而不是抛出 torch_npu 后端加载失败。
+
+改动范围：`ascendc/attention/hstu_v2/README.md` 的「构建安装」章节；可选 `build.sh` 前置检查。
+
+## 附件
+
+- `logs/pip_deps.log`
+- `logs/02_build_hstu_v2.log`（构建开头 traceback）
+- `screenshots/02_env_image.png`
+
+# 【MeetUp】CANN 9.1.0-beta.3 缺少 acl/acl_platform.h，适配层编译直接失败
+
+## 现状问题
+
+在 CANN 9.1.0-beta.3 环境执行 README 的编译命令后，算子 kernel 编译通过，但 torch 适配层编译失败：
+
+```
+/workspace/ops-rec/ascendc/attention/attn_plan/host/attn_plan.cpp:10:10: fatal error: acl/acl_platform.h: No such file or directory
+   10 | #include <acl/acl_platform.h>
+      |          ^~~~~~~~~~~~~~~~~~~~
+compilation terminated.
+```
+
+同样的错误出现在：
+- `ascendc/attention/atten_metadata/torch_extension/create_attn_metadata_plugin.cpp`
+- `ascendc/attention/hstu_v2/torch_extension/attn_tile_size_plugin.cpp`
+
+这三处依赖 `aclplatformGetDeviceInfo` / `aclplatformDevInfo`（如 `ACL_PLATFORM_L0_A_SIZE`、`ACL_PLATFORM_L2_SIZE`）。当前 CANN 的 `x86_64-linux/include/acl/` 下不存在该头文件，`libascendcl` 也未导出该符号。
+
+触发条件：使用 CANN 9.1.0-beta.3（镜像默认版本）编译 hstu_v2 及依赖算子。
+
+## 优化方案
+
+1. 在 README 明确所需 CANN 最低版本（即包含 `acl/acl_platform.h` 的版本），避免开发者用 beta 版本反复失败。
+2. 若无该头文件，提供兼容层：用 `aclrtGetDeviceInfo(devId, ACL_DEV_ATTR_UBUF_PER_VECTOR_CORE / ACL_DEV_ATTR_L2_CACHE_SIZE, &v)` 获取 UB/L2，L0A/L0B/L0C/L1 取平台 config 常量（Ascend950 全系一致：65536/65536/262144/524288）。
+3. 或在 CMake 中检测头文件是否存在，缺失时编译降级分支。
+
+本次验证采用方案 2，在仓库外新增 `compat/acl/acl_platform.h` 并通过 `CPLUS_INCLUDE_PATH` 引入，未修改仓库源码，编译与用例均通过。可作为参考实现。
+
+改动范围：`ascendc/attention/attn_plan/host/attn_plan.cpp`、`ascendc/attention/atten_metadata/torch_extension/create_attn_metadata_plugin.cpp`、`ascendc/attention/hstu_v2/torch_extension/attn_tile_size_plugin.cpp`，以及 README 环境要求章节。
+
+## 附件
+
+- `logs/02_build_hstu_v2.log`（`fatal error: acl/acl_platform.h`）
+- 兼容头实现：`compat/acl/acl_platform.h`（随报告提交）
+
+# 【MeetUp】aclnn backward 样例硬编码 deviceId=5，单卡环境运行失败
+
+## 现状问题
+
+`ascendc/attention/hstu_v2/examples/aclnn/test_aclnn_hstu_backward_v2.cpp` 中设备号写死为 5：
+
+```cpp
+int main()
+{
+    int32_t deviceId = 5;
+    aclrtStream stream;
+    auto ret = Init(deviceId, &stream);
+```
+
+在任务书要求的"1 卡可用"环境中执行 `bash run_examples.sh --type aclnn --ops hstu_v2`，直接失败：
+
+```
+[INFO] Running aclnn example: test_aclnn_hstu_backward_v2...
+aclrtSetDevice failed. ERROR: 107001
+Init acl failed. ERROR: 107001
+```
+
+同一目录下的 forward 样例已支持环境变量：
+
+```cpp
+const char* deviceEnv = std::getenv("ASCEND_DEVICE_ID");
+int32_t deviceId = deviceEnv == nullptr ? 0 : std::atoi(deviceEnv);
+```
+
+两个样例行为不一致，且 107001 不会提示"设备号非法"。
+
+触发条件：设备数少于 6 的环境（含官方任务书指定的 1 卡场景），执行 aclnn backward 样例。
+
+## 优化方案
+
+将 backward 样例改为与 forward 一致：
+
+```cpp
+#include <cstdlib>
+...
+const char* deviceEnv = std::getenv("ASCEND_DEVICE_ID");
+int32_t deviceId = deviceEnv == nullptr ? 0 : std::atoi(deviceEnv);
+```
+
+并在 README 的 aclnn 样例说明中注明可通过 `ASCEND_DEVICE_ID` 指定设备。
+
+改动范围：仅 `test_aclnn_hstu_backward_v2.cpp` 的 `main()` 与 include，1 行逻辑 + 1 行头文件，可回退。
+
+本次验证已按上述方案修改（见 `sample_patch.diff`），修改后 backward 样例 `PASSED`。
+
+## 附件
+
+- `logs/05_run_aclnn_examples.log`
+- `screenshots/07_step3_aclnn.png`
+- `sample_patch.diff`
+
+# 【MeetUp】build.sh 探测 torch ABI 时 stdout 混入驱动日志，导致 flags.make 报 missing separator
+
+## 现状问题
+
+编译过程中适配层 CMake 配置成功，但生成 `flags.make` 后立即失败：
+
+```
+CMake Warning:
+  Value of _GLIBCXX_USE_CXX11_ABI contained a newline; truncating
+
+-- Build files have been written to: /workspace/ops-rec/build/atlas_950/adapter
+CMakeFiles/ops_rec_atlas_950.dir/flags.make:10: *** missing separator.  Stop.
+gmake[1]: *** [CMakeFiles/Makefile2:82: CMakeFiles/ops_rec_atlas_950.dir/all] Error 2
+```
+
+`flags.make` 中实际内容：
+
+```
+CXX_FLAGS = -fstack-protector-strong -fPIC "-D_GLIBCXX_USE_CXX11_ABI=1
+DrvMngGetConsoleLogLevel failed. (ret=4)" -DSUPPORT_950=1
+```
+
+根因：`build.sh` 用 `abi=$(python3 -c "import torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI))")` 捕获输出，而 torch 2.7 默认自动加载 torch_npu，导入时驱动在 stdout 打印了 `DrvMngGetConsoleLogLevel failed. (ret=4)`，污染了 ABI 变量。
+
+触发条件：torch 自动加载 torch_npu 且驱动打印该日志时（本环境可稳定复现）。
+
+## 优化方案
+
+1. 在 `build.sh` 的 `init_common_cmake_args` 中，探测 ABI 前禁用后端自动加载，或只取首行：
+   ```bash
+   abi=$(TORCH_DEVICE_BACKEND_AUTOLOAD=0 python3 -c "import torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI))" | head -1)
+   ```
+2. `CMakeLists.txt` 的 `execute_process` 分支同样建议加 `ENV TORCH_DEVICE_BACKEND_AUTOLOAD=0` 或用正则提取数字。
+3. 建议对 `abi` 做合法性校验（仅允许 0/1），非法时直接报可读错误。
+
+本次验证通过 `export TORCH_DEVICE_BACKEND_AUTOLOAD=0` 绕过，编译成功。
+
+改动范围：`build.sh` 第 204 行附近；`CMakeLists.txt` 第 167-173 行。
+
+## 附件
+
+- `logs/02_build_hstu_v2.log`（`missing separator` 与 CMake Warning）
+- `screenshots/05_step1_build.png`
+
+# 【MeetUp】在仓库根目录直接运行 torch 样例时源码包遮蔽已安装包，报 ops_rec_atlas_950.so not found
+
+## 现状问题
+
+按 README 中"在已安装当前版本 ops_rec 的 Ascend 950 环境 … 执行样例"的说明，在仓库根目录直接运行：
+
+```bash
+cd /workspace/ops-rec
+python3 ascendc/attention/hstu_v2/examples/torch/test_torch_hstu_forward_v2.py
+```
+
+报错：
+
+```
+WARNING:root:ops_rec: variant 'atlas_950' not packaged (expected /workspace/ops-rec/ops_rec/opp/atlas_950/vendors)
+Traceback (most recent call last):
+  File "/workspace/ops-rec/ascendc/attention/hstu_v2/examples/torch/test_torch_hstu_forward_v2.py", line 27, in <module>
+    import ops_rec
+  File "/workspace/ops-rec/ops_rec/__init__.py", line 235, in <module>
+    _load_custom_so(_variant)
+FileNotFoundError: ops_rec: ops_rec_atlas_950.so not found (expected at /workspace/ops-rec/ops_rec/ops_rec_atlas_950.so)
+```
+
+根因：仓库根目录存在源码目录 `ops_rec/`，Python 优先导入它而不是 site-packages 中已安装的 `ops_rec`，而源码树中没有构建产物 `.so`。
+
+改为 `bash run_examples.sh --type torch --ops hstu_v2`（脚本会 `cd build/`）或先 `cd build` 再执行样例即可正常运行。
+
+触发条件：在仓库根目录直接以 `python3 xxx_example.py` 方式运行，且未使用 `run_examples.sh`。
+
+## 优化方案
+
+1. 在 README「Forward 样例与验收入口」处明确：请使用 `run_examples.sh`，或先 `cd build` 再运行样例；不要直接在仓库根目录执行。
+2. 或在 `ops_rec/__init__.py` 中检测到本地源码树缺少 `.so` 时，给出"检测到源码目录遮蔽，请使用已安装包/切换目录"的明确提示。
+3. 可考虑将样例入口统一收敛到 `run_examples.sh`，避免直接运行脚本。
+
+改动范围：README 样例运行说明；可选 `ops_rec/__init__.py` 的错误提示。
+
+## 附件
+
+- `logs/04_run_torch_examples.log`（正常路径输出，对照用）
+- `screenshots/06_step2_torch.png`
