@@ -1,0 +1,99 @@
+[11/21/2026 04:59:54 AM] [INFO] The length of data: 800167.
+[11/21/2026 04:59:54 AM] [INFO] The max user id: 6040, the max movie id: 3952.
+[11/21/2026 04:59:55 AM] [INFO] The length of data: 200042.
+[11/21/2026 04:59:55 AM] [INFO] The max user id: 6040, the max movie id: 3952.
+/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/distributed_c10d.py:859: UserWarning: `_get_pg_default_device` will be deprecated, it only stays for backward-compatiblity reason. If you need to find a device for object collectives, please use `_get_object_coll_device`. If you need to query the device types supported by group, please use `_device_capability(group)`. 
+  warnings.warn(
+[rank0]:[W1121 04:59:55.183182925 TensorFactories.cpp:340] Warning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (function operator())
+[11/21/2026 04:59:55 AM] [INFO] The model: DistributedModelParallel(
+  (_dmp_wrapped_module): DistributedDataParallel(
+    (module): MovieLensModel(
+      (embedding_module): ShardedDynamicEmbeddingCollection(
+        (lookups): 
+         GroupedEmbeddingsLookup(
+            (_emb_modules): ModuleList(
+              (0): BatchedDynamicEmbedding(
+                (_emb_module): BatchedDynamicEmbeddingTablesV2()
+              )
+            )
+          )
+         (_output_dists): 
+         RwSequenceEmbeddingDist(
+            (_dist): SequenceEmbeddingsAllToAll()
+          )
+        (embeddings): ModuleDict(
+          (user_id): Module()
+          (movie_id): Module()
+          (gender): Module()
+          (age): Module()
+          (occupation): Module()
+          (year): Module()
+        )
+      )
+      (over_arch): Sequential(
+        (0): Linear(in_features=64, out_features=128, bias=True)
+        (1): ReLU()
+        (2): Linear(in_features=128, out_features=64, bias=True)
+        (3): ReLU()
+        (4): Linear(in_features=64, out_features=32, bias=True)
+        (5): ReLU()
+        (6): Linear(in_features=32, out_features=1, bias=True)
+      )
+    )
+  )
+)
+[rank0]:[W1121 04:59:55.383388368 VariableFallbackKernel.cpp:250] Warning: CAUTION: The operator 'fbgemm::asynchronous_complete_cumsum' is not currently supported on the NPU backend and will fall back to run on the CPU. This may have performance implications. (function npu_cpu_fallback)
+[rank0]:[W1121 04:59:55.417626804 VariableFallbackKernel.cpp:250] Warning: CAUTION: The operator 'fbgemm::invert_permute' is not currently supported on the NPU backend and will fall back to run on the CPU. This may have performance implications. (function npu_cpu_fallback)
+[11/21/2026 04:59:56 AM] [INFO] Epoch 1/2, Batch 0/782, Loss: 23.3319
+[11/21/2026 04:59:57 AM] [INFO] Epoch 1/2, Batch 100/782, Loss: 1.2414
+[11/21/2026 04:59:59 AM] [INFO] Epoch 1/2, Batch 200/782, Loss: 1.1323
+[11/21/2026 05:00:01 AM] [INFO] Epoch 1/2, Batch 300/782, Loss: 1.1089
+[11/21/2026 05:00:03 AM] [INFO] Epoch 1/2, Batch 400/782, Loss: 1.0841
+[11/21/2026 05:00:04 AM] [INFO] Epoch 1/2, Batch 500/782, Loss: 1.1149
+[11/21/2026 05:00:06 AM] [INFO] Epoch 1/2, Batch 600/782, Loss: 0.9867
+[11/21/2026 05:00:08 AM] [INFO] Epoch 1/2, Batch 700/782, Loss: 0.9918
+[11/21/2026 05:00:09 AM] [INFO] Epoch 1/2, Average Loss: 1.1947
+[11/21/2026 05:00:12 AM] [INFO] Epoch 1/2, Test Loss: 1.4246
+[11/21/2026 05:00:12 AM] [INFO] Epoch 2/2, Batch 0/782, Loss: 0.9858
+[11/21/2026 05:00:14 AM] [INFO] Epoch 2/2, Batch 100/782, Loss: 1.0133
+[11/21/2026 05:00:15 AM] [INFO] Epoch 2/2, Batch 200/782, Loss: 0.9645
+[11/21/2026 05:00:17 AM] [INFO] Epoch 2/2, Batch 300/782, Loss: 0.9868
+[11/21/2026 05:00:19 AM] [INFO] Epoch 2/2, Batch 400/782, Loss: 0.9475
+[11/21/2026 05:00:20 AM] [INFO] Epoch 2/2, Batch 500/782, Loss: 0.9079
+[11/21/2026 05:00:22 AM] [INFO] Epoch 2/2, Batch 600/782, Loss: 0.8577
+[11/21/2026 05:00:24 AM] [INFO] Epoch 2/2, Batch 700/782, Loss: 0.9489
+[11/21/2026 05:00:25 AM] [INFO] Epoch 2/2, Average Loss: 0.9454
+[11/21/2026 05:00:28 AM] [INFO] Epoch 2/2, Test Loss: 1.5389
+[11/21/2026 05:00:28 AM] [INFO] Demo done.
+[11/21/2026 05:00:43 AM] [INFO] The length of data: 800167.
+[11/21/2026 05:00:43 AM] [INFO] The max user id: 6040, the max movie id: 3952.
+/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/distributed_c10d.py:859: UserWarning: `_get_pg_default_device` will be deprecated, it only stays for backward-compatiblity reason. If you need to find a device for object collectives, please use `_get_object_coll_device`. If you need to query the device types supported by group, please use `_device_capability(group)`. 
+  warnings.warn(
+[rank0]:[W1121 05:00:43.745197879 TensorFactories.cpp:340] Warning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (function operator())
+[rank0]:[W1121 05:00:43.949072448 VariableFallbackKernel.cpp:250] Warning: CAUTION: The operator 'fbgemm::asynchronous_complete_cumsum' is not currently supported on the NPU backend and will fall back to run on the CPU. This may have performance implications. (function npu_cpu_fallback)
+[rank0]:[W1121 05:00:43.987217095 VariableFallbackKernel.cpp:250] Warning: CAUTION: The operator 'fbgemm::invert_permute' is not currently supported on the NPU backend and will fall back to run on the CPU. This may have performance implications. (function npu_cpu_fallback)
+[11/21/2026 05:00:43 AM] [INFO] Epoch 1/2, Batch 0/782, Loss: 23.0353
+[11/21/2026 05:00:45 AM] [INFO] Epoch 1/2, Batch 100/782, Loss: 1.2334
+[11/21/2026 05:00:47 AM] [INFO] Epoch 1/2, Batch 200/782, Loss: 1.1398
+[11/21/2026 05:00:49 AM] [INFO] Epoch 1/2, Batch 300/782, Loss: 1.0773
+[11/21/2026 05:00:51 AM] [INFO] Epoch 1/2, Batch 400/782, Loss: 1.0975
+[11/21/2026 05:00:53 AM] [INFO] Epoch 1/2, Batch 500/782, Loss: 1.0823
+[11/21/2026 05:00:54 AM] [INFO] Epoch 1/2, Batch 600/782, Loss: 1.0257
+[11/21/2026 05:00:56 AM] [INFO] Epoch 1/2, Batch 700/782, Loss: 0.9986
+[11/21/2026 05:00:58 AM] [INFO] Epoch 1/2, Average Loss: 1.1859
+[11/21/2026 05:00:58 AM] [INFO] Epoch 2/2, Batch 0/782, Loss: 0.9716
+[11/21/2026 05:01:00 AM] [INFO] Epoch 2/2, Batch 100/782, Loss: 1.0504
+[11/21/2026 05:01:02 AM] [INFO] Epoch 2/2, Batch 200/782, Loss: 0.9609
+[11/21/2026 05:01:03 AM] [INFO] Epoch 2/2, Batch 300/782, Loss: 1.0041
+[11/21/2026 05:01:05 AM] [INFO] Epoch 2/2, Batch 400/782, Loss: 0.9300
+[11/21/2026 05:01:06 AM] [INFO] Epoch 2/2, Batch 500/782, Loss: 0.8828
+[11/21/2026 05:01:08 AM] [INFO] Epoch 2/2, Batch 600/782, Loss: 0.8668
+[11/21/2026 05:01:10 AM] [INFO] Epoch 2/2, Batch 700/782, Loss: 0.9477
+[11/21/2026 05:01:11 AM] [INFO] Epoch 2/2, Average Loss: 0.9428
+/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/distributed_c10d.py:4631: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+[11/21/2026 05:01:12 AM] [INFO] The length of data: 200042.
+[11/21/2026 05:01:12 AM] [INFO] The max user id: 6040, the max movie id: 3952.
+Warning: The current version of the file storing weights is old, and it is relanded due to internal bug of torch and compatibility issue. We will deprecate the loading support for this type of file in the future, please use newer torch to re-store the weight file.
+[11/21/2026 05:01:15 AM] [INFO] Epoch 1/1, Test Loss: 1.5067
+[11/21/2026 05:01:15 AM] [INFO] Demo done.
