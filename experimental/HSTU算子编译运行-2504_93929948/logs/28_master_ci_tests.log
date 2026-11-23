@@ -1,0 +1,85 @@
+openpyxl: 3.1.5
+START: square().mean().backward()
+/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/autograd/__init__.py:221: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:340.)
+  torch.ones_like(out, memory_format=torch.preserve_format)
+PURE PYTORCH BACKWARD PASSED
+============================= test session starts ==============================
+platform linux -- Python 3.11.0, pytest-9.1.1, pluggy-1.6.0 -- /opt/buildtools/torch_v2_pt2.7.1/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'default'
+metadata: {'Python': '3.11.0', 'Platform': 'Linux-6.6.0-159.4.3.154.oe2403sp4.x86_64-x86_64-with-glibc2.35', 'Packages': {'pytest': '9.1.1', 'pluggy': '1.6.0'}, 'Plugins': {'hypothesis': '6.165.10', 'cov': '7.1.0', 'html': '4.2.0', 'metadata': '3.1.1'}}
+rootdir: /workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest
+configfile: pytest.ini
+plugins: hypothesis-6.165.10, cov-7.1.0, html-4.2.0, metadata-3.1.1
+collecting ... collected 1257 items / 1190 deselected / 67 selected
+
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_qk_unequal_context_target[plan-ctx-only-fwd-qk-ctx-005-b1-h4-s32-d64-bf16-rab1] PASSED [  1%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_qk_unequal_context_target[plan-ctx-only-fwd-qk-ctx-019-b1-h6-s192-d256-bf16-rab1] PASSED [  2%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_qk_unequal_context_target[plan-ctx-only-fwd-qk-ctx-021-b1-h1-s256-d128-fp16-rab0] PASSED [  4%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_qk_unequal_context_target[plan-ctx-target-fwd-qk-ctx-005-b1-h4-s32-d64-bf16-rab1] PASSED [  5%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_qk_unequal_context_target[plan-ctx-target-fwd-qk-ctx-019-b1-h6-s192-d256-bf16-rab1] PASSED [  7%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_qk_unequal_context_target[plan-ctx-target-fwd-qk-ctx-021-b1-h1-s256-d128-fp16-rab0] PASSED [  8%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_qk_unequal_context_target[arbitrary-ctx-only-fwd-qk-ctx-005-b1-h4-s32-d64-bf16-rab1] PASSED [ 10%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_qk_unequal_context_target[arbitrary-ctx-only-fwd-qk-ctx-019-b1-h6-s192-d256-bf16-rab1] PASSED [ 11%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_qk_unequal_context_target[arbitrary-ctx-only-fwd-qk-ctx-021-b1-h1-s256-d128-fp16-rab0] PASSED [ 13%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_qk_unequal_context_target[arbitrary-ctx-target-fwd-qk-ctx-005-b1-h4-s32-d64-bf16-rab1] PASSED [ 14%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_qk_unequal_context_target[arbitrary-ctx-target-fwd-qk-ctx-019-b1-h6-s192-d256-bf16-rab1] PASSED [ 16%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_qk_unequal_context_target[arbitrary-ctx-target-fwd-qk-ctx-021-b1-h1-s256-d128-fp16-rab0] PASSED [ 17%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[metadata_arbitrary-fwd-ci-001-b2-h4-s128-d64-fp16-rab0] PASSED [ 19%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[metadata_arbitrary-fwd-ci-002-b2-h4-s128-d64-fp16-rab1] PASSED [ 20%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[metadata_arbitrary-fwd-ci-003-b2-h4-s512-d64-fp16-rab0] PASSED [ 22%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[metadata_arbitrary-fwd-ci-004-b2-h4-s512-d64-fp16-rab1] PASSED [ 23%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[arbitrary-fwd-ci-001-b2-h4-s128-d64-fp16-rab0] PASSED [ 25%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[arbitrary-fwd-ci-002-b2-h4-s128-d64-fp16-rab1] PASSED [ 26%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[arbitrary-fwd-ci-003-b2-h4-s512-d64-fp16-rab0] PASSED [ 28%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[arbitrary-fwd-ci-004-b2-h4-s512-d64-fp16-rab1] PASSED [ 29%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[builtin-fwd-ci-001-b2-h4-s128-d64-fp16-rab0] PASSED [ 31%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[builtin-fwd-ci-002-b2-h4-s128-d64-fp16-rab1] PASSED [ 32%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[builtin-fwd-ci-003-b2-h4-s512-d64-fp16-rab0] PASSED [ 34%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[builtin-fwd-ci-004-b2-h4-s512-d64-fp16-rab1] PASSED [ 35%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[no_mask-fwd-ci-001-b2-h4-s128-d64-fp16-rab0] PASSED [ 37%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[no_mask-fwd-ci-002-b2-h4-s128-d64-fp16-rab1] PASSED [ 38%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[no_mask-fwd-ci-003-b2-h4-s512-d64-fp16-rab0] PASSED [ 40%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[no_mask-fwd-ci-004-b2-h4-s512-d64-fp16-rab1] PASSED [ 41%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[plan-fwd-ci-001-b2-h4-s128-d64-fp16-rab0] PASSED [ 43%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[plan-fwd-ci-002-b2-h4-s128-d64-fp16-rab1] PASSED [ 44%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[plan-fwd-ci-003-b2-h4-s512-d64-fp16-rab0] PASSED [ 46%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_forward_precision.py::test_ci_smoke[plan-fwd-ci-004-b2-h4-s512-d64-fp16-rab1] PASSED [ 47%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[no-mask-equal-no-rab-fp16] PASSED [ 49%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[no-mask-equal-no-rab-bf16] PASSED [ 50%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[no-mask-equal-rab-fp16] PASSED [ 52%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[no-mask-equal-rab-bf16] PASSED [ 53%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[no-mask-delta-no-rab-fp16] PASSED [ 55%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[no-mask-delta-no-rab-bf16] PASSED [ 56%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[no-mask-delta-rab-fp16] PASSED [ 58%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[no-mask-delta-rab-bf16] PASSED [ 59%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[causal-equal-no-rab-fp16] PASSED [ 61%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[causal-equal-no-rab-bf16] PASSED [ 62%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[causal-equal-rab-fp16] PASSED [ 64%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[causal-equal-rab-bf16] PASSED [ 65%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[causal-delta-no-rab-fp16] PASSED [ 67%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[causal-delta-no-rab-bf16] PASSED [ 68%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[causal-delta-rab-fp16] PASSED [ 70%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[causal-delta-rab-bf16] PASSED [ 71%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-equal-no-rab-fp16] PASSED [ 73%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-equal-no-rab-bf16] PASSED [ 74%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-equal-rab-fp16] PASSED [ 76%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-equal-rab-bf16] PASSED [ 77%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-delta-no-rab-fp16] PASSED [ 79%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-delta-no-rab-bf16] PASSED [ 80%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-delta-rab-fp16] PASSED [ 82%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-delta-rab-bf16] PASSED [ 83%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-target-equal-no-rab-fp16] PASSED [ 85%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-target-equal-no-rab-bf16] PASSED [ 86%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-target-equal-rab-fp16] PASSED [ 88%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-target-equal-rab-bf16] PASSED [ 89%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-target-delta-no-rab-fp16] PASSED [ 91%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-target-delta-no-rab-bf16] PASSED [ 92%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-target-delta-rab-fp16] PASSED [ 94%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd[context-target-delta-rab-bf16] PASSED [ 95%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd_partial_gradients[q-only] PASSED [ 97%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd_partial_gradients[kv-only] PASSED [ 98%]
+../workspace/ops-rec/ascendc/attention/hstu_v2/test/pytest/test_hstu_autograd.py::test_hstu_v2_autograd_partial_gradients[rab-only] PASSED [100%]
+
+------ generated xml file: /workspace/hstu_logs/28_master_ci_results.xml -------
+===================== 67 passed, 1190 deselected in 2.58s ======================

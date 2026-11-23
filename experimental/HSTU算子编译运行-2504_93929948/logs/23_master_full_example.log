@@ -1,0 +1,17 @@
+STEP 1: 基础反向预热并校验
+START: square().mean().backward()
+/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/autograd/__init__.py:221: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at ../torch_npu/csrc/aten/common/TensorFactories.cpp:340.)
+  torch.ones_like(out, memory_format=torch.preserve_format)
+PURE PYTORCH BACKWARD PASSED
+STEP 2: 执行未修改的master官方示例
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in '_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'distance_in_linear_silu'
+WARNING:ops_rec.autograd:ops_rec.autograd: failed to import 'concat_jagged_tensor_autograd': '_OpNamespace' 'ops_rec' object has no attribute 'concat_2d_jagged'
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in 'gather_for_rank1_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'gather_for_rank1'
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in 'hstu_v1_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'hstu_dense'
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in 'norm_multiply_dropout_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'norm_multiply_dropout_forward'
+WARNING:ops_rec.autograd:ops_rec.autograd: register_autograd() in 'relative_attn_bias_autograd' failed: '_OpNamespace' 'ops_rec' object has no attribute 'relative_attn_bias_time_with_index'
+WARNING:root:ops_rec: failed to import plugin module 'ops_rec.autograd.concat_jagged_tensor_autograd': '_OpNamespace' 'ops_rec' object has no attribute 'concat_2d_jagged'
+PASSED: unequal=False, rab=False, causal=False, training=False
+PASSED: unequal=True, rab=True, causal=True, training=False
+PASSED: unequal=True, rab=True, causal=True, training=True
+MASTER FULL EXAMPLE PASSED

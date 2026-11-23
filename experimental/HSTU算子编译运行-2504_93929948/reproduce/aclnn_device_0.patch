@@ -1,0 +1,13 @@
+diff --git a/ascendc/attention/hstu_v2/examples/aclnn/test_aclnn_hstu_backward_v2.cpp b/ascendc/attention/hstu_v2/examples/aclnn/test_aclnn_hstu_backward_v2.cpp
+index cd17eb5..1df60a2 100644
+--- a/ascendc/attention/hstu_v2/examples/aclnn/test_aclnn_hstu_backward_v2.cpp
++++ b/ascendc/attention/hstu_v2/examples/aclnn/test_aclnn_hstu_backward_v2.cpp
+@@ -85,7 +85,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>&
+ 
+ int main()
+ {
+-    int32_t deviceId = 5;
++    int32_t deviceId = 0;
+     aclrtStream stream;
+     auto ret = Init(deviceId, &stream);
+     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
