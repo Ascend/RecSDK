@@ -1,0 +1,469 @@
+C:\Users\<用户名>>ssh -J jt_<已脱敏>:<已脱敏>@<跳板机IP>:<端口> root@<目标主机IP>
+Welcome to Ubuntu 22.04.5 LTS (GNU/Linux 6.6.0-159.4.3.154.oe2403sp4.x86_64 x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+This system has been minimized by removing packages and content that are
+not required on a system that users do not log into.
+
+To restore this content, you can run the 'unminimize' command.
+Last login: Fri Nov 20 09:31:33 2026 from <登录来源IP>
+root@<容器主机名>:/workspace#
+Display all 982 possibilities? (y or n)
+root@<容器主机名>:/workspace# cd /usr/local
+root@<容器主机名>:/usr/local# ls -la
+total 4
+drwxr-xr-x. 1 root root   59 Nov 20 09:01 .
+drwxr-xr-x. 1 root root  128 Aug 10 14:50 ..
+drwxr-xr-x. 1 root root   28 Nov 20 09:01 Ascend
+drwxr-xr-x. 1 root root   29 Nov 20 09:01 bin
+drwxr-xr-x. 2 root root 4096 Nov  3 02:31 dcmi
+drwxr-xr-x. 3 root root   32 Aug 20 07:15 doc
+drwxr-xr-x. 2 root root   10 Aug 10 14:50 etc
+drwxr-xr-x. 2 root root   10 Aug 10 14:50 games
+drwxr-xr-x. 8 root root  112 Aug 20 07:10 gcc11.2.0
+drwxr-xr-x. 2 root root   10 Aug 10 14:50 include
+drwxr-xr-x. 1 root root   32 Aug 20 06:39 lib
+lrwxrwxrwx. 1 root root    9 Aug 10 14:50 man -> share/man
+drwxr-xr-x. 1 root root   40 Aug 20 07:16 python3.11.0
+drwxr-xr-x. 2 root root   32 Aug 10 14:57 sbin
+drwxr-xr-x. 1 root root  110 Aug 20 07:15 share
+drwxr-xr-x. 2 root root   10 Aug 10 14:50 src
+root@<容器主机名>:/usr/local# cd Ascend
+root@<容器主机名>:/usr/local/Ascend# ls -la
+total 8
+drwxr-xr-x.  1 root root   28 Nov 20 09:01 .
+drwxr-xr-x.  1 root root   59 Nov 20 09:01 ..
+drwxr-xr-x.  2 root root   50 Aug 20 07:37 ascend-toolkit
+lrwxrwxrwx.  1 root root   35 Aug 20 07:35 cann -> /usr/local/Ascend/cann-9.1.0-beta.3
+drwxr-xr-x. 14 root root 4096 Aug 20 07:40 cann-9.1.0-beta.3
+drwxr-xr-x. 12 root root 4096 Nov  3 02:31 driver
+root@<容器主机名>:/usr/local/Ascend# cd cann-9.1.0-beta.2
+-bash: cd: cann-9.1.0-beta.2: No such file or directory
+root@<容器主机名>:/usr/local/Ascend# cd cann-9.1.0-beta.3
+root@<容器主机名>:/usr/local/Ascend/cann-9.1.0-beta.3# ls -la
+total 32
+drwxr-xr-x. 14 root root 4096 Aug 20 07:40 .
+drwxr-xr-x.  1 root root   28 Nov 20 09:01 ..
+lrwxrwxrwx.  1 root root   16 Aug 20 07:35 asc -> x86_64-linux/asc
+lrwxrwxrwx.  1 root root   16 Aug 20 07:39 bin -> x86_64-linux/bin
+-r-x------.  1 root root 2509 Aug 20 07:40 cann_uninstall.sh
+dr-xr-xr-x.  2 root root   34 Aug 20 07:36 combo_script
+dr-xr-xr-x.  2 root root  150 Aug 20 07:36 compat
+drwxr-xr-x.  4 root root  135 Aug 20 07:35 compiler
+lrwxrwxrwx.  1 root root   17 Aug 20 07:39 conf -> x86_64-linux/conf
+lrwxrwxrwx.  1 root root   19 Aug 20 07:39 devlib -> x86_64-linux/devlib
+dr-xr-xr-x.  3 root root   27 Aug 20 07:35 fwkacllib
+lrwxrwxrwx.  1 root root   20 Aug 20 07:39 include -> x86_64-linux/include
+lrwxrwxrwx.  1 root root   18 Aug 20 07:39 lib64 -> x86_64-linux/lib64
+drwxr-xr-x. 10 root root 4096 Aug 20 07:38 opp
+-rwx--x--x.  1 root root 1347 Aug 20 07:40 ops_uninstall.sh
+lrwxrwxrwx.  1 root root   20 Aug 20 07:39 pkg_inc -> x86_64-linux/pkg_inc
+drwxr-xr-x.  3 root root   35 Aug 20 07:35 python
+drwxr-xr-x.  5 root root   61 Aug 20 07:36 runtime
+-r-xr-xr-x.  1 root root 5119 Aug 20 07:35 set_env.sh
+drwxr-xr-x.  3 root root   26 Aug 20 07:39 share
+lrwxrwxrwx.  1 root root   12 Aug 20 07:36 test-ops -> opp/test-ops
+drwxr-xr-x.  4 root root   63 Aug 20 07:35 toolkit
+drwxr-xr-x. 28 root root 4096 Aug 20 07:37 tools
+drwxr-xr-x.  2 root root   44 Aug 20 07:40 var
+dr-xr-xr-x. 15 root root 4096 Aug 20 07:40 x86_64-linux
+root@<容器主机名>:/usr/local/Ascend/cann-9.1.0-beta.3# cource ./set_env.sh a5
+-bash: cource: command not found
+root@<容器主机名>:/usr/local/Ascend/cann-9.1.0-beta.3# source ./set_env.sh a5
+root@<容器主机名>:/usr/local/Ascend/cann-9.1.0-beta.3# source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
+(torch_v2_pt2.7.1) root@<容器主机名>:/usr/local/Ascend/cann-9.1.0-beta.3# cd /workspace
+(torch_v2_pt2.7.1) root@<容器主机名>:/workspace# git clone -b develop_examples_and_tools https://gitcode.com/Ascend/RecSDK.git
+Cloning into 'RecSDK'...
+remote: Enumerating objects: 52145, done.
+remote: Counting objects: 100% (10171/10171), done.
+remote: Compressing objects: 100% (3322/3322), done.
+remote: Total 52145 (delta 9038), reused 6860 (delta 6843), pack-reused 41974 (from 1)
+Receiving objects: 100% (52145/52145), 44.14 MiB | 35.03 MiB/s, done.
+Resolving deltas: 100% (31716/31716), done.
+(torch_v2_pt2.7.1) root@<容器主机名>:/workspace# cd RecSDK/torch_rec_v2_examples/little_demo
+(torch_v2_pt2.7.1) root@<容器主机名>:/workspace/RecSDK/torch_rec_v2_examples/little_dem
+o# curl -h
+Usage: curl [options...] <url>
+ -d, --data <data>          HTTP POST data
+ -f, --fail                 Fail silently (no output at all) on HTTP errors
+ -h, --help <category>      Get help for commands
+ -i, --include              Include protocol response headers in the output
+ -o, --output <file>        Write to file instead of stdout
+ -O, --remote-name          Write output to a file named as the remote file
+ -s, --silent               Silent mode
+ -T, --upload-file <file>   Transfer local FILE to destination
+ -u, --user <user:password> Server user and password
+ -A, --user-agent <name>    Send User-Agent <name> to server
+ -v, --verbose              Make the operation more talkative
+ -V, --version              Show version number and quit
+
+This is not the full help, this menu is stripped into categories.
+Use "--help category" to get an overview of all categories.
+For all options use the manual or "--help all".
+(torch_v2_pt2.7.1) root@<容器主机名>:/workspace/RecSDK/torch_rec_v2_examples/little_dem
+o# curl -o ml-1m.zip https://files.grouplens.org/datasets/movielens/ml-1m.zip
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+ 20 5778k   20 1179k    0     0  18044      0  0:05:27  0:01:06  client_loop: send disconnect: Connection reset
+client_loop: send disconnect: Unknown error
+
+C:\Users\<用户名>>ssh -J jt_<已脱敏>:<已脱敏>@<跳板机IP>:<端口> root@<目标主机IP>
+Welcome to Ubuntu 22.04.5 LTS (GNU/Linux 6.6.0-159.4.3.154.oe2403sp4.x86_64 x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+root@<容器主机名>:/workspace# cd /usr/local/
+root@<容器主机名>:/usr/local# ls
+Ascend  dcmi  etc    gcc11.2.0  lib  python3.11.0  share
+bin     doc   games  include    man  sbin          src
+root@<容器主机名>:/usr/local# cd Ascend
+root@<容器主机名>:/usr/local/Ascend# ls
+ascend-toolkit  cann  cann-9.1.0-beta.3  driver
+root@<容器主机名>:/usr/local/Ascend# cd cann-9.1.0-beta.3
+root@<容器主机名>:/usr/local/Ascend/cann-9.1.0-beta.3# ls
+asc                compat    fwkacllib  ops_uninstall.sh  set_env.sh  tools
+bin                compiler  include    pkg_inc           share       var
+cann_uninstall.sh  conf      lib64      python            test-ops    x86_64-linux
+combo_script       devlib    opp        runtime           toolkit
+root@<容器主机名>:/usr/local/Ascend/cann-9.1.0-beta.3# source ./set_env.sh a5
+root@<容器主机名>:/usr/local/Ascend/cann-9.1.0-beta.3# source /opt/buildtools/torch_v2_pt2.7.1/bin/activate
+(torch_v2_pt2.7.1) root@<容器主机名>:/usr/local/Ascend/cann-9.1.0-beta.3# cd /workspace
+(torch_v2_pt2.7.1) root@<容器主机名>:/workspace# cd RecSDK/torch_rec_v2_examples/little_demo
+(torch_v2_pt2.7.1) root@<容器主机名>:/workspace/RecSDK/torch_rec_v2_examples/little_dem
+o# curl -o ml-1m.zip https://files.grouplens.org/datasets/movielens/ml-1m.zip
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 5778k  100 5778k    0     0  15224      0  0:06:28  0:06:28 --:--:-- 13603
+(torch_v2_pt2.7.1) root@<容器主机名>:/workspace/RecSDK/torch_rec_v2_examples/little_demo# apt search unzip
+
+Sorting... Done
+Full Text Search... Done
+jsxcompressor/jammy 1.4.2+dfsg1-1 all
+  Pure Javascript implementation of deflate, unzip, base64_decode
+
+libperlio-gzip-perl/jammy,now 0.19-1build8 amd64 [installed,automatic]
+  module providing a PerlIO layer to gzip/gunzip
+
+libquazip-doc/jammy 0.9.1-2 all
+  C++ wrapper for ZIP/UNZIP (documentation)
+
+libquazip5-1/jammy 0.9.1-2 amd64
+  C++ wrapper for ZIP/UNZIP
+
+libquazip5-dev/jammy 0.9.1-2 amd64
+  C++ wrapper for ZIP/UNZIP (development files)
+
+lunzip/jammy 1.13-1 amd64
+  data compressor based on the LZMA algorithm (decompressor)
+
+node-extract-zip/jammy 2.0.1+ds-3 all
+  unzip a zip file using pure javascript
+
+node-yauzl/jammy 2.10.0-3 all
+  yet another unzip library - Node.js module
+
+python3-reprounzip/jammy 1.0.16-2 all
+  modules for the ReproZip unpacker
+
+reprounzip/jammy 1.0.16-2 all
+  tool for reproducing scientific experiments (unpacker)
+
+unzip/jammy-updates,now 6.0-26ubuntu3.2 amd64 [installed]
+  De-archiver for .zip files
+
+xlunzip/jammy 0.7-3 amd64
+  data compressor based on the LZMA algorithm (decompressor)
+
+(torch_v2_pt2.7.1) root@<容器主机名>:/workspace/RecSDK/torch_rec_v2_examples/little_demo#
+(torch_v2_pt2.7.1) root@<容器主机名>:/workspace/RecSDK/torch_rec_v2_examples/little_demo# unzip ml-1m.zip
+Archive:  ml-1m.zip
+   creating: ml-1m/
+  inflating: ml-1m/movies.dat
+  inflating: ml-1m/ratings.dat
+  inflating: ml-1m/README
+  inflating: ml-1m/users.dat
+(torch_v2_pt2.7.1) root@<容器主机名>:/workspace/RecSDK/torch_rec_v2_examples/little_demo# bash run.sh --data_path ./ml-1m
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/workspace/RecSDK/torch_rec_v2_examples/little_demo/main.py", line 307, in <module>
+[rank0]:     main()
+[rank0]:   File "/workspace/RecSDK/torch_rec_v2_examples/little_demo/main.py", line 296, in main
+[rank0]:     dist.barrier(device_ids=[local_rank])
+[rank0]:   File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+[rank0]:     return func(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/distributed_c10d.py", line 4635, in barrier
+[rank0]:     work = group.barrier(opts=opts)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]: RuntimeError: create_config:../torch_npu/csrc/distributed/HCCLUtils.cpp:140 NPU function error: device error type 0, error code is 19
+[rank0]: [ERROR] 2026-11-20-09:53:47 (PID:19439, Device:0, RankID:0) ERR00100 PTA call acl api failed
+E1120 09:53:53.897000 19369 torch/distributed/elastic/multiprocessing/api.py:874] failed (exitcode: 1) local_rank: 0 (pid: 19439) of binary: /opt/buildtools/torch_v2_pt2.7.1/bin/python3
+Traceback (most recent call last):
+  File "/opt/buildtools/torch_v2_pt2.7.1/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 355, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/run.py", line 892, in main
+    run(args)
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/run.py", line 883, in run
+    elastic_launch(
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 139, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 270, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError:
+============================================================
+main.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-11-20_09:53:53
+  host      : <容器主机名>
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 19439)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
+[ERROR] 2026-11-20-09:53:53 (PID:19369, Device:-1, RankID:-1) ERR99999 UNKNOWN applicaiton exception
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/workspace/RecSDK/torch_rec_v2_examples/little_demo/main.py", line 307, in <module>
+[rank0]:     main()
+[rank0]:   File "/workspace/RecSDK/torch_rec_v2_examples/little_demo/main.py", line 296, in main
+[rank0]:     dist.barrier(device_ids=[local_rank])
+[rank0]:   File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+[rank0]:     return func(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/distributed_c10d.py", line 4635, in barrier
+[rank0]:     work = group.barrier(opts=opts)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]: RuntimeError: create_config:../torch_npu/csrc/distributed/HCCLUtils.cpp:140 NPU function error: device error type 0, error code is 19
+[rank0]: [ERROR] 2026-11-20-09:54:03 (PID:19619, Device:0, RankID:0) ERR00100 PTA call acl api failed
+E1120 09:54:09.912000 19545 torch/distributed/elastic/multiprocessing/api.py:874] failed (exitcode: 1) local_rank: 0 (pid: 19619) of binary: /opt/buildtools/torch_v2_pt2.7.1/bin/python3
+Traceback (most recent call last):
+  File "/opt/buildtools/torch_v2_pt2.7.1/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 355, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/run.py", line 892, in main
+    run(args)
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/run.py", line 883, in run
+    elastic_launch(
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 139, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 270, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError:
+============================================================
+main.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-11-20_09:54:09
+  host      : <容器主机名>
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 19619)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
+[ERROR] 2026-11-20-09:54:09 (PID:19545, Device:-1, RankID:-1) ERR99999 UNKNOWN applicaiton exception
+(torch_v2_pt2.7.1) root@<容器主机名>:/workspace/RecSDK/torch_rec_v2_examples/little_dem(torch_v2_pt2.7.1) root@<容器主机名>:/workspace/RecSDK/torch_rec_v2_examples/little_demo# n
+pu-smi info
++-------------------------------------------------------------------------------------------------+
+| npu-smi 25.7.rc1.10                              Version: 25.7.rc1.10                           |
++--------+------------------+---------------+-----------------------------------------------------+
+| NPU ID | Name             | Health        | Power(W)    Temp(C)           Hugepages-Usage(page) |
+|        |                  | Bus-Id        | NPU Util(%) Memory-Usage(MB)  HBM-Usage(MB)         |
++========+==================+===============+=====================================================+
+| 0      | Ascend950PR      | OK            | 205.6       55                0     / 0             |
+|        |                  | 0000:D7:00.0  | 0           0    / 0          5238  / 131072        |
++========+==================+===============+=====================================================+
++---------------------------+---------------+-----------------------------------------------------+
+| NPU ID                    | Process id    | Process name             | Process memory(MB)       |
++===========================+===============+=====================================================+
+| No running processes found in NPU 0                                                             |
++===========================+===============+=====================================================+
+(torch_v2_pt2.7.1) root@<容器主机名>:/workspace/RecSDK/torch_rec_v2_examples/little_demo# bash run.sh
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/workspace/RecSDK/torch_rec_v2_examples/little_demo/main.py", line 307, in <module>
+[rank0]:     main()
+[rank0]:   File "/workspace/RecSDK/torch_rec_v2_examples/little_demo/main.py", line 296, in main
+[rank0]:     dist.barrier(device_ids=[local_rank])
+[rank0]:   File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+[rank0]:     return func(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/distributed_c10d.py", line 4635, in barrier
+[rank0]:     work = group.barrier(opts=opts)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]: RuntimeError: create_config:../torch_npu/csrc/distributed/HCCLUtils.cpp:140 NPU function error: device error type 0, error code is 19
+[rank0]: [ERROR] 2026-11-20-09:55:38 (PID:19841, Device:0, RankID:0) ERR00100 PTA call acl api failed
+E1120 09:55:45.407000 19771 torch/distributed/elastic/multiprocessing/api.py:874] failed (exitcode: 1) local_rank: 0 (pid: 19841) of binary: /opt/buildtools/torch_v2_pt2.7.1/bin/python3
+Traceback (most recent call last):
+  File "/opt/buildtools/torch_v2_pt2.7.1/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 355, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/run.py", line 892, in main
+    run(args)
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/run.py", line 883, in run
+    elastic_launch(
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 139, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 270, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError:
+============================================================
+main.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-11-20_09:55:45
+  host      : <容器主机名>
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 19841)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
+[ERROR] 2026-11-20-09:55:45 (PID:19771, Device:-1, RankID:-1) ERR99999 UNKNOWN applicaiton exception
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/workspace/RecSDK/torch_rec_v2_examples/little_demo/main.py", line 307, in <module>
+[rank0]:     main()
+[rank0]:   File "/workspace/RecSDK/torch_rec_v2_examples/little_demo/main.py", line 296, in main
+[rank0]:     dist.barrier(device_ids=[local_rank])
+[rank0]:   File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+[rank0]:     return func(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/distributed_c10d.py", line 4635, in barrier
+[rank0]:     work = group.barrier(opts=opts)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]: RuntimeError: create_config:../torch_npu/csrc/distributed/HCCLUtils.cpp:140 NPU function error: device error type 0, error code is 19
+[rank0]: [ERROR] 2026-11-20-09:55:55 (PID:20016, Device:0, RankID:0) ERR00100 PTA call acl api failed
+E1120 09:56:01.927000 19946 torch/distributed/elastic/multiprocessing/api.py:874] failed (exitcode: 1) local_rank: 0 (pid: 20016) of binary: /opt/buildtools/torch_v2_pt2.7.1/bin/python3
+Traceback (most recent call last):
+  File "/opt/buildtools/torch_v2_pt2.7.1/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 355, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/run.py", line 892, in main
+    run(args)
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/run.py", line 883, in run
+    elastic_launch(
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 139, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 270, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError:
+============================================================
+main.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-11-20_09:56:01
+  host      : <容器主机名>
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 20016)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================
+[ERROR] 2026-11-20-09:56:01 (PID:19946, Device:-1, RankID:-1) ERR99999 UNKNOWN applicaiton exception
+(torch_v2_pt2.7.1) root@<容器主机名>:/workspace/RecSDK/torch_rec_v2_examples/little_demo# bash run.sh
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/workspace/RecSDK/torch_rec_v2_examples/little_demo/main.py", line 307, in <module>
+[rank0]:     main()
+[rank0]:   File "/workspace/RecSDK/torch_rec_v2_examples/little_demo/main.py", line 296, in main
+[rank0]:     dist.barrier(device_ids=[local_rank])
+[rank0]:   File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/c10d_logger.py", line 81, in wrapper
+[rank0]:     return func(*args, **kwargs)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/distributed_c10d.py", line 4635, in barrier
+[rank0]:     work = group.barrier(opts=opts)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]: RuntimeError: create_config:../torch_npu/csrc/distributed/HCCLUtils.cpp:140 NPU function error: device error type 0, error code is 19
+[rank0]: [ERROR] 2026-11-20-10:02:40 (PID:23121, Device:0, RankID:0) ERR00100 PTA call acl api failed
+^CW1120 10:02:43.258000 23051 torch/distributed/elastic/agent/server/api.py:719] Received 2 death signal, shutting down workers
+W1120 10:02:43.259000 23051 torch/distributed/elastic/multiprocessing/api.py:900] Sending process 23121 closing signal SIGINT
+Traceback (most recent call last):
+  File "/opt/buildtools/torch_v2_pt2.7.1/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 355, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/run.py", line 892, in main
+    run(args)
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/run.py", line 883, in run
+    elastic_launch(
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 139, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/launcher/api.py", line 261, in launch_agent
+    result = agent.run()
+             ^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/elastic/metrics/api.py", line 138, in wrapper
+    result = f(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/elastic/agent/server/api.py", line 711, in run
+    result = self._invoke_run(role)
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/elastic/agent/server/api.py", line 870, in _invoke_run
+    time.sleep(monitor_interval)
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/distributed/elastic/multiprocessing/api.py", line 84, in _terminate_process_handler
+    raise SignalException(f"Process {os.getpid()} got signal: {sigval}", sigval=sigval)
+torch.distributed.elastic.multiprocessing.api.SignalException: Process 23051 got signal: 2
+[ERROR] 2026-11-20-10:02:43 (PID:23051, Device:-1, RankID:-1) ERR99999 UNKNOWN applicaiton exception
+^CTraceback (most recent call last):
+  File "/opt/buildtools/torch_v2_pt2.7.1/bin/torchrun", line 5, in <module>
+    from torch.distributed.run import main
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/__init__.py", line 2808, in <module>
+    _import_device_backends()
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch/__init__.py", line 2763, in _import_device_backends
+    entrypoint = backend_extension.load()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/python3.11.0/lib/python3.11/importlib/metadata/__init__.py", line 198, in load
+    module = import_module(match.group('module'))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/python3.11.0/lib/python3.11/importlib/__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch_npu/__init__.py", line 102, in <module>
+    _cann_package_check()
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch_npu/utils/npu_intercept.py", line 62, in _cann_package_check
+    cann_version = get_cann_version()
+                   ^^^^^^^^^^^^^^^^^^
+  File "/opt/buildtools/torch_v2_pt2.7.1/lib/python3.11/site-packages/torch_npu/utils/collect_env.py", line 75, in get_cann_version
+    for dirpath, _, filenames in os.walk(os.path.realpath(ascend_home_path)):
+  File "<frozen os>", line 418, in _walk
+  File "<frozen os>", line 418, in _walk
+  File "<frozen os>", line 418, in _walk
+  [Previous line repeated 5 more times]
+  File "<frozen os>", line 412, in _walk
+  File "<frozen posixpath>", line 88, in join
+KeyboardInterrupt
+^C
