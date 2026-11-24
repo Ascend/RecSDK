@@ -8,9 +8,9 @@
 
 迁移与训练中使用的软件配套版本如下所示：
 
-|软件名称|PyTorch|TorchNPU|torchrec|fbgemm_gpu|dynamic_emb|
-|--|--|--|--|--|--|
-|配套版本|2.7.1|2.7.1|1.2.0+npu|1.2.0|25.09|
+|软件名称|PyTorch|TorchNPU|torchrec|fbgemm_gpu|fbgemm-ascend|dynamic_emb|
+|--|--|--|--|--|--|--|
+|配套版本|2.7.1|2.7.1|1.2.0+npu|1.2.0|1.2.0|25.09|
 
 以下出现的相关接口的参数含义及约束详细可见[接口说明](../05_api/00_README.md)。
 

@@ -33,17 +33,18 @@ diff --git a/torchrec/__init__.py b/torchrec/__init__.py
 index 29258f6f..b67bdb54 100644
 --- a/torchrec/__init__.py
 +++ b/torchrec/__init__.py
-@@ -6,7 +6,8 @@
+@@ -6,7 +6,9 @@
  # LICENSE file in the root directory of this source tree.
 
  # pyre-strict
 -
 +import enum
 +from fbgemm_gpu import split_table_batched_embeddings_ops_training
++import fbgemm_ascend  # noqa
  import torchrec.distributed  # noqa
  import torchrec.quant  # noqa
  from torchrec.fx import tracer  # noqa
-@@ -34,3 +35,12 @@ try:
+@@ -34,3 +36,12 @@ try:
      from .version import __version__, github_version  # noqa
  except ImportError:
      pass
