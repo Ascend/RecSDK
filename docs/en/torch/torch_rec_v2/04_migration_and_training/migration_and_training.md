@@ -8,9 +8,9 @@ Follow the steps in [Quick Start../03_quick_start/quick_start.md to build and tr
 
 The software versions used in migration and training are as follows:
 
-|Software|PyTorch|TorchNPU|torchrec|fbgemm_gpu|dynamic_emb|
-|--|--|--|--|--|--|
-|Version|2.7.1|2.7.1|1.2.0+npu|1.2.0|25.09|
+|Software|PyTorch|TorchNPU|torchrec|fbgemm_gpu|fbgemm-ascend|dynamic_emb|
+|--|--|--|--|--|--|--|
+|Version|2.7.1|2.7.1|1.2.0+npu|1.2.0|1.2.0|25.09|
 
 For details about the meanings and constraints of the parameters of the related interfaces mentioned below, see [API List](../05_api/00_README.md).
 

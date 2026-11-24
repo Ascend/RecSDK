@@ -154,9 +154,9 @@ See [OVERVIEW](../../../../../docker/OVERVIEW.md) for instructions on starting t
 
     The software versions in the preceding image are as follows:
 
-    |Software|PyTorch|TorchNPU|TorchRec|fbgemm_gpu|dynamic_emb|
-    |--|--|--|--|--|--|
-    |Version|2.7.1|2.7.1|1.2.0+npu|1.2.0|25.09|
+    |Software|PyTorch|TorchNPU|TorchRec|fbgemm_gpu|fbgemm-ascend|dynamic_emb|
+    |--|--|--|--|--|--|--|
+    |Version|2.7.1|2.7.1|1.2.0+npu|1.2.0|1.2.0|25.09|
 
 2. Configure the environment in the container.
 
