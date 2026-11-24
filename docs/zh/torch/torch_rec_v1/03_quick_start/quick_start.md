@@ -335,6 +335,8 @@ torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-p
 
 >[!NOTE]
 > 模型训练时会占用 6000 端口号，若提示端口已被占用，请修改main.py脚本/启动指令（启动多卡时）中的端口号为其他未被占用的端口。
+>
+> 多卡训练时 HCCL 默认还会使用 16666 端口；若该端口已被占用，会出现 `Communication_Error_Bind_IP_Port(EI0020)`，提示 `The IP address ... and port 16666 have already been bound`。此时可执行 `export HCCL_NPU_SOCKET_PORT_RANGE=auto`，让 HCCL 动态分配通信端口。
 
 ## 进阶开发
 
