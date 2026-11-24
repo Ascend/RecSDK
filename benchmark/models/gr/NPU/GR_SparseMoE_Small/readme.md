@@ -8,7 +8,7 @@
 
 # 运行环境准备
 
-请参考：[模型样例运行环境说明](../../../../../torch_examples_benchmark/develop/README.md)
+请参考：[模型样例运行环境说明](../../../../README.md#recsdk-torch-模型样例运行环境说明)
 
 ## inductor相关依赖
 

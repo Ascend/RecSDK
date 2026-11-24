@@ -2,7 +2,7 @@
     "name": "RANKMIXER",
     "url": "https://gitcode.com/Ascend/RecSDK.git",
     "model_name": "rankmixer",
-    "commit_id": "6c088e4451ae2b93cd52928b4d3bd25f1574ef01",
+    "commit_id": "d348c40dec2bded409dd48a1f25c5f955974e895",
     "patch_path": "patches/rankmixer.patch",
     "mode": "train",
     "epoch": 2,

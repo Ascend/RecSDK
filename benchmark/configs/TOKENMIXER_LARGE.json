@@ -2,7 +2,7 @@
     "name": "TOKENMIXER_LARGE",
     "url": "https://gitcode.com/Ascend/RecSDK.git",
     "model_name": "tokenmixer-large",
-    "commit_id": "e85679117762ae3534debbf97f4f11017dcdddaa",
+    "commit_id": "d348c40dec2bded409dd48a1f25c5f955974e895",
     "patch_path": "patches/tokenmixer-large.patch",
     "mode": "train",
     "epoch": 10,
