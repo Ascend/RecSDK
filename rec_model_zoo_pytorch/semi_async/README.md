@@ -37,19 +37,19 @@
 
 本 Demo 使用 DLRM 模型演示框架效果。
 
-参考[DLRM模型迁移样例说明](../dlrm/README.md)完成 DLRM 模型的迁移和数据准备。
+参考 [develop_examples_and_tools 分支](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools)的 `torch_rec_v1_examples/dlrm/README.md` 完成 DLRM 模型的迁移和数据准备。
 
 ### 半异步训练适配
 
 修改 dlrm_main.py 中的训练脚本，替换原有的训练循环为 TrainPipelineSparseDist 流水线引擎的调用。
 
-export PYTHONPATH=$PYTHONPATH:/path/to/RecSDK/examples_benchmark/develop/semi_async
+export PYTHONPATH=$PYTHONPATH:/path/to/RecSDK/rec_model_zoo_pytorch/semi_async
 
 line 532-547
 替换成
 
 ```python
-    from semi_async import TrainPipelineSparseDistAsyncEmbedding
+    from semi_async_pipeline import TrainPipelineSparseDistAsyncEmbedding
     # 初始化半异步训练流水线
     pipeline = TrainPipelineSparseDistAsyncEmbedding(
         model, optimizer, device, execute_all_batches=True

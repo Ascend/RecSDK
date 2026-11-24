@@ -15,7 +15,7 @@
 
 # 运行环境准备
 
-参考[RecSDK-Torch 模型样例运行环境说明](../torch_examples_benchmark/develop/README.md)
+环境配套、容器启动和依赖安装步骤见本文的 [RecSDK-Torch 运行环境说明](#recsdk-torch-模型样例运行环境说明)。
 
 # 必要依赖安装
 
@@ -31,16 +31,18 @@ pip install pytest
 pip install tensorflow
 ```
 
-# quick start
+# 快速开始
 
-xxx.json替換为configs目录下的配置文件名；
+从仓库根目录进入 `benchmark/`，将 `configs/` 下的配置文件名传给 `run.py`。以 HLLM 推理为例，按需要选择一种模式：
 
 ```shell
-python run.py xxx.json --eager
+cd benchmark
+python run.py HLLM_INFER.json --eager  # Eager 推理
+python run.py HLLM_INFER.json          # Inductor 推理
 ```
 
-**xxx.json**:为configs文件夹中的配置文件\
-**--eager**：为强制跑eager模式，不配置默认跑inductor模式（当前未支持）\
+对于已接入框架编译开关的启动脚本，`--eager` 关闭编译，省略该参数则开启编译。其他模型的配置文件见[模型列表](#model-list)。
+
 **--no\_hf32**：禁用混合精度加速，不配置默认使能混合精度加速。NCF、DIN-pytorch、Multitask-Recommendation-Library、SASRec比对GPU与NPU精度时需禁用\
 **--custom\_dropout**：使用自定义的dropout函数，不配置使用默认的dropout函数。Multitask-Recommendation-Library比对GPU与NPU精度时需配置
 
@@ -97,6 +99,20 @@ python run.py xxx.json --eager
 |PLE|[PLE.json](configs/PLE.json)|
 |PNN|[PNN.json](configs/PNN.json)|
 |RANKMIXER|[RANKMIXER.json](configs/RANKMIXER.json)|
+|RANKMIXER_SHAREMOE|[RANKMIXER_SHAREMOE.json](configs/RANKMIXER_SHAREMOE.json)|
+|HLLM_INFER|[HLLM_INFER.json](configs/HLLM_INFER.json)|
+|DECISION_DIFFUSER|[DECISION_DIFFUSER.json](configs/DECISION_DIFFUSER.json)|
+|GR_TP4|[GR_TP4.json](configs/GR_TP4.json)|
+|GR_NPU_BASE|[GR_NPU_BASE.json](configs/GR_NPU_BASE.json)|
+|GR_NPU_MOE|[GR_NPU_MOE.json](configs/GR_NPU_MOE.json)|
+|GR_NPU_SMALL_05B|[GR_NPU_SMALL_05B.json](configs/GR_NPU_SMALL_05B.json)|
+|GR_NPU_SMALL_1B|[GR_NPU_SMALL_1B.json](configs/GR_NPU_SMALL_1B.json)|
+|GR_NPU_SMALL_2B|[GR_NPU_SMALL_2B.json](configs/GR_NPU_SMALL_2B.json)|
+|GR_GPU_BASE|[GR_GPU_BASE.json](configs/GR_GPU_BASE.json)|
+|GR_GPU_MOE|[GR_GPU_MOE.json](configs/GR_GPU_MOE.json)|
+|GR_GPU_SMALL_05B|[GR_GPU_SMALL_05B.json](configs/GR_GPU_SMALL_05B.json)|
+|GR_GPU_SMALL_1B|[GR_GPU_SMALL_1B.json](configs/GR_GPU_SMALL_1B.json)|
+|GR_GPU_SMALL_2B|[GR_GPU_SMALL_2B.json](configs/GR_GPU_SMALL_2B.json)|
 |TOKENMIXER_LARGE|[TOKENMIXER_LARGE.json](configs/TOKENMIXER_LARGE.json)|
 |RECSYS_RANKING|[RECSYS_RANKING.json](configs/RECSYS_RANKING.json)|
 |RECSYS_RANKING_GR_2B|[RECSYS_RANKING_GR_2B.json](configs/RECSYS_RANKING_GR_2B.json)|
@@ -174,6 +190,113 @@ python ./tools/compare_output.py --actual_output ./models/save_results_npu --exp
 - extra\_cmd: 适配npu需要额外执行的命令
 
 # 模型额外操作说明
+
+## TokenMixer-Large
+
+### 数据集
+
+Amazon Books 原始评分数据可从 Stanford SNAP 下载。[下载 ratings_Books.csv](https://snap.stanford.edu/data/amazon/productGraph/categoryFiles/ratings_Books.csv)
+
+TokenMixer-Large 读取 SASRec 格式的 `sasrec_format.csv` 或同格式分片，将这些文件放入 `benchmark/datasets/`。[Meta GR 数据准备说明](https://github.com/meta-recsys/generative-recommenders#download-and-preprocess-data)
+
+### 启动训练
+
+在仓库根目录执行：
+
+```shell
+cd benchmark
+python run.py TOKENMIXER_LARGE.json --eager
+```
+
+省略 `--eager` 会打开框架的编译开关。TokenMixer-Large 在评估阶段使用该开关，训练配置默认关闭逐轮评估。
+
+首次运行时，框架按配置下载 TokenMixer-Large 源码，应用 [tokenmixer-large.patch](patches/tokenmixer-large.patch)，再准备数据。
+
+## HLLM 推理
+
+[HLLM_INFER.json](configs/HLLM_INFER.json) 使用 NPU 推理脚本，默认使用 0 号卡。
+
+### 准备数据和权重
+
+`/hllm_data` 是 **NPU 容器根目录 `/` 下的绝对路径**，由使用者在运行前创建。若数据已放在宿主机，可在创建 Docker 容器时通过 `-v /宿主机上的数据目录:/hllm_data` 挂载。进入容器后，应能从 `/hllm_data` 看到下面的目录结构，并能写入 `saved_path/`。
+
+```text
+/hllm_data/
+├── dataset/
+│   └── amazon_books.csv            # 用户交互数据
+├── information/
+│   └── amazon_books.csv            # 物品文本信息
+├── data/                           # TinyLlama 文件直接放在这一层
+│   ├── config.json
+│   ├── generation_config.json
+│   ├── model.safetensors
+│   ├── special_tokens_map.json
+│   ├── tokenizer.json
+│   ├── tokenizer.model
+│   └── tokenizer_config.json
+└── saved_path/
+    └── pytorch_model.bin           # HLLM-1B-Books 评估权重
+```
+
+| 默认位置 | 内容 | 下载 |
+| --- | --- | --- |
+| `/hllm_data/dataset/amazon_books.csv` | Amazon Books 用户交互数据，包含 `item_id`、`user_id`、`timestamp` | [Interactions](https://huggingface.co/ByteDance/HLLM/resolve/main/Interactions/amazon_books.csv) |
+| `/hllm_data/information/amazon_books.csv` | 同一批物品的文本信息，包含 `item_id`、`title`、`description` | [Item Information](https://huggingface.co/ByteDance/HLLM/resolve/main/ItemInformation/amazon_books.csv) |
+| `/hllm_data/data/` | TinyLlama 预训练模型目录，包含模型配置、分词器和权重，供物品编码器和用户编码器共用 | [TinyLlama 1.1B 模型文件](https://huggingface.co/TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T/tree/main) |
+| `/hllm_data/saved_path/pytorch_model.bin` | 用于评估的 HLLM-1B-Books 权重 | [pytorch_model.bin](https://huggingface.co/ByteDance/HLLM/resolve/main/1B_books/pytorch_model.bin) |
+
+首次计算物品特征时，程序会在 `saved_path/` 下创建 `item_feature_cache/`。如已用相同数据、权重和编码配置生成 `item_features_*.pkl`，可将该缓存放入此目录，供后续推理复用。
+
+### 启动推理
+
+在 RecSDK 仓库根目录执行：
+
+```shell
+cd benchmark
+python run.py HLLM_INFER.json --eager
+```
+
+测试 Inductor 时省略 `--eager`。框架首次运行时会把 HLLM 源码下载到 `benchmark/models/hllm-infer/HLLM/`，补丁会生成其中的 `code/launch_npu.sh`。如需使用容器内的其他目录，在该脚本中修改 `--data_path`、`--text_path`、`--item_pretrain_dir`、`--user_pretrain_dir` 和 `--checkpoint_dir`，将它们指向相应目录。
+
+## GR 推理
+
+根据设备和模型选择配置。下列命令均在 `benchmark/` 下执行。
+
+| 模型 | NPU 配置 | GPU 配置 |
+| --- | --- | --- |
+| GR Base | [GR_NPU_BASE.json](configs/GR_NPU_BASE.json) | [GR_GPU_BASE.json](configs/GR_GPU_BASE.json) |
+| GR SparseMoE | [GR_NPU_MOE.json](configs/GR_NPU_MOE.json) | [GR_GPU_MOE.json](configs/GR_GPU_MOE.json) |
+| GR Small 05B | [GR_NPU_SMALL_05B.json](configs/GR_NPU_SMALL_05B.json) | [GR_GPU_SMALL_05B.json](configs/GR_GPU_SMALL_05B.json) |
+| GR Small 1B | [GR_NPU_SMALL_1B.json](configs/GR_NPU_SMALL_1B.json) | [GR_GPU_SMALL_1B.json](configs/GR_GPU_SMALL_1B.json) |
+| GR Small 2B | [GR_NPU_SMALL_2B.json](configs/GR_NPU_SMALL_2B.json) | [GR_GPU_SMALL_2B.json](configs/GR_GPU_SMALL_2B.json) |
+
+各配置在独立的 `models/gr/<用例>/recsys-examples/examples/hstu/` 目录启动，推理脚本会生成随机输入。SparseMoE 和 Small 在准备补丁时还需要 `dos2unix` 命令。NPU 环境需加载 CANN 并安装提供 `hstu_jagged` 的 `ops_rec`，GPU 环境需安装 `hstu_attn`、`paged_kvcache_ops` 扩展。
+
+GR Base 需要与模型结构匹配的权重，项目文档未提供公开下载地址。GPU 脚本默认从 `examples/hstu/hstu.bin` 读取权重。NPU 需在 `run_random_2k.sh` 中将 `MODEL_PATH` 设为权重文件的绝对路径。
+
+GR-3B 和 GR-7B 共用对应设备的 SparseMoE 入口，具体模型由脚本中的网络结构参数决定。SparseMoE 和 Small 默认使用 `USE_RANDOM_PARM=1` 随机初始化。以 NPU Small 1B 为例，执行 `python run.py GR_NPU_SMALL_1B.json --eager`，测试 Inductor 时省略 `--eager`。
+
+## GR-TP4 推理
+
+[GR_TP4.json](configs/GR_TP4.json) 通过 OmniInfer 的 vLLM NPU 插件启动 `HSTUInferenceForCausalLM`。请在已安装该插件的环境中，按本机情况配置下载目录下的 `models/gr-tp4-native/omniinfer/model_zoo/run.sh`。
+
+- 将已准备好的 `processed_seqs.csv` 和 `processed_batches.csv` 放入同一个目录，例如 `benchmark/dataset/gr_tp4/`，并将 `DATA_PATH` 设为该目录的绝对路径。项目文档未提供这两个文件的公开下载地址。
+- 默认 `USE_RANDOM=1`，使用随机权重。将补丁提供的 `model_zoo/config.json` 放入可写的模型目录，并将 `MODEL_PATH` 指向该目录。推理脚本会读取并更新配置。
+- 核对 CANN 初始化脚本、HCCL 网卡和拓扑文件路径，将 `PROF_SAVE_DIR` 和 `VLLM_TORCH_PROFILER_DIR` 指向可写目录。启动脚本默认可见设备为 `0,1,2,3`，实际张量并行度由 `TP_PAR_SIZE` 决定，默认值为 `1`。
+
+在 `benchmark/` 下执行 `python run.py GR_TP4.json`。该入口通过 `run.sh` 中的 `ACLGRAPH` 控制 vLLM 执行模式，默认 `ACLGRAPH=0` 对应 `enforce_eager=True`。框架的 `--eager` 参数不会切换此用例的模式。
+
+## Decision-Diffuser 推理
+
+[DECISION_DIFFUSER.json](configs/DECISION_DIFFUSER.json) 默认评估 Hopper。运行前准备 MuJoCo 2.1、`mujoco_py` 和 D4RL。
+
+将下载的 `hopper_medium_expert-v2.hdf5` 放入 `D4RL_DATASET_DIR` 指定的目录，默认是 `~/.d4rl/datasets/`。[下载 D4RL Hopper Medium-Expert v2](https://rail.eecs.berkeley.edu/datasets/offline_rl/gym_mujoco_v2/hopper_medium_expert-v2.hdf5)
+
+1. 在 `models/decision-diffuser/decision-diffuser/code/analysis/launch.sh` 中填写 `DEVICE` 和 `DEVICE_ID`，例如 `DEVICE=npu`、`DEVICE_ID=0`。推理使用 `PATTERN=eval`。
+2. 使用与本用例匹配的 10 步扩散模型训练权重。项目文档未提供对应权重的公开下载地址。默认位置是下载源码下的 `code/weights/checkpoint10/state.pt`，也可将 `WEIGHTS_PATH` 指向包含 `checkpoint10/` 的目录。
+3. 使用 NPU 时，在同目录的 `npu_env.sh` 中填写本机 CANN 的 `set_env.sh` 路径。测试 Inductor 时一并核对 `ir_path` 和 `TORCHINDUCTOR_NPU_CATLASS_DIR`。
+
+在 `benchmark/` 下执行 `python run.py DECISION_DIFFUSER.json --eager`，测试 Inductor 时省略 `--eager`。
 
 ## yolov5 模型
 
@@ -807,3 +930,175 @@ A3 默认训练配置、1000 步外部端到端计时如下，包含进程启动
 | bfloat16 | 49.118 | 52.881 |
 
 当前可用的 A3 环境只有两张卡，因此八卡性能未实测，两卡结果不能替代八卡验收。
+
+# RecSDK-Torch 模型样例运行环境说明
+
+## 版本配套说明
+
+本模型迁移依赖特定版本的CANN、PyTorch、驱动和固件，源码编译需使用指定版本的Python、GCC、CMake等工具，仅支持昇腾平台（Atlas A2训练系列产品），基础软件版本以Rec SDK Torch提供的基础镜像环境为准，主要配套软件版本如下：
+
+| 软件名称  | PyTorch | TorchNPU | torchrec  | fbgemm_gpu | hybrid_torchrec | torchrec_embcache |
+|-------|---------|-----------|-----------|------------|-----------------|-------------------|
+| 配套版本 | 2.7.1+cpu   | 2.7.1     | 1.2.0+npu | 1.2.0+cpu      | 1.2.0           | 1.2.0             |
+
+注：在26.1.0及之后版本的镜像中，hybrid_torchrec、torchrec_embcache、torchrec三个包作为子包统一被torch-rec-v1软件包包装，此时无法直接使用pip3查看3个子包信息，但可直接在Python脚本中进行import使用。
+
+## 基础镜像
+
+基础镜像请参见[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中“镜像下载”页面，下载最新版本的RecSDK-Torch镜像。
+
+注：当前基础镜像中提供的软件版本为PyTorch 2.6.0配套，请在**启动容器**后参见[升级PyTorch 2.7.1版本配套](#升级pytorch-271版本配套)进行软件版本升级。
+
+## 启动容器
+
+创建启动脚本run_docker.sh，参考如下（启动命令仅作参考，按需挂载目录）：
+
+```shell
+#!/bin/bash
+container_name=$1
+image_name=$2
+docker run \
+-it \
+--name "${container_name}" \
+-e ASCEND_VISIBLE_DEVICES=0-7 \
+--shm-size="300g" \
+-m 300g \
+-v /etc/localtime:/etc/localtime:ro \
+-v /etc/ascend_install.info:/etc/ascend_install.info:ro \
+-v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
+"${image_name}" \
+/bin/bash
+```
+
+部分参数说明：
+
+- -m 300g：设置容器内使用内存大小，可根据实际情况进行配置。
+- -e ASCEND_VISIBLE_DEVICES=0-7：将服务器上编号为device0-device7的NPU设备挂载到容器内，可根据实际情况进行配置。
+- image_name：镜像名称，该参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中26.0.0版本的x86镜像的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/rec_sdk-torch:26.0.0_debian12-x86`。
+
+执行如下命令新建容器：
+
+```shell
+bash run_docker.sh 容器名 镜像名称
+```
+
+## 刷新容器内环境变量
+
+```shell
+# 配置CANN环境变量
+source /usr/local/Ascend/cann/set_env.sh
+# Python虚拟环境存在时激活虚拟环境。使用完后若需退出 Python 虚拟环境，执行命令： deactivate 即可退出。
+[ -f /opt/buildtools/torch_v1_pt2.7.1/bin/activate ] && source /opt/buildtools/torch_v1_pt2.7.1/bin/activate
+```
+
+> [!NOTE]
+> [昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)中26.1.0及之后的镜像中内置了Python虚拟环境，使用前需激活虚拟环境，该虚拟环境中已默认安装好Rec SDK Torch及相关依赖。
+
+## 安装依赖
+
+说明：[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/9faeb4847b3e419f81b78a4d0ed574b5)提供镜像中已经安装好torchrec、hybrid_torchrec、torchrec_embcache及算子等依赖，**如无需重新安装可跳过后续步骤**。如需重新安装依赖可参考如下步骤，并确保网络通畅。
+
+### 1. 安装TorchRec昇腾注册包
+
+TorchRec昇腾注册包是基于TorchRec源码做的NPU设备适配。可通过Rec SDK Torch提供的patch文件和TorchRec源码的固定分支编译出该注册包。
+
+请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_npu/README.md)进行源码编译和安装。
+
+### 2. 安装Rec SDK Torch推荐算法框架包
+
+请参见如下指令进行编译安装：
+
+```shell
+git clone https://gitcode.com/ascend/RecSDK.git
+cd RecSDK/training/torch_rec_v1/hybrid_torchrec
+bash build_whl.sh
+cd dist
+pip3 uninstall -y hybrid_torchrec
+pip3 install hybrid_torchrec-*.whl
+pip3 install -r requirements.txt
+pip3 uninstall -y torchrec_embcache
+pip3 install torchrec_embcache-*-py3-none-linux*.whl
+```
+
+### 3. 安装自定义算子相关包
+
+#### 3.1 安装fbgemm_ascend
+
+从[fbgemm_ascend](https://gitcode.com/Ascend/fbgemm-ascend/releases)获取最新v1.2.0版本（配套PyTorch 2.7.1）的fbgemm_ascend算子whl包并参考如下指令安装：
+
+```bash
+pip3 uninstall -y fbgemm_ascend
+pip3 install fbgemm_ascend-*.whl
+```
+
+#### 3.2 安装rec_cust_ops
+
+下载[RecSDK](https://gitcode.com/Ascend/RecSDK)源码，按如下指令进行算子相关包的编译和安装：
+
+```bash
+# 配置CANN环境变量
+source /usr/local/Ascend/cann/set_env.sh
+
+# 编译并安装rec_cust_ops算子包
+cd RecSDK/cust_op
+git submodule update --init --recursive
+bash build_whl.sh
+cd dist
+pip3 uninstall -y rec_cust_ops
+pip3 install rec_cust_ops*.whl
+```
+
+rec_cust_ops算子包更多编译安装说明请参见[rec_cust_ops编译安装](https://gitcode.com/Ascend/RecSDK/blob/develop/cust_op/README.md#build_recsdk_cust_ops)。
+
+#### 3.3 安装ops_rec
+
+`ops_rec`提供`hstu_jagged`等HSTU融合算子，从[ops-rec](https://gitcode.com/Ascend/ops-rec)源码编译安装。算子依赖CATLASS源码，编译前需初始化submodule：
+
+```bash
+git clone https://gitcode.com/Ascend/ops-rec.git
+cd ops-rec
+git submodule update --init --recursive
+# 编译并安装；--socs 可按平台选择 atlas_a2 / atlas_a3 / atlas_950，默认编译三个SOC变体
+bash build.sh --install -j16
+```
+
+生成的whl位于`dist/`目录，也可手动安装：
+
+```bash
+pip3 uninstall -y ops_rec
+pip3 install dist/ops_rec-*.whl
+```
+
+安装后`import ops_rec`会通过`acl.get_soc_name()`自动检测芯片型号并加载对应SOC变体的算子，无需手工设置`ASCEND_CUSTOM_OPP_PATH`。
+
+## 附录
+
+### 升级PyTorch 2.7.1版本配套
+
+1. 升级PyTorch，TorchNPU，fbgemm_gpu
+
+    卸载已安装的包：
+
+    ```bash
+    pip3 uninstall -y fbgemm_gpu torch_npu torch
+    ```
+
+    安装PyTorch和TorchNPU：请参见[PyTroch框架下载](https://www.hiascend.com/developer/software/ai-frameworks/pytorch/download?versionId=175&ids=89dda9ba9de741349efa03687a487678%2C96%2C108%2C1%2C6%2C177%2C)进行安装。
+
+    安装fbgemm_gpu:
+
+    ```bash
+    pip3 install fbgemm_gpu==1.2.0+cpu -i https://download.pytorch.org/whl/cpu
+    ```
+
+    注：若安装fbgemm_gpu时出现SSL验证失败，可在安装指令末尾添加` --trusted-host download-r2.pytorch.org `进行临时规避。
+
+2. 升级RecSDK相关包
+
+    卸载已安装的包：
+
+    ```bash
+    pip3 uninstall -y torchrec_embcache hybrid_torchrec torchrec
+    ```
+
+    参考[安装依赖](#安装依赖)章节进行源码编译。
