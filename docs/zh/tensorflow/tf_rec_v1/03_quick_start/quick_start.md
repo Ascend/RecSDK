@@ -4,7 +4,7 @@
 
 本章节指导用户基于Rec SDK TensorFlow为用户提供的little_demo样例，理解使用一个tf.Session进行模型训练需要准备的相关文件和关键接口适配。little_demo仅是一个代码示例，并介绍了调用相关接口的逻辑，不包含具体的模型，没有实现具体的功能。
 
-little_demo仅作参考学习，不支持在little_demo上适配用户自己的模型。little_demo存放路径为：[little_demo代码仓库](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/demo)。
+little_demo仅作参考学习，不支持在little_demo上适配用户自己的模型。little_demo存放路径为：[little_demo代码仓库](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/tf_rec_v1_examples/demo)。
 
 >[!NOTE]
 >在train\_and\_evaluate场景下不支持多轮eval。
@@ -23,7 +23,7 @@ little_demo仅作参考学习，不支持在little_demo上适配用户自己的�
 |random_data_generator.py|数据集随机生成。|
 |README.md|demo模型运行说明。|
 |run_deterministic.sh|运行确定性计算的脚本。|
-|run_model.py|训练、推理流程封装。|
+|run_mode.py|训练、推理流程封装。|
 |run.sh|模型训练启动脚本。|
 |utils.py|精度检测工具。|
 
@@ -65,10 +65,10 @@ little_demo仅作参考学习，不支持在little_demo上适配用户自己的�
     import tensorflow as tf
     from mx_rec.optimizers.lazy_adam import create_hash_optimizer
     from mx_rec.optimizers.lazy_adam_by_addr import create_hash_optimizer_by_address
-    from mx_rec.util.initialize import get_use_dynamic_expansion
-    def get_dense_and_sparse_optimizer(cfg):
+    from mx_rec.util.initialize import ConfigInitializer
+    def create_dense_and_sparse_optimizer(cfg):
         dense_optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=cfg.learning_rate)
-        use_dynamic_expansion = get_use_dynamic_expansion()
+        use_dynamic_expansion = ConfigInitializer.get_instance().use_dynamic_expansion
         if use_dynamic_expansion:
             sparse_optimizer = create_hash_optimizer_by_address(learning_rate=cfg.learning_rate)
             logging.info("optimizer lazy_adam_by_addr")
@@ -118,10 +118,10 @@ little_demo仅作参考学习，不支持在little_demo上适配用户自己的�
 6. 定义梯度计算和优化过程。在main.py中调用get\_dense\_and\_sparse\_variable接口，得到密集网络层和稀疏网络层的参数，通过优化器计算梯度并执行优化。接口说明请参见[get\_dense\_and\_sparse\_variable](../05_api/04_model_apis.md#get_dense_and_sparse_variable)。
 
     ```python
-    train_iterator, train_model = build_graph([user_hashtable, item_hashtable], is_train=True,
+    train_iterator, train_model, train_batch = build_graph([user_hashtable, item_hashtable], is_train=True,
                                                   feature_spec_list=train_feature_spec_list,
                                                   config_dict=ACCESS_AND_EVICT, batch_number=cfg.batch_number)
-    eval_iterator, eval_model = build_graph([user_hashtable, item_hashtable], is_train=False,
+    eval_iterator, eval_model, eval_batch = build_graph([user_hashtable, item_hashtable], is_train=False,
                                                 feature_spec_list=eval_feature_spec_list,
                                                 config_dict=ACCESS_AND_EVICT, batch_number=cfg.batch_number)
     dense_variables, sparse_variables = get_dense_and_sparse_variable()
@@ -136,9 +136,9 @@ little_demo仅作参考学习，不支持在little_demo上适配用户自己的�
         modify_graph_and_start_emb_cache(dump_graph=True)
     else:
         start_asc_pipeline()
-    with tf.compat.v1.Session(config=sess_config(dump_data=False)) as sess:
+    with tf.compat.v1.Session(config=construct_npu_sess_config(dump_data=False)) as sess:
         if MODIFY_GRAPH_FLAG:
-            sess.run(get_initializer(True))
+            sess.run(ConfigInitializer.get_instance().train_params_config.get_initializer(True))
         else:
             sess.run(train_iterator.initializer)
         sess.run(tf.compat.v1.global_variables_initializer())
@@ -178,15 +178,18 @@ little_demo仅作参考学习，不支持在little_demo上适配用户自己的�
 
 **前提条件<a name="section16252115164"></a>**
 
-使用该方案启动训练任务，需要设置如下环境变量。详细的配置环境变量的方法可参考[little_demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo_estimator/run.sh)；关于环境变量的说明可参见[配置环境变量](../02_tf_installation_guide/recsdk_tf_installation_guide.md#配置环境变量)。
+使用该方案启动训练任务，需要设置如下环境变量。详细的配置环境变量的方法可参考[little_demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo/run.sh)；关于环境变量的说明可参见[配置环境变量](../02_tf_installation_guide/recsdk_tf_installation_guide.md#配置环境变量)。
 
-```bash
-CM_CHIEF_IP={host_ip}
-CM_CHIEF_PORT=60000
-CM_CHIEF_DEVICE=0
-CM_WORKER_IP={host_ip}
-CM_WORKER_SIZE=8
-```
+    ```bash
+    export CM_CHIEF_IP={host_ip}
+    export CM_CHIEF_PORT=60001
+    export CM_CHIEF_DEVICE=0
+    export CM_WORKER_IP={host_ip}
+    export CM_WORKER_SIZE=8
+    ```
+
+    >[!NOTE]
+    >little_demo/run.sh在启动命令后传入合法IP时，会自动export上述环境变量，其中**CM_CHIEF_PORT**固定为60001、**CM_WORKER_SIZE**=local\_rank\_size×训练节点数，手动配置的取值需与其保持一致。
 
 **操作步骤<a name="section7534163120565"></a>**
 
@@ -273,12 +276,10 @@ CM_WORKER_SIZE=8
     ip: {host_ip} available.
     The ranktable solution is removed.
     CM_CHIEF_IP={host_ip}
-    CM_CHIEF_PORT=60000
+    CM_CHIEF_PORT=60001
     CM_CHIEF_DEVICE=0
     CM_WORKER_IP={host_ip}
     CM_WORKER_SIZE=8
-    ASCEND_VISIBLE_DEVICES=0-7
-    py is main.py
     use horovod to start tasks
     ...
     ```
@@ -297,15 +298,18 @@ CM_WORKER_SIZE=8
 
 **前提条件<a name="section148281112515"></a>**
 
-- 设置如下环境变量。详细的配置环境变量的方法可参考[little_demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run.sh)；关于环境变量的说明可参见[配置环境变量](../02_tf_installation_guide/recsdk_tf_installation_guide.md#配置环境变量)。
+- 设置如下环境变量。详细的配置环境变量的方法可参考[little_demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo/run.sh)；关于环境变量的说明可参见[配置环境变量](../02_tf_installation_guide/recsdk_tf_installation_guide.md#配置环境变量)。
 
     ```bash
-    CM_CHIEF_IP={host_ip}
-    CM_CHIEF_PORT=60000
-    CM_CHIEF_DEVICE=0
-    CM_WORKER_IP={host_ip}
-    CM_WORKER_SIZE=8
+    export CM_CHIEF_IP={host_ip}
+    export CM_CHIEF_PORT=60001
+    export CM_CHIEF_DEVICE=0
+    export CM_WORKER_IP={host_ip}
+    export CM_WORKER_SIZE=16
     ```
+
+    >[!NOTE]
+    >双机8卡场景下**CM\_WORKER\_SIZE**=local\_rank\_size×训练节点数=8×2=16，该值由little\_demo/run.sh根据num\_server与local\_rank\_size自动计算并export。
 
 - 双机节点little\_demo模型代码路径和配置IP的网卡名称需要保持一致。
 - 已完成集群内的组网配置。详细方法可参见《[Ascend Training Solution 组网指南](https://support.huawei.com/enterprise/zh/doc/EDOC1100525718/549e2956?idPath=23710424|251366513|22892968|252309113|258915853)》的“组网介绍”章节。
@@ -329,7 +333,7 @@ CM_WORKER_SIZE=8
         >[!NOTE]
         >若ss指令不存在需安装iproute软件包。
 
-        - 结果为空，表示端口未使用 =\> 继续执行[1.b](#li9821162384914)
+        - 结果为空，表示端口未使用 =\> 继续执行[1.ii](#li9821162384914)
         - 结果不为空，表示端口已使用 =\> 重复查询其他端口号
 
     ii. <a id="li9821162384914"></a>在容器内修改sshd\_config文件。
@@ -344,13 +348,22 @@ CM_WORKER_SIZE=8
             >[!NOTE]
             >如果不执行该步骤，不会影响集群训练，但是会侦听宿主机全零IP的对应端口。出于安全考虑，建议进行修改。
 
-    iii. 在容器内执行以下命令重启SSH服务。
+    iii. 在容器内执行以下命令安装并启动SSH服务。
+
+        安装openssh-server：
 
         ```bash
-        systemctl restart sshd
+        apt-get update && apt-get install -y openssh-server    # Ubuntu容器
+        dnf install -y openssh-server                          # openEuler容器
         ```
 
-        重启后，执行**systemctl status sshd**命令查看SSH服务的状态。
+        启动/重启SSH服务（若sshd已运行，可先执行下文停止命令后再启动）：
+
+        ```bash
+        /usr/sbin/sshd
+        ```
+
+        启动后，执行**ps -ef \| grep sshd**命令确认SSH服务已启动。
 
         可执行**ss -tuln | grep** _12345_查看侦听端口是否为配置的端口。
 
@@ -380,9 +393,9 @@ CM_WORKER_SIZE=8
             source /usr/local/Ascend/driver/bin/setenv.bash
             export PATH=/usr/local/openmpi/bin:$PATH
             export PATH=/usr/local/python3.7.5/bin:$PATH
-            export PATH=/usr/local/gcc7.3.0/bin:$PATH
+            export PATH=/usr/local/gcc11.2.0/bin:$PATH
             export LD_LIBRARY_PATH=/usr/local/python3.7.5/lib:$LD_LIBRARY_PATH
-            export LD_LIBRARY_PATH=/usr/local/gcc7.3.0/lib64:$LD_LIBRARY_PATH
+            export LD_LIBRARY_PATH=/usr/local/gcc11.2.0/lib64:$LD_LIBRARY_PATH
             export LD_LIBRARY_PATH=/usr/local/openmpi/lib:$LD_LIBRARY_PATH
             ```
 
@@ -470,23 +483,32 @@ CM_WORKER_SIZE=8
 
         5. 通过horovodrun启动指令指定端口号并修改host参数，修改如下内容：
 
-            在run.sh脚本末尾，将
+            run.sh中**PRINT\_LOG\_FILTER**默认为1，默认生效的是if分支中的horovodrun命令块（else分支中的命令块结构相同，若将**PRINT\_LOG\_FILTER**改为0，则需按相同方式修改else分支）。将
 
             ```bash
-            horovodrun --network-interface ${interface} -np ${num_process} \
-            --mpi-args "${mpi_args}" --mpi -H localhost:${local_rank_size}
+            horovodrun --network-interface ${interface} \
+                -np ${num_process} \
+                --mpi-args "${mpi_args}" \
+                --mpi \
+                -H localhost:${local_rank_size} \
+                python3.7 ${py} 2>&1 | tee "temp_${num_process}p_${KEY_PROCESS_THREAD_NUM}t_${USE_MODE}_${CACHE_MODE}_${DATE}.log" | grep -v "\[MxRec\]" | grep -v "\[RecSDK\]"
             ```
 
             修改为：
 
             ```bash
-            horovodrun --network-interface ${interface} -np ${num_process} \
-            --mpi-args "${mpi_args}" -p 12345 --mpi -H {host_1_ip}:8,{host_2_ip}:8
+            horovodrun --network-interface ${interface} \
+                -np ${num_process} \
+                --mpi-args "${mpi_args}" \
+                -p 12345 --mpi \
+                -H {host_1_ip}:8,{host_2_ip}:8 \
+                python3.7 ${py} 2>&1 | tee "temp_${num_process}p_${KEY_PROCESS_THREAD_NUM}t_${USE_MODE}_${CACHE_MODE}_${DATE}.log" | grep -v "\[MxRec\]" | grep -v "\[RecSDK\]"
             ```
 
             >[!NOTE]
             >- -p 12345：容器内ssh server侦听端口号。
             >- 8：单节点参与训练的device数。
+            >- 修改时请保留命令末尾的“python3.7 ${py} 2>&1 \| tee ...”部分，该部分为待运行程序入口及日志落盘重定向，缺失后训练任务无法启动且日志不再保存。
 
 3. 在每个节点上互相设置免密登录。
 
@@ -566,9 +588,9 @@ Rec SDK TensorFlow目前已适配以下模型，各模型的具体运行步骤�
 
 | 模型                      | 说明                 | 文档链接                                                                                                          |
 | :---------------------- | :----------------- | :------------------------------------------------------------------------------------------------------------ |
-| little\_demo            | 基础示例（sess 模式）      | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/README.md) |
-| little\_demo\_estimator | 基础示例（Estimator 模式） | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo_estimator/README.md) |
-| DCNv2                   | 深度交叉网络 v2          | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/DCNv2/README.md)            |
-| DLRM                    | 深度学习推荐模型           | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/dlrm/README.md)             |
-| MMOE                    | 多任务混合专家模型          | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/mmoe/README.md#模型运行)        |
-| WideDeep                | 宽深学习模型             | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/WideDeep/README.md#模型运行)    |
+| little\_demo            | 基础示例（sess 模式）      | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo/README.md) |
+| little\_demo\_estimator | 基础示例（Estimator 模式） | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo_estimator/README.md) |
+| DCNv2                   | 深度交叉网络 v2          | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/DCNv2/README.md)            |
+| DLRM                    | 深度学习推荐模型           | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/dlrm/README.md)             |
+| MMOE                    | 多任务混合专家模型          | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/mmoe/README.md#模型运行)        |
+| WideDeep                | 宽深学习模型             | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/WideDeep/README.md#模型运行)    |

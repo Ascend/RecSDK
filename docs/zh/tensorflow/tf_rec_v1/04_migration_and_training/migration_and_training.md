@@ -1131,7 +1131,7 @@ init_sess.close()
 
 **工具获取<a name="section122751845171916"></a>**
 
-模型获取：[little_demo模型仓库](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/demo/little_demo)
+模型获取：[little_demo模型仓库](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo)
 
 工具获取：[precrec-python工具仓库](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/reference-tools/precrec-python)
 
@@ -1151,7 +1151,7 @@ export PRECISION_CHECK=1
 
 精度对齐开启后将会在run.sh脚本的同级目录生成一个precision\_check的数据文件，用于后续比对。
 
-详细的生成文件请参考[代码仓](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/README.md)中的“开启精度对齐模式”部分内容。
+详细的生成文件请参考[代码仓](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo/README.md)中的“开启精度对齐模式”部分内容。
 
 **使用Precrec-python工具进行解析对比<a name="section194792643310"></a>**
 
@@ -1729,13 +1729,13 @@ for key, cos in key_cos:
 
 Rec SDK TensorFlow支持TensorFlow开源推荐模型迁移适配，迁移步骤可以参考如下：
 
-- [xDeepFM样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/xDeepFM/README.md)
-- [WideDeep样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/WideDeep/README.md)
-- [mmoe样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/mmoe/README.md)
+- [xDeepFM样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/xDeepFM/README.md)
+- [WideDeep样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/WideDeep/README.md)
+- [mmoe样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/mmoe/README.md)
 
 ### DCNv2模型开发指南
 
-本章节指导如何将基于TensorFlow 1.15.0的DCNv2推荐模型从GPU环境迁移至华为昇腾NPU环境，使用tf_rec_v1组件的自动改图模式。适配后的模型代码，详见[DCNv2模型](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/DCNv2)。
+本章节指导如何将基于TensorFlow 1.15.0的DCNv2推荐模型从GPU环境迁移至华为昇腾NPU环境，使用tf_rec_v1组件的自动改图模式。适配后的模型代码，详见[DCNv2模型](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/tf_rec_v1_examples/DCNv2)。
 
 #### 前置操作
 
