@@ -101,7 +101,11 @@ Rec SDK Torch软件包如下表：
 | rec_cust_ops             | Rec SDK Torch自定义算子包及PyTorch框架适配层                       |
 | fbgemm\_ascend           | fbgemm自定义算子包及PyTorch框架适配层                |
 
-> rec_cust_ops和fbgemm_ascend算子包使用时会通过ACL接口`acl.get_soc_name`自动探测NPU芯片版本并加载对应芯片版本的算子包。自动探测失败时默认加载Ascend 950PR&950DT系列产品的算子包。此时若当前环境非Ascend 950PR&950DT系列产品，可通过设置环境变量`SOC_VERSION`来指定NPU芯片版本。示例：`export SOC_VERSION=Ascend910B`。`SOC_VERSION`环境变量取值参考[配置环境变量](#配置环境变量)。
+> rec_cust_ops和fbgemm_ascend算子包使用时会自动探测NPU芯片版本并加载对应芯片版本的算子包，说明如下：
+>
+> - Release版本算子包（fbgemm\_ascend 1.2.0/1.5.0、rec\_cust\_ops 2.7.1/2.10.0）通过`npu-smi info -m`命令探测芯片版本。
+> - 若运行环境中无npu-smi工具（如按本文档run\_docker.sh脚本启动的容器仅挂载了驱动目录，容器内无npu-smi），探测将失败，默认加载Ascend 950PR&950DT系列产品的算子包，并打印“npu-smi not found”“SOC not detected, defaulting to A5 variants”告警。
+> - 探测失败时若当前环境非Ascend 950PR&950DT系列产品，未指定芯片版本会导致模型训练报类似“The binary\_info\_config.json of socVersion \[ascend910b\] does not support opType \[...\]”的错误，此时需通过设置环境变量`SOC_VERSION`指定NPU芯片版本。示例：`export SOC_VERSION=Ascend910B`。`SOC_VERSION`环境变量取值参考[配置环境变量](#配置环境变量)。
 
 ## 安装Rec SDK Torch<a id="section182972951211"></a>
 
@@ -248,10 +252,12 @@ pip3 install wheel "setuptools<70.0.0" scikit-build "tensordict<0.15"
    ```bash
    # 配置CANN 环境变量
    source /usr/local/Ascend/ascend-toolkit/set_env.sh
+   # 进入RecSDK源码目录（git submodule 需在仓库根目录执行）
+   cd RecSDK
    # 拉取三方模块（部分算子依赖 CATLASS）
    git submodule update --init --recursive
    # 编译算子包
-   cd RecSDK/cust_op
+   cd cust_op
    RECSDK_BUILD_VERS=A2 bash build_whl.sh
    # 安装算子包
    pip3 uninstall -y rec_cust_ops
@@ -438,28 +444,27 @@ Rec SDK Torch环境变量的说明如[表1](#table126401659163820)所示。
 
 用户如需移除Rec SDK Torch自定义算子相关包，可参考以下命令进行卸载。其中，
 
-- 自定义算子在CANN中的默认安装路径为/usr/local/Ascend/cann/opp/vendors/
-- 卸载自定义算子时，删除vendors路径下自定义算子名称对应的文件夹即可。可以通过[ai\_core\_op](https://gitcode.com/Ascend/RecSDK/tree/develop/cust_op/ascendc_op/ai_core_op)查看Rec SDK的自定义算子目录。
+- 自定义算子包（rec_cust_ops、fbgemm_ascend）实际安装在Python环境的site-packages目录下（rec_cust_ops/custom_opp/\<芯片变体\>、fbgemm_ascend/opp/\<芯片变体\>），运行时会通过ASCEND_CUSTOM_OPP_PATH注册；CANN的/usr/local/Ascend/cann/opp/vendors/下默认不会生成自定义算子目录。
+- 卸载自定义算子时，执行`pip3 uninstall rec_cust_ops fbgemm_ascend`并删除site-packages下对应的custom_opp/opp目录即可。可以通过[ai_core_op](https://gitcode.com/Ascend/RecSDK/tree/develop/cust_op/ascendc_op/ai_core_op)查看Rec SDK的自定义算子目录。
 
 ```bash
-# 源码编译安装方式卸载
-# 卸载算子指令示例（仅列出部分，其他算子卸载指令同理）
+# 卸载自定义算子相关包（源码编译安装与基于Release版本安装均适用）
+pip3 uninstall rec_cust_ops -y
+pip3 uninstall fbgemm_ascend -y
+
+# 卸载fbgemm_ascend包内的PyTorch适配层动态库（以实际文件名卸载，如 fbgemm_ascend_py_a2a3.so、fbgemm_ascend_py_a5.so）
+PACKAGE_PATH=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))")
+if [ -d "$PACKAGE_PATH/fbgemm_ascend" ]; then
+  rm -rf "$PACKAGE_PATH/fbgemm_ascend"
+else
+  echo "no fbgemm_ascend package"
+fi
+
+# 若历史版本曾安装至CANN vendors目录，需一并删除对应文件夹（目录不存在时跳过）
 rm -rf /usr/local/Ascend/cann/opp/vendors/asynchronous_complete_cumsum
 rm -rf /usr/local/Ascend/cann/opp/vendors/backward_codegen_adagrad_unweighted_exact
 rm -rf /usr/local/Ascend/cann/opp/vendors/permute2d_sparse_data
 rm -rf /usr/local/Ascend/cann/opp/vendors/split_embedding_codegen_forward_unweighted
-# 卸载libfbgemm_npu_api.so
-PACKAGE_PATH=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))")
-if [ -d "$PACKAGE_PATH" ]; then
-  cd ${PACKAGE_PATH}
-  rm -rf libfbgemm_npu_api.so
-else
-  echo "no site-packages"
-fi
-
-# 基于Release版本安装方式卸载
-pip3 uninstall rec_cust_ops -y
-pip3 uninstall fbgemm_ascend -y
 ```
 
 ## 升级<a name="ZH-CN_TOPIC_0000002302389340"></a>

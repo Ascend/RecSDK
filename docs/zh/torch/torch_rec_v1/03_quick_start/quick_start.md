@@ -40,6 +40,7 @@ docker run \
 -v /etc/localtime:/etc/localtime:ro \
 -v /etc/ascend_install.info:/etc/ascend_install.info:ro \
 -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
+-v /usr/local/sbin/npu-smi:/usr/local/sbin/npu-smi:ro \
 "${image_name}" \
 /bin/bash
 ```
@@ -49,6 +50,7 @@ docker run \
 - free_devices：检测当前空闲NPU卡号。
 - -m 300g：设置容器内使用内存大小，可根据实际情况进行配置。
 - -e ASCEND_VISIBLE_DEVICES="${free_devices}"：将服务器上空闲的NPU设备挂载到容器内，可根据实际情况进行配置。
+- -v /usr/local/sbin/npu-smi:/usr/local/sbin/npu-smi:ro：将宿主机的npu-smi工具挂载进容器，用于在容器内执行npu-smi info查询NPU状态，可根据宿主机npu-smi实际路径调整。
 - image_name：镜像名称，该参数为`REPOSITORY:TAG`形式，例如[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/66155ae6a2f34eff9142f069612da088)中26.1.0版本适用于Atlas A2训练系列产品的镜像名称为：`swr.cn-south-1.myhuaweicloud.com/ascendhub/recsdk:26.1.0-cann9.1.0-910b-ubuntu22.04-py3.11-pt`。
 
 执行如下命令新建容器：
@@ -56,6 +58,11 @@ docker run \
 ```shell
 bash run_docker.sh 容器名 镜像名称
 ```
+
+> [!NOTE]
+>
+> - 容器内使用NPU设备依赖宿主机已安装Ascend Docker Runtime并将其注册为docker默认运行时，此时`ASCEND_VISIBLE_DEVICES`环境变量才能将NPU设备正确挂载进容器。Ascend Docker Runtime的安装请参见《MindCluster 集群调度用户指南》的“安装 > 安装部署”章节。
+> - 若宿主机未注册Ascend Docker Runtime为默认运行时，需在docker run命令中显式挂载NPU设备节点，例如：`--device=/dev/davinci0`（按需添加各NPU设备）、`--device=/dev/davinci_manager --device=/dev/devmm_svm --device=/dev/hisi_hdc`。
 
 ### 刷新容器内环境变量<a id="refresh_container_env"></a>
 
@@ -340,5 +347,5 @@ torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-p
 
 ## 进阶开发
 
-1. Rec SDK Torch支持Torch开源推荐模型迁移适配，如需了解开源DLRM（DCNv2）模型迁移至Rec SDK Torch的样例，可参考[DLRM（DCNv2）模型迁移样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md)。
+1. Rec SDK Torch支持Torch开源推荐模型迁移适配，如需了解开源DLRM（DCNv2）模型迁移至Rec SDK Torch的样例，可参考[DLRM（DCNv2）模型迁移样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v1_examples/dlrm/README.md)。
 2. 如需了解Rec SDK Torch其他功能，可参考[Rec SDK Torch API文档](../05_api/01_api_description.md)。
