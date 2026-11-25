@@ -164,6 +164,27 @@ export PROF_STEP=10  # 采集步数，训练时每个step运行功能重复，�
 MODES="embcache"
 ```
 
+### HBM 缓存大小 EMBCACHE_SIZE_ON_DEVICE_MEM
+
+多级缓存模式下，可通过环境变量 `EMBCACHE_SIZE_ON_DEVICE_MEM` 指定 HBM 上用于缓存 embedding 向量的内存大小（单位：字节），默认值为 `17179869184`（16GB）。例如在 run.sh 中设置为 8GB：
+
+```shell
+export EMBCACHE_SIZE_ON_DEVICE_MEM=$((8*1024*1024*1024))
+```
+
+该值存在上下限约束（详见 [`embedding_bag.py`](https://gitcode.com/Ascend/RecSDK/blob/develop/training/torch_rec_v1/torchrec_embcache/src/torchrec_embcache/distributed/embedding_bag.py) 中 `_calculate_caches` 的实现）：
+
+1. **上限**：不能超过框架常量 `MAX_CACHINE_MEM_SIZE`（64GB），超出会直接抛出 `ValueError`。
+2. **下限**：由于缓存在训练的同时还要支持向 Host 侧换出，必须至少能容纳 2 倍 batch_size 的 embedding 向量及优化器状态，最小内存需求为：
+
+   ```text
+   min_mem = Σ_i(embedding_dim_i × multi_hot_size_i) × dtype_size × 2 × batch_size × (optim_num + 1)
+   ```
+
+   其中 `dtype_size` 为向量元素大小（仅支持fp32，固定为 4 字节），`optim_num` 为稀疏参数优化器的状态个数（如 Adagrad 为 1）。若 `EMBCACHE_SIZE_ON_DEVICE_MEM` 小于该值，模型初始化时会抛出 `ValueError: max_device_mem_for_vectors < min_mem`。
+
+该值过小会降低缓存命中率、增加 Host 与 Device 间换入换出开销，影响训练性能；建议结合 HBM 容量与其他算子的显存占用，在满足下限的前提下适当调大。
+
 ## 精度、性能对比
 
 说明：为与开源模型比较性能和精度，模型需基于8卡环境运行。其中NPU测试结果为x86环境上且使用官网数据集并配置run.sh中的`MODES="hybrid_torchrec"`模式的测试结果。GPU测试数据参考[开源模型社区](https://github.com/facebookresearch/dlrm/tree/main/torchrec_dlrm/) 。 对比结果如下表所示：

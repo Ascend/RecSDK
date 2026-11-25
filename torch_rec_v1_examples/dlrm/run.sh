@@ -1,9 +1,13 @@
 #!/bin/bash
-set -e
 #---------------------------------------------
 # lib relate
 #---------------------------------------------
+# 防止set_env.sh内部存在匹配失败的管道符，先souce再设置set -eo pipefail
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
+# pipefail 使管道以第一个非零退出的命令的返回码作为整体返回码，
+# 确保 torchx 训练失败时脚本不会因 tee 成功而误判为成功
+set -eo pipefail
+export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
 #---------------------------------------------
 # train job related
