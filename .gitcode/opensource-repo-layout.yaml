@@ -1,0 +1,55 @@
+# opensource-repo-layout.yaml (v2)
+# 自动生成 - 代码来源分析工具
+#
+# 项目: Ascend/RecSDK
+# 上游社区代码: 0 | 修改的上游: 0 | 业务代码: 1429 | 总计: 1429
+#
+# 目录配置原则:
+#   - 配置 ./* 这一层目录
+#   - 全部是上游文件 → upstream
+#   - 存在业务文件 → source
+#   - 顶层配了 upstream，下层不再配置
+#   - source 目录中的上游文件单独配置
+#
+# 汇聚过程:
+#   (上游=上游社区文件, 业务=业务文件, 代码=代码文件数)
+#   根目录散落文件 → ✗ source (上游:0, 业务:5, 代码:5, 共:5)
+#   ./build/ → ✗ source (上游:0, 业务:23, 代码:23, 共:23)
+#     └─ build_wrapper/ → source (上游:0, 业务:10, 代码:10, 共:10)
+#     └─ presmoke/ → source (上游:0, 业务:6, 代码:6, 共:6)
+#   ./cust_op/ → ✗ source (上游:0, 业务:568, 代码:568, 共:568)
+#     └─ ascendc_op/ → source (上游:0, 业务:374, 代码:374, 共:374)
+#     └─ framework/ → source (上游:0, 业务:58, 代码:58, 共:58)
+#     └─ rec_cust_ops/ → source (上游:0, 业务:2, 代码:2, 共:2)
+#     └─ scripts/ → source (上游:0, 业务:1, 代码:1, 共:1)
+#     └─ test/ → source (上游:0, 业务:111, 代码:111, 共:111)
+#     └─ tf_cpu_op/ → source (上游:0, 业务:20, 代码:20, 共:20)
+#   ./docker/ → ✗ source (上游:0, 业务:1, 代码:1, 共:1)
+#     └─ scripts/ → source (上游:0, 业务:1, 代码:1, 共:1)
+#   ./inference/ → ✗ source (上游:0, 业务:34, 代码:34, 共:34)
+#     └─ kvcache_manager/ → source (上游:0, 业务:34, 代码:34, 共:34)
+#   ./third_party/ → ✗ source (上游:0, 业务:15, 代码:15, 共:15)
+#     └─ torchrec/ → source (上游:0, 业务:15, 代码:15, 共:15)
+#   ./training/ → ✗ source (上游:0, 业务:783, 代码:783, 共:783)
+#     └─ common/ → source (上游:0, 业务:66, 代码:66, 共:66)
+#     └─ tf_rec_v1/ → source (上游:0, 业务:273, 代码:273, 共:273)
+#     └─ tf_rec_v2/ → source (上游:0, 业务:77, 代码:77, 共:77)
+#     └─ torch_rec_v1/ → source (上游:0, 业务:150, 代码:150, 共:150)
+#     └─ torch_rec_v2/ → source (上游:0, 业务:217, 代码:217, 共:217)
+#
+
+project: Ascend/RecSDK
+version: '2.0'
+directories:
+- path: ./build/
+  type: source
+- path: ./cust_op/
+  type: source
+- path: ./docker/
+  type: source
+- path: ./inference/
+  type: source
+- path: ./third_party/
+  type: source
+- path: ./training/
+  type: source
