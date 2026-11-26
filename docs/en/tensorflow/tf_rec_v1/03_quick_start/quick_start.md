@@ -4,7 +4,7 @@
 
 This document guides you through the related files and key interface adaptations required for model training using `tf.Session`, based on the `little_demo` sample provided by Rec SDK TensorFlow. `little_demo` is a code example that introduces the logic of calling related interfaces. It does not contain specific models or implement specific functions.
 
-`little_demo` is for reference and learning only. Adapting your own models on `little_demo` is not supported. You can find `little_demo` at the following [little_demo code repository](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/demo).
+`little_demo` is for reference and learning only. Adapting your own models on `little_demo` is not supported. You can find `little_demo` at the following [little_demo code repository](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/tf_rec_v1_examples/demo).
 
 >[!NOTE]
 >Multi-round evaluation is not supported in `train_and_evaluate` scenarios.
@@ -178,7 +178,7 @@ This section describes how to set resource information through environment varia
 
 **Prerequisites**
 
-To start a training task using this solution, set the following environment variables. For details about how to configure environment variables, see the [configuration file for `little_demo`](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo_estimator/run.sh). For descriptions of environment variables, see [Configuring environment variables](../02_tf_installation_guide/recsdk_tf_installation_guide.md#configuring-environment-variables).
+To start a training task using this solution, set the following environment variables. For details about how to configure environment variables, see the [configuration file for `little_demo`](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo_estimator/run.sh). For descriptions of environment variables, see [Configuring environment variables](../02_tf_installation_guide/recsdk_tf_installation_guide.md#configuring-environment-variables).
 
 ```bash
 CM_CHIEF_IP={host_ip}
@@ -297,7 +297,7 @@ This section uses dual nodes (8 devices per node) as an example to describe how 
 
 **Prerequisites**
 
-- Set the following environment variables. For details about how to configure environment variables, see the [configuration file for `little_demo`](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run.sh). For descriptions of environment variables, see [Configuring environment variables](../02_tf_installation_guide/recsdk_tf_installation_guide.md#configuring-environment-variables).
+- Set the following environment variables. For details about how to configure environment variables, see the [configuration file for `little_demo`](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo/run.sh). For descriptions of environment variables, see [Configuring environment variables](../02_tf_installation_guide/recsdk_tf_installation_guide.md#configuring-environment-variables).
 
     ```bash
     CM_CHIEF_IP={host_ip}
@@ -566,9 +566,9 @@ Rec SDK TensorFlow has been adapted to the following models. For details about h
 
 | Model                     | Description                | Documentation                                                                                                         |
 | :---------------------- | :----------------- | :------------------------------------------------------------------------------------------------------------ |
-| little_demo            | Basic example (sess mode)     | [Document](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/README.md)|
-| little_demo_estimator | Basic example (Estimator mode)| [Document](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo_estimator/README.md)|
-| DCNv2                   | Deep & Cross Network (DCN) v2         | [Document](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/DCNv2/README.md)           |
-| DLRM                    | Deep learning recommendation model (DLRM)          | [Document](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/dlrm/README.md)            |
-| MMOE                    | Multi-gate Mixture-of-Experts (MMoE)         | [Document](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/mmoe/README.md)       |
-| WideDeep                | Wide & deep learning model            | [Document](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/WideDeep/README.md)   |
+| little_demo            | Basic example (sess mode)     | [Document](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo/README.md)|
+| little_demo_estimator | Basic example (Estimator mode)| [Document](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo_estimator/README.md)|
+| DCNv2                   | Deep & Cross Network (DCN) v2         | [Document](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/DCNv2/README.md)           |
+| DLRM                    | Deep learning recommendation model (DLRM)          | [Document](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/dlrm/README.md)            |
+| MMOE                    | Multi-gate Mixture-of-Experts (MMoE)         | [Document](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/mmoe/README.md)       |
+| WideDeep                | Wide & deep learning model            | [Document](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/WideDeep/README.md)   |

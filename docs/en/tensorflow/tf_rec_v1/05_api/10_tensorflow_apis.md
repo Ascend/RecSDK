@@ -43,7 +43,7 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 
 **Example**
 
-For specific usage, see the little demo in the [Rec SDK](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run_mode.py) repository. The following provides a workflow example.
+For specific usage, see the little demo in the [Rec SDK](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo/run_mode.py) repository. The following provides a workflow example.
 
 ```python
 # 1. Import required libraries
@@ -92,7 +92,7 @@ def restore(self, sess, save_path)
 
 **Example**
 
-For specific usage, see the little demo in the [Rec SDK](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run_mode.py) repository. The following provides a workflow example.
+For specific usage, see the little demo in the [Rec SDK](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo/run_mode.py) repository. The following provides a workflow example.
 
 ```python
 # 1. Import required libraries

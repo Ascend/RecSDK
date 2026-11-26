@@ -77,12 +77,10 @@ Rec SDK 提供完整的使用与开发文档，帮助您深入了解各组件的
 
 | 模型名称 | 适配框架 | 组件名称 | 代码链接 |
 | --- | --- | --- | --- |
-| DIN | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch_examples_benchmark/develop/din) |
-| DLRM(DCNv2) | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_examples/dlrm) |
-| GR | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch_examples_benchmark/develop/gr/gr_meta) |
-| GR | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch_examples_benchmark/develop/gr_nv) |
-| mmoe、eta | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch_examples_benchmark/develop/model_zoo/README.md) |
-| GR | PyTorch | torch_rec_v2 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr) |
+| DLRM(DCNv2) | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v1_examples/dlrm) |
+| GR (Meta HSTU) | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/benchmark/README.md#hstu_meta-%E6%A8%A1%E5%9E%8B) |
+| GR (NVIDIA recsys-gr v25.05) | PyTorch | torch_rec_v1 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v1_examples/gr_nv) |
+| GR (NVIDIA recsys-gr v25.09) | PyTorch | torch_rec_v2 | [代码链接](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr) |
 
 ## 🗺️ Roadmap
 

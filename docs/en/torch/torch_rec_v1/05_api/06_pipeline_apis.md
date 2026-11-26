@@ -87,7 +87,7 @@ def progress(self, dataloader_iter: Iterator[In]) -> Out:
 
 **Example**
 
-Note: The detailed definitions of `Batch` and `RandomRecDataset` are omitted in this example. For details, see [dataset.py](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/little_demo/dataset.py).
+Note: The detailed definitions of `Batch` and `RandomRecDataset` are omitted in this example. For details, see [dataset.py](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v1_examples/little_demo/dataset.py).
 
 ```python
 from dataclasses import dataclass
@@ -236,7 +236,7 @@ def progress(self, dataloader_iter: Iterator[In]) -> Out:
 
 **Example**
 
-Note: The detailed definitions of `Batch` and `RandomRecDataset` are omitted in this example. For details, see [dataset.py](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/little_demo/dataset.py). For the complete usage of the pipeline, see [test](../../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_embedding_ec_cache_pipeline.py).
+Note: The detailed definitions of `Batch` and `RandomRecDataset` are omitted in this example. For details, see [dataset.py](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v1_examples/little_demo/dataset.py). For the complete usage of the pipeline, see [test](../../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_embedding_ec_cache_pipeline.py).
 
 ```python
 from dataclasses import dataclass
