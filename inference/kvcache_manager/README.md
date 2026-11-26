@@ -40,6 +40,7 @@ flowchart TB
 ```text
 inference/kvcache_manager/
 ├── recsys_kvcache_manager/            # Python 接口层
+│   ├── __init__.py                    # 对外导出与版本号
 │   ├── kvcache_manager.py             # 顶层 KVCacheManager
 │   ├── npu_kvcache_manager.py         # NPU 侧页分配器
 │   ├── native_host_kvcache_manager.py # Host 侧存储后端
@@ -49,9 +50,17 @@ inference/kvcache_manager/
 │   ├── pybind.cpp
 │   ├── npu_kvcache_manager_impl.{h,cpp}
 │   ├── native_host_kvcache_manager_impl.{h,cpp}
+│   ├── gather_scatter.{h,cpp}         # 算子 host 侧启动封装
 │   ├── kvcache_npu_utils.h            # ACL RAII 工具（Stream/Event/HostMem）
-│   └── kernels/                       # append / gather / scatter 等算子
+│   └── kernels/                       # AscendC 算子
+│       ├── append_paged_kvcache/
+│       ├── gather_paged_kvcache/
+│       ├── scatter_paged_kvcache/
+│       ├── get_paged_batch_indices_positions/
+│       └── common/                    # 公共头文件（dispatch/vec_dtypes 等）
+├── cmake/                             # 构建配置（Torch 配置、算子编译）
 ├── test/                              # 单元测试与集成测试
+│   └── tools/perf_probe.py            # 性能探测脚本
 ├── docs/                              # 设计文档、代码导读与接口文档
 ├── CMakeLists.txt
 └── setup.py
