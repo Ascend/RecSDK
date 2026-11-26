@@ -95,6 +95,7 @@ python run.py HLLM_INFER.json          # Inductor 推理
 |ONN|[ONN.json](configs/ONN.json)|
 |OpenP5|[OpenP5.json](configs/OpenP5.json)|
 |OpenP5_LLaMA|[OpenP5_LLaMA.json](configs/OpenP5_LLaMA.json)|
+|[OxygenREC v2 Full](#oxygenrec-v2-full-模型)|[Full 训练](configs/OXYGENREC_V2_TRAIN.json) · [推理验证](configs/OXYGENREC_V2_VALIDATION.json)|
 |PEPNet|[PEPNet.json](configs/PEPNet.json)|
 |PLE|[PLE.json](configs/PLE.json)|
 |PNN|[PNN.json](configs/PNN.json)|
@@ -522,6 +523,46 @@ amazon books数据集处理参考开源代码[HSTU\_META](https://github.com/met
        |-- rankmixer
            |-- sasrec_format.csv
 ```
+
+## OxygenREC v2 Full 模型
+
+从 [Kaggle 下载 RetailRocket 数据集](https://www.kaggle.com/datasets/retailrocket/ecommerce-dataset)，解压后将三个 CSV 放在 `benchmark/datasets/oxygenrec/data/raw/retailrocket/`。首次运行 Full 训练时，脚本会自动处理原始数据，生成商品 SID 对照表 `sid_registry.json`，再预训练生成初始权重 `full-epoch-1.pt`。已有这两个配套文件时会直接复用。
+
+```text
+benchmark/datasets/oxygenrec/
+├── data/raw/retailrocket/
+│   ├── events.csv
+│   ├── item_properties_part1.csv
+│   └── item_properties_part2.csv
+├── data/processed/rq_comparison/w256_kmeanspp/sid_registry.json  # 生成的商品 ID 与 SID 对照表
+└── checkpoints/gpu_pretraining/full-epoch-1.pt                   # 预训练生成的初始权重
+```
+
+文件放在其他目录时，设置 `OXYGENREC_ASSET_ROOT` 为包含 `data/` 和 `checkpoints/` 的绝对路径。
+
+以下命令均在 `benchmark/` 下执行。GPU 和 NPU 共用配置，默认使用 BF16。
+
+**Full 训练。** 从初始权重继续训练，默认运行 1 个完整 epoch。脚本将新权重保存到 `models/oxygenrec/results/full_training/<平台>/<精度>/`，并打印 `checkpoint=` 和实际文件路径。
+
+```bash
+export DEVICE=npu  # GPU 改为 cuda
+python3 run.py OXYGENREC_V2_TRAIN.json --eager
+```
+
+**用刚训练的权重推理。** 将 `V2_FULL_CHECKPOINT` 指向训练日志中的 `.pt` 文件即可。下面是 NPU 使用默认配置训练一轮后的实际文件名，路径从当前 `benchmark/` 目录算起。
+
+```bash
+V2_FULL_CHECKPOINT="$PWD/models/oxygenrec/results/full_training/npu/bf16/v2_full_npu_bf16_epoch1.pt" \
+  python3 run.py OXYGENREC_V2_VALIDATION.json --eager
+```
+
+**直接用初始权重推理。** 已有初始权重和配套 SID 对照表时，可以跳过整轮训练。未设置 `V2_FULL_CHECKPOINT` 时，推理会读取数据目录中的 `checkpoints/gpu_pretraining/full-epoch-1.pt`。
+
+```bash
+python3 run.py OXYGENREC_V2_VALIDATION.json --eager
+```
+
+设置 `OXYGENREC_PRECISION=fp32` 可切换精度，推理时设为 `all` 会依次运行 FP32 和 BF16。推理汇总保存在日志 `Benchmark results:` 所示目录的 `precision_result.txt` 中。
 
 ## OpenP5 模型
 

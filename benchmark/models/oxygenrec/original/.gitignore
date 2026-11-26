@@ -1,0 +1,5 @@
+/data/raw/
+/data/processed/
+/checkpoints/
+__pycache__/
+*.py[cod]

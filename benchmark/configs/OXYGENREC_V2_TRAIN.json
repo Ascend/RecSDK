@@ -1,0 +1,24 @@
+{
+    "name": "OXYGENREC_V2_TRAIN",
+    "url": "https://gitcode.com/mjw6/RecSDK.git",
+    "model_name": "oxygenrec",
+    "commit_id": "fc711c66f784e256da68e8713f58d18964039e45",
+    "patch_path": "patches/oxygenrec.patch",
+    "mode": "train",
+    "epoch": 1,
+    "profiling_flag": false,
+    "aclgraph_flag": false,
+    "data_type": "bfloat16",
+    "run_cmd": [
+        "env",
+        "bash",
+        "../train_full.sh"
+    ],
+    "pip_install_self": false,
+    "pip_install_requirements": false,
+    "extra_cmd": [
+        "env bash -c 'test \"$(git rev-parse HEAD)\" = fc711c66f784e256da68e8713f58d18964039e45'",
+        "env bash -c 'if [ ! -e run_oxygenrec.sh ]; then git apply ../../../patches/oxygenrec.patch; fi'",
+        "git apply --reverse --check ../../../patches/oxygenrec.patch"
+    ]
+}
