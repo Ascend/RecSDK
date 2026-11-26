@@ -346,7 +346,8 @@ pip install mindstudio-probe
 
 ## DLRM\_META 模型
 
-[DLRM\_META](https://github.com/facebookresearch/dlrm.git)模型运行需要下载[Kaggle Display Advertising dataset](https://ailab.criteo.com/ressources/)数据集,
+[DLRM\_META](https://github.com/facebookresearch/dlrm.git)模型运行需要下载[Kaggle Display Advertising dataset](https://www.kaggle.com/c/criteo-display-ad-challenge/data)数据集
+（比赛页需登录且不直接提供下载链接时，可使用 Kaggle 数据集镜像：<https://www.kaggle.com/datasets/mrkmakr/criteo-dataset/data>），
 在benchmark/datasets目录下新建dlrm\_meta目录存放原始train.txt和test.txt文件。
 
 ```shell
