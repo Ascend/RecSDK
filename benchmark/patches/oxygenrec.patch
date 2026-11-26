@@ -1,0 +1,61 @@
+diff --git a/run_oxygenrec.sh b/run_oxygenrec.sh
+new file mode 100644
+--- /dev/null
++++ b/run_oxygenrec.sh
+@@ -0,0 +1,56 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++cd "$(dirname "${BASH_SOURCE[0]}")"
++mode="${1:?expected train or eval}"
++export PYTHON_BIN="${PYTHON_BIN:-python3}"
++if [[ "${MODEL_CPU_ONLY:-False}" == True || "${MODEL_COMPILE_FLAG:-False}" == True ]]; then
++    echo "OxygenREC requires a GPU or NPU and eager execution. Use run.py CONFIG --eager." >&2
++    exit 2
++fi
++
++device="${DEVICE:-}"
++if [[ -z "$device" ]]; then
++    device=$("$PYTHON_BIN" -c 'import torch; print("cuda" if torch.cuda.is_available() else "npu")')
++fi
++case "$device" in
++    cuda) platform=gpu; export CUDA_DEVICE="cuda:${DEVICE_ID:-0}" ;;
++    npu) platform=npu; export NPU_DEVICE="npu:${DEVICE_ID:-0}" ;;
++    *) echo 'DEVICE must be cuda or npu' >&2; exit 2 ;;
++esac
++case "${OXYGENREC_PRECISION:-${MODEL_DATA_TYPE:-bf16}}" in
++    float32|fp32) precision=fp32 ;;
++    bfloat16|bf16) precision=bf16 ;;
++    all) precision=all ;;
++    *) echo 'OXYGENREC_PRECISION must be fp32, bf16, or all (eval only)' >&2; exit 2 ;;
++esac
++
++assets="${OXYGENREC_ASSET_ROOT:-$PWD/../../../datasets/oxygenrec}"
++output="${OXYGENREC_OUTPUT_ROOT:-$PWD/../results}"
++framework_output="${RESULTS_DIR:-${OXYGENREC_OUTPUT_ROOT:-$PWD/..}/save_results_${platform^^}}"
++export EVENTS_PATH="${EVENTS_PATH:-$assets/data/raw/retailrocket/events.csv}"
++export SID_REGISTRY_PATH="${SID_REGISTRY_PATH:-$assets/data/processed/rq_comparison/w256_kmeanspp/sid_registry.json}"
++export V2_FULL_CHECKPOINT="${V2_FULL_CHECKPOINT:-$assets/checkpoints/gpu_pretraining/full-epoch-1.pt}"
++export V2_FULL_TRAIN_CHECKPOINT="${V2_FULL_TRAIN_CHECKPOINT:-$V2_FULL_CHECKPOINT}"
++
++case "$mode" in
++    train)
++        export V2_FULL_TRAIN_EPOCHS="${V2_FULL_TRAIN_EPOCHS:-${MODEL_EPOCH:-1}}"
++        export V2_FULL_TRAIN_OUTPUT_ROOT="${V2_FULL_TRAIN_OUTPUT_ROOT:-$output/full_training}"
++        exec bash run_v2_full_training.sh "$platform" "$precision"
++        ;;
++    eval)
++        export V2_VALIDATION_ROOT="${V2_VALIDATION_ROOT:-$output/validation}"
++        export V2_VALIDATION_CASES="${V2_VALIDATION_CASES:-1}"
++        bash run_v2_validation.sh "$platform" "$precision"
++        precisions=("$precision")
++        if [[ "$precision" == all ]]; then precisions=(fp32 bf16); fi
++        for dtype in "${precisions[@]}"; do
++            prefix="$V2_VALIDATION_ROOT/$platform/$dtype/v2_full_${platform}_${dtype}_validation"
++            cases=()
++            if [[ "$V2_VALIDATION_CASES" == 1 ]]; then cases=(--cases "${prefix}_cases.json"); fi
++            "$PYTHON_BIN" ../export_results.py "${prefix}_summary.json" "$framework_output" "${cases[@]}"
++        done
++        ;;
++    *) echo 'MODE must be train or eval' >&2; exit 2 ;;
++esac
