@@ -78,12 +78,10 @@ The following product models are supported by Rec SDK:
 
 | Model | Framework | Component | Code Link |
 | --- | --- | --- | --- |
-| DIN | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch_examples_benchmark/develop/din) |
-| DLRM(DCNv2) | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_examples/dlrm) |
-| GR | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch_examples_benchmark/develop/gr/gr_meta) |
-| GR | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_torch_benchmark/torch_examples_benchmark/develop/gr_nv) |
-| MMOE, ETA | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/torch_examples_benchmark/develop/model_zoo/README.md) |
-| GR | PyTorch | torch_rec_v2 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr) |
+| DLRM(DCNv2) | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v1_examples/dlrm) |
+| GR (Meta HSTU) | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/blob/develop_torch_benchmark/benchmark/README.md#hstu_meta-%E6%A8%A1%E5%9E%8B) |
+| GR (NVIDIA recsys-gr v25.05) | PyTorch | torch_rec_v1 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v1_examples/gr_nv) |
+| GR (NVIDIA recsys-gr v25.09) | PyTorch | torch_rec_v2 | [Code link](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/gr) |
 
 ## Branch Maintenance Strategy
 

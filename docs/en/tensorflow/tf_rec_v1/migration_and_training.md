@@ -1129,7 +1129,7 @@ By instrumenting each stage of the existing `little_demo` model and providing to
 
 **Tool Access**
 
-Model: [link](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/demo/little_demo)
+Model: [link](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo)
 
 Tool: [link](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/reference-tools/precrec-python)
 
@@ -1149,7 +1149,7 @@ export PRECISION_CHECK=1
 
 After precision alignment is enabled, a `precision_check` data file will be generated in the same directory as the `run.sh` script for later comparison.
 
-For details about the generated files, see the "Enable Precision Alignment Mode" section in the [code repository](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/README.md).
+For details about the generated files, see the "Enable Precision Alignment Mode" section in the [code repository](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo/README.md).
 
 **Using the precrec-python Tool for Parsing and Comparison**
 
@@ -1727,13 +1727,13 @@ You can obtain the component source code from the [Rec SDK TensorFlow source rep
 
 Rec SDK TensorFlow supports migration and adaptation of open-source TensorFlow recommendation models. You can refer to the following migration examples:
 
-- [xDeepFM Example](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/xDeepFM/README.md)
-- [WideDeep Example](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/WideDeep/README.md)
-- [mmoe Example](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/mmoe/README.md)
+- [xDeepFM Example](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/xDeepFM/README.md)
+- [WideDeep Example](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/WideDeep/README.md)
+- [mmoe Example](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/mmoe/README.md)
 
 ### DCNv2 Model Development Guide
 
-This section provides guidance on migrating the DCNv2 recommendation model based on TensorFlow 1.15.0 from a GPU environment to the Huawei Ascend NPU environment, using the automatic graph modification mode of the `tf_rec_v1` component. For the adapted model code, see [DCNv2 Model](https://atomgit.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/DCNv2).
+This section provides guidance on migrating the DCNv2 recommendation model based on TensorFlow 1.15.0 from a GPU environment to the Huawei Ascend NPU environment, using the automatic graph modification mode of the `tf_rec_v1` component. For the adapted model code, see [DCNv2 Model](https://atomgit.com/Ascend/RecSDK/tree/develop_examples_and_tools/tf_rec_v1_examples/DCNv2).
 
 #### Prerequisites
 

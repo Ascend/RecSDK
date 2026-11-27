@@ -463,7 +463,7 @@ def bind_memory_to_numa0():
 
 ### DLRM (DCNv2) 模型适配
 
-本章节介绍将开源DLRM（DCNv2）模型迁移到Rec SDK Torch框架时的主要迁移修改。完整的迁移修改请参见[README](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/dlrm/README.md)，查看应用patch文件后的代码。
+本章节介绍将开源DLRM（DCNv2）模型迁移到Rec SDK Torch框架时的主要迁移修改。完整的迁移修改请参见[README](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v2_examples/dlrm/README.md)，查看应用patch文件后的代码。
 
 迁移时的主要修改内容为将开源模型中使用到的TorchRec原生的稀疏表配置等API替换为Rec SDK Torch框架中的API，训练流水线使用TorchRec原生实现。
 
