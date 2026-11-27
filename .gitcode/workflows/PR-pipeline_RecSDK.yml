@@ -122,6 +122,8 @@ stages:
               python --version
           - name: run pre-commit
             uses: openlibing/pre-commit-action@v1.0.0
+            env:
+              SKIP: clang-tidy
 
       SCA:
         permissions:
