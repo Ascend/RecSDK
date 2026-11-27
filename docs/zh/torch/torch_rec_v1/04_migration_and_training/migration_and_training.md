@@ -122,11 +122,11 @@ Rec SDK Torch支持Torch开源推荐模型迁移适配，本章节介绍将开�
 
 ### 完整迁移样例
 
-完整的迁移样例请参见[DLRM样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md)。其中介绍了如何**基于patch文件快速将DLRM模型迁移到Rec SDK Torch框架**，以及**运行环境准备**、**数据集准备**、**运行迁移后模型**等详细流程。
+完整的迁移样例请参见[DLRM样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v1_examples/dlrm/README.md)。其中介绍了如何**基于patch文件快速将DLRM模型迁移到Rec SDK Torch框架**，以及**运行环境准备**、**数据集准备**、**运行迁移后模型**等详细流程。
 
 ### 迁移修改
 
-本章节中仅介绍**迁移过程中主要修改内容**（省略部分定义和模块导入），完整的迁移后代码请参见[DLRM样例 - dlrm源码适配](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md#dlrm%E6%BA%90%E7%A0%81%E9%80%82%E9%85%8D)查看应用patch后的代码。
+本章节中仅介绍**迁移过程中主要修改内容**（省略部分定义和模块导入），完整的迁移后代码请参见[DLRM样例 - dlrm源码适配](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v1_examples/dlrm/README.md#dlrm%E6%BA%90%E7%A0%81%E9%80%82%E9%85%8D)查看应用patch后的代码。
 
 模型迁移时的主要修改内容为将开源模型中使用到的TorchRec原生API（稀疏表配置、训练流水线等）替换为Rec SDK Torch框架中的API。
 
@@ -657,7 +657,7 @@ if __name__ == "__main__":
     #   3.启动多卡（2卡）： torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=2 main.py
 ```
 
-更多demo样例请参见[Rec SDK Torch Little Demo样例](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_examples/little_demo)。
+更多demo样例请参见[Rec SDK Torch Little Demo样例](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v1_examples/little_demo)。
 
 #### 稀疏表数据并行（DP）
 

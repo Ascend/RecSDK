@@ -4,7 +4,7 @@
 
 本章节指导用户基于Rec SDK TensorFlow为用户提供的little_demo样例，理解使用一个tf.Session进行模型训练需要准备的相关文件和关键接口适配。little_demo仅是一个代码示例，并介绍了调用相关接口的逻辑，不包含具体的模型，没有实现具体的功能。
 
-little_demo仅作参考学习，不支持在little_demo上适配用户自己的模型。little_demo存放路径为：[little_demo代码仓库](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/examples/demo)。
+little_demo仅作参考学习，不支持在little_demo上适配用户自己的模型。little_demo存放路径为：[little_demo代码仓库](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/tf_rec_v1_examples/demo)。
 
 >[!NOTE]
 >在train\_and\_evaluate场景下不支持多轮eval。
@@ -178,7 +178,7 @@ little_demo仅作参考学习，不支持在little_demo上适配用户自己的�
 
 **前提条件<a name="section16252115164"></a>**
 
-使用该方案启动训练任务，需要设置如下环境变量。详细的配置环境变量的方法可参考[little_demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo_estimator/run.sh)；关于环境变量的说明可参见[配置环境变量](../02_tf_installation_guide/recsdk_tf_installation_guide.md#配置环境变量)。
+使用该方案启动训练任务，需要设置如下环境变量。详细的配置环境变量的方法可参考[little_demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo_estimator/run.sh)；关于环境变量的说明可参见[配置环境变量](../02_tf_installation_guide/recsdk_tf_installation_guide.md#配置环境变量)。
 
 ```bash
 CM_CHIEF_IP={host_ip}
@@ -297,7 +297,7 @@ CM_WORKER_SIZE=8
 
 **前提条件<a name="section148281112515"></a>**
 
-- 设置如下环境变量。详细的配置环境变量的方法可参考[little_demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run.sh)；关于环境变量的说明可参见[配置环境变量](../02_tf_installation_guide/recsdk_tf_installation_guide.md#配置环境变量)。
+- 设置如下环境变量。详细的配置环境变量的方法可参考[little_demo的配置文件](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo/run.sh)；关于环境变量的说明可参见[配置环境变量](../02_tf_installation_guide/recsdk_tf_installation_guide.md#配置环境变量)。
 
     ```bash
     CM_CHIEF_IP={host_ip}
@@ -566,9 +566,9 @@ Rec SDK TensorFlow目前已适配以下模型，各模型的具体运行步骤�
 
 | 模型                      | 说明                 | 文档链接                                                                                                          |
 | :---------------------- | :----------------- | :------------------------------------------------------------------------------------------------------------ |
-| little\_demo            | 基础示例（sess 模式）      | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/README.md) |
-| little\_demo\_estimator | 基础示例（Estimator 模式） | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo_estimator/README.md) |
-| DCNv2                   | 深度交叉网络 v2          | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/DCNv2/README.md)            |
-| DLRM                    | 深度学习推荐模型           | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/dlrm/README.md)             |
-| MMOE                    | 多任务混合专家模型          | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/mmoe/README.md#模型运行)        |
-| WideDeep                | 宽深学习模型             | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/WideDeep/README.md#模型运行)    |
+| little\_demo            | 基础示例（sess 模式）      | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo/README.md) |
+| little\_demo\_estimator | 基础示例（Estimator 模式） | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo_estimator/README.md) |
+| DCNv2                   | 深度交叉网络 v2          | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/DCNv2/README.md)            |
+| DLRM                    | 深度学习推荐模型           | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/dlrm/README.md)             |
+| MMOE                    | 多任务混合专家模型          | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/mmoe/README.md#模型运行)        |
+| WideDeep                | 宽深学习模型             | [查看文档](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/WideDeep/README.md#模型运行)    |

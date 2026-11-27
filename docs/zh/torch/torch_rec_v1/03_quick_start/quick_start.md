@@ -338,5 +338,5 @@ torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-p
 
 ## 进阶开发
 
-1. Rec SDK Torch支持Torch开源推荐模型迁移适配，如需了解开源DLRM（DCNv2）模型迁移至Rec SDK Torch的样例，可参考[DLRM（DCNv2）模型迁移样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md)。
+1. Rec SDK Torch支持Torch开源推荐模型迁移适配，如需了解开源DLRM（DCNv2）模型迁移至Rec SDK Torch的样例，可参考[DLRM（DCNv2）模型迁移样例](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v1_examples/dlrm/README.md)。
 2. 如需了解Rec SDK Torch其他功能，可参考[Rec SDK Torch API文档](../05_api/01_api_description.md)。
