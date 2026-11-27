@@ -1,10 +1,23 @@
 #!/usr/bin/env python3
-# Copyright (c) Huawei Platforms, Inc. and affiliates.
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+#
+# Copyright 2026 Huawei Technologies Co., Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from typing import Optional, Dict, List, Tuple, TypeVar, Generic, Callable
 
@@ -36,10 +49,10 @@ def _validate_values(values: torch.Tensor) -> None:
 
 class ExtendedJaggedTensor(JaggedTensor):
     """扩展的JaggedTensor基类，用于处理带有额外字段的JaggedTensor"""
-    
+
     # 子类需要定义_fields属性，例如_fields = "_counts"
     _fields: str = ""
-    
+
     def __init__(
         self,
         values: torch.Tensor,
@@ -53,10 +66,10 @@ class ExtendedJaggedTensor(JaggedTensor):
         _validate_tensor_param(weights, "weights")
         _validate_tensor_param(lengths, "lengths")
         _validate_tensor_param(offsets, "offsets")
-        
+
         super().__init__(values, weights, lengths, offsets)
         self._extra = extra
-        
+
         # 动态设置字段属性
         if self._fields and extra is not None:
             setattr(self, self._fields, extra)
@@ -84,32 +97,23 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         if stride is not None and not isinstance(stride, int):
             raise TypeError(f"stride must be int or None, but got {type(stride)}")
 
-    def _validate_stride_per_key_per_rank(
-        self, stride_per_key_per_rank: Optional[List[List[int]]]
-    ) -> None:
+    def _validate_stride_per_key_per_rank(self, stride_per_key_per_rank: Optional[List[List[int]]]) -> None:
         """验证stride_per_key_per_rank参数"""
         if stride_per_key_per_rank is not None:
             if not isinstance(stride_per_key_per_rank, list):
                 raise TypeError(
-                    f"stride_per_key_per_rank must be List[List[int]] or None, "
-                    f"but got {type(stride_per_key_per_rank)}"
+                    f"stride_per_key_per_rank must be List[List[int]] or None, but got {type(stride_per_key_per_rank)}"
                 )
             if not all(isinstance(inner_list, list) for inner_list in stride_per_key_per_rank):
                 raise TypeError("All elements in stride_per_key_per_rank must be lists")
-            if not all(
-                isinstance(item, int) 
-                for inner_list in stride_per_key_per_rank 
-                for item in inner_list
-            ):
+            if not all(isinstance(item, int) for inner_list in stride_per_key_per_rank for item in inner_list):
                 raise TypeError("All elements in inner lists must be integers")
 
     def _validate_index_per_key(self, index_per_key: Optional[Dict[str, int]]) -> None:
         """验证index_per_key参数"""
         if index_per_key is not None:
             if not isinstance(index_per_key, dict):
-                raise TypeError(
-                    f"index_per_key must be Dict[str, int] or None, but got {type(index_per_key)}"
-                )
+                raise TypeError(f"index_per_key must be Dict[str, int] or None, but got {type(index_per_key)}")
             if not all(isinstance(k, str) and isinstance(v, int) for k, v in index_per_key.items()):
                 raise TypeError("All keys must be strings and all values must be integers in index_per_key")
 
@@ -117,21 +121,15 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         """验证jt_dict参数"""
         if jt_dict is not None:
             if not isinstance(jt_dict, dict):
-                raise TypeError(
-                    f"jt_dict must be Dict[str, JaggedTensor] or None, but got {type(jt_dict)}"
-                )
+                raise TypeError(f"jt_dict must be Dict[str, JaggedTensor] or None, but got {type(jt_dict)}")
             if not all(isinstance(k, str) and isinstance(v, JaggedTensor) for k, v in jt_dict.items()):
-                raise TypeError(
-                    "All keys must be strings and all values must be JaggedTensor instances in jt_dict"
-                )
+                raise TypeError("All keys must be strings and all values must be JaggedTensor instances in jt_dict")
 
     def _validate_inverse_indices(self, inverse_indices: Optional[Tuple[List[str], torch.Tensor]]) -> None:
         """验证inverse_indices参数"""
         if inverse_indices is not None:
             if not isinstance(inverse_indices, tuple):
-                raise TypeError(
-                    f"inverse_indices must be tuple or None, but got {type(inverse_indices)}"
-                )
+                raise TypeError(f"inverse_indices must be tuple or None, but got {type(inverse_indices)}")
             if len(inverse_indices) != 2:
                 raise ValueError("inverse_indices must be a tuple of length 2")
             if not isinstance(inverse_indices[0], list) or not all(
@@ -170,7 +168,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         index_per_key: Optional[Dict[str, int]] = None,
         jt_dict: Optional[Dict[str, JaggedTensor]] = None,
         inverse_indices: Optional[Tuple[List[str], torch.Tensor]] = None,
-        field_tensors: Optional[Dict[str, torch.Tensor]] = None
+        field_tensors: Optional[Dict[str, torch.Tensor]] = None,
     ) -> None:
         # 参数类型校验
         self._validate_keys(keys)
@@ -180,12 +178,12 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         _validate_tensor_param(offsets, "offsets")
         self._validate_stride(stride)
         self._validate_stride_per_key_per_rank(stride_per_key_per_rank)
-        
+
         self._validate_int_list(stride_per_key, "stride_per_key")
         self._validate_int_list(length_per_key, "length_per_key")
         self._validate_int_list(lengths_offset_per_key, "lengths_offset_per_key")
         self._validate_int_list(offset_per_key, "offset_per_key")
-        
+
         self._validate_index_per_key(index_per_key)
         self._validate_jt_dict(jt_dict)
         self._validate_inverse_indices(inverse_indices)
@@ -205,7 +203,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
             offset_per_key,
             index_per_key,
             jt_dict,
-            inverse_indices
+            inverse_indices,
         )
         self._extra: Optional[torch.Tensor] = extra
 
@@ -242,9 +240,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         lengths = self._lengths
         offsets = self._offsets
         stride, stride_per_key_per_rank = (
-            (None, self._stride_per_key_per_rank)
-            if self.variable_stride_per_key()
-            else (self._stride, None)
+            (None, self._stride_per_key_per_rank) if self.variable_stride_per_key() else (self._stride, None)
         )
         length_per_key = self._length_per_key
         offset_per_key = self._offset_per_key
@@ -254,26 +250,10 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         return constructor(
             keys=self._keys,
             values=self._values.to(device, non_blocking=non_blocking),
-            extra=(
-                self._extra.to(device, non_blocking=non_blocking)
-                if self._extra is not None
-                else None
-            ),
-            weights=(
-                weights.to(device, non_blocking=non_blocking)
-                if weights is not None
-                else None
-            ),
-            lengths=(
-                lengths.to(device, non_blocking=non_blocking)
-                if lengths is not None
-                else None
-            ),
-            offsets=(
-                offsets.to(device, non_blocking=non_blocking)
-                if offsets is not None
-                else None
-            ),
+            extra=(self._extra.to(device, non_blocking=non_blocking) if self._extra is not None else None),
+            weights=(weights.to(device, non_blocking=non_blocking) if weights is not None else None),
+            lengths=(lengths.to(device, non_blocking=non_blocking) if lengths is not None else None),
+            offsets=(offsets.to(device, non_blocking=non_blocking) if offsets is not None else None),
             stride=stride,
             stride_per_key_per_rank=stride_per_key_per_rank,
             length_per_key=length_per_key,
@@ -352,12 +332,8 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
                                 dtype=self.weights().dtype,
                             )
                         ),
-                        lengths=torch.tensor(
-                            empty_int_list, device=self.device(), dtype=torch.int
-                        ),
-                        offsets=torch.tensor(
-                            empty_int_list, device=self.device(), dtype=torch.int
-                        ),
+                        lengths=torch.tensor(empty_int_list, device=self.device(), dtype=torch.int),
+                        offsets=torch.tensor(empty_int_list, device=self.device(), dtype=torch.int),
                         stride=stride,
                         stride_per_key_per_rank=stride_per_key_per_rank,
                         length_per_key=None,
@@ -378,15 +354,9 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
                         keys=keys,
                         values=self._values[start_offset:end_offset],
                         extra=sliced_extra,
-                        weights=(
-                            None
-                            if self.weights_or_none() is None
-                            else self.weights()[start_offset:end_offset]
-                        ),
+                        weights=(None if self.weights_or_none() is None else self.weights()[start_offset:end_offset]),
                         lengths=self.lengths()[
-                            self.lengths_offset_per_key()[
-                                start
-                            ]: self.lengths_offset_per_key()[end]
+                            self.lengths_offset_per_key()[start] : self.lengths_offset_per_key()[end]
                         ],
                         offsets=None,
                         stride=stride,
@@ -402,19 +372,17 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         return split_list
 
     def permute_extend(
-        self, 
-        indices: List[int], 
+        self,
+        indices: List[int],
         indices_tensor: Optional[torch.Tensor],
         constructor: Callable[..., KT],
-        extra_permute_func: Optional[Callable] = None
+        extra_permute_func: Optional[Callable] = None,
     ) -> KT:
         """
         通用的permute方法
         """
         if indices_tensor is None:
-            indices_tensor = torch.tensor(
-                indices, dtype=torch.int, device=self.device()
-            )
+            indices_tensor = torch.tensor(indices, dtype=torch.int, device=self.device())
 
         length_per_key = self.length_per_key()
         permuted_keys: List[str] = []
@@ -427,9 +395,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
             permuted_keys.append(key)
             permuted_length_per_key.append(length_per_key[index])
             if self.variable_stride_per_key():
-                permuted_stride_per_key_per_rank.append(
-                    self.stride_per_key_per_rank()[index]
-                )
+                permuted_stride_per_key_per_rank.append(self.stride_per_key_per_rank()[index])
 
         permuted_length_per_key_sum = sum(permuted_length_per_key)
         if not torch.jit.is_scripting() and is_non_strict_exporting():
@@ -438,12 +404,8 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
             torch._check(permuted_length_per_key_sum != 0)
 
         if self.variable_stride_per_key():
-            length_per_key_tensor = _pin_and_move(
-                torch.tensor(self.length_per_key()), self.device()
-            )
-            stride_per_key_tensor = _pin_and_move(
-                torch.tensor(self.stride_per_key()), self.device()
-            )
+            length_per_key_tensor = _pin_and_move(torch.tensor(self.length_per_key()), self.device())
+            stride_per_key_tensor = _pin_and_move(torch.tensor(self.stride_per_key()), self.device())
             permuted_lengths, _ = _permute_tensor_by_segments(
                 self.lengths(),
                 stride_per_key_tensor,
@@ -523,9 +485,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
             else:
                 permuted_extra = None
 
-        stride_per_key_per_rank = (
-            permuted_stride_per_key_per_rank if self.variable_stride_per_key() else None
-        )
+        stride_per_key_per_rank = permuted_stride_per_key_per_rank if self.variable_stride_per_key() else None
 
         result = constructor(
             keys=permuted_keys,
@@ -552,9 +512,7 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         lengths = self._lengths
         offsets = self._offsets
         stride, stride_per_key_per_rank = (
-            (None, self._stride_per_key_per_rank)
-            if self.variable_stride_per_key()
-            else (self._stride, None)
+            (None, self._stride_per_key_per_rank) if self.variable_stride_per_key() else (self._stride, None)
         )
 
         # 处理额外字段的pin_memory
@@ -577,10 +535,10 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
         )
 
     def _construct_from_jt_dict(
-        self, 
+        self,
         jt_dict: Dict[str, T],
         constructor: Callable[..., KT],
-        extra_field_getter: Callable[[T], Optional[torch.Tensor]]
+        extra_field_getter: Callable[[T], Optional[torch.Tensor]],
     ) -> KT:
         """
         通用的from_jt_dict实现
@@ -606,14 +564,12 @@ class KeyedExtendedJaggedTensor(KeyedJaggedTensor, Generic[T]):
 
         # 处理额外字段
         kjt_extra = (
-            torch.concat(kjt_extra_list) 
-            if len(kjt_extra_list) > 0 and all(t is not None for t in kjt_extra_list) 
+            torch.concat(kjt_extra_list)
+            if len(kjt_extra_list) > 0 and all(t is not None for t in kjt_extra_list)
             else None
         )
 
-        kjt_weights = (
-            torch.concat(kjt_weights_list) if len(kjt_weights_list) > 0 else None
-        )
+        kjt_weights = torch.concat(kjt_weights_list) if len(kjt_weights_list) > 0 else None
 
         kjt_stride, kjt_stride_per_key_per_rank = (
             (stride_per_key[0], None)

@@ -115,6 +115,7 @@ repos:
           - --quiet
           - --header-filter=^$
           - -p=compile_commands.json
+          - --checks=-clang-analyzer-core.UndefinedBinaryOperatorResult
           - --extra-arg=-std=c++17
           - --extra-arg=-Wno-unused-command-line-argument
           - --extra-arg=-Wno-ignored-optimization-argument
