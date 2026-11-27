@@ -43,7 +43,7 @@ def save(self, sess, save_path, global_step=None, latest_filename=None, meta_gra
 
 **使用示例<a name="section2553042232"></a>**
 
-具体使用方法可参考[Rec SDK](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run_mode.py)代码仓中的little demo，以下仅提供一个使用的流程示例。
+具体使用方法可参考[Rec SDK](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo/run_mode.py)代码仓中的little demo，以下仅提供一个使用的流程示例。
 
 ```python
 # 1、导入需要的库
@@ -92,7 +92,7 @@ def restore(self, sess, save_path)
 
 **使用示例<a name="section2553042232"></a>**
 
-具体使用方法可参考[Rec SDK](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/little_demo/run_mode.py)中的little demo，以下仅提供一个使用的流程示例。
+具体使用方法可参考[Rec SDK](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/little_demo/run_mode.py)中的little demo，以下仅提供一个使用的流程示例。
 
 ```python
 # 1、导入需要的库

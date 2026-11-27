@@ -478,7 +478,7 @@ TopK算子在推荐推理如TWINS模型中使用，该算子即使通过1.5.4中
 
 **具体案例<a name="section1470014569106"></a>**
 
-- TensorFlow  demo：可以参考[GitCode.com](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/rec_infer/README.md)进行多流功能使能。
+- TensorFlow  demo：可以参考[GitCode.com](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/rec_infer/README.md)进行多流功能使能。
 - PyTorch demo：在PyTorch框架中，由于社区对多流没有直接支持，推荐直接使用多进程方式进行推理。
 
 ### 分核<a name="ZH-CN_TOPIC_0000002380656642"></a>

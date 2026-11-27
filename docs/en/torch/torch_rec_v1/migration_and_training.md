@@ -122,11 +122,11 @@ Rec SDK Torch supports adaptation for open-source Torch recommendation models. T
 
 ### Complete Migration Example
 
-For the complete migration example, see [DLRM example](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md). It describes how to **quickly migrate the DLRM model to the Rec SDK Torch framework based on the patch file**, as well as the detailed processes of **preparing the running environment**, **preparing the dataset**, and **running the migrated model**.
+For the complete migration example, see [DLRM example](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v1_examples/dlrm/README.md). It describes how to **quickly migrate the DLRM model to the Rec SDK Torch framework based on the patch file**, as well as the detailed processes of **preparing the running environment**, **preparing the dataset**, and **running the migrated model**.
 
 ### Migration Changes
 
-This section describes only the **main changes during migration** (some definitions and module imports are omitted). For the complete code after migration, see [DLRM Example - dlrm Source Code Adaptation](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md#dlrm%E6%BA%90%E7%A0%81%E9%80%82%E9%85%8D) and review the code after applying the patch.
+This section describes only the **main changes during migration** (some definitions and module imports are omitted). For the complete code after migration, see [DLRM Example - dlrm Source Code Adaptation](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v1_examples/dlrm/README.md#dlrm%E6%BA%90%E7%A0%81%E9%80%82%E9%85%8D) and review the code after applying the patch.
 
 The main change in model migration is to replace the native TorchRec APIs used by the open-source model (sparse table configuration, training pipelines, and so on) with the APIs in the Rec SDK Torch framework.
 
@@ -657,7 +657,7 @@ if __name__ == "__main__":
     #   3. Start multi-device training (two devices): torchrun --rdzv-backend=c10d --rdzv-endpoint=localhost:6000 --nnodes=1 --nproc-per-node=2 main.py
 ```
 
-For more demo examples, see [Rec SDK Torch Little Demo examples](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_examples/little_demo).
+For more demo examples, see [Rec SDK Torch Little Demo examples](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v1_examples/little_demo).
 
 #### Sparse Table Data Parallelism (DP)
 

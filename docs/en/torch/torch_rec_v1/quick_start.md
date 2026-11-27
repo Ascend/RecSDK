@@ -338,5 +338,5 @@ Expected output: After training ends, `demo done` is displayed, indicating that 
 
 ## Advanced Development
 
-1. Rec SDK Torch supports migrating and adapting open-source Torch recommendation models. For examples of migrating the open-source DLRM (DCNv2) model to Rec SDK Torch, see the [DLRM (DCNv2) model migration example](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/dlrm/README.md).
+1. Rec SDK Torch supports migrating and adapting open-source Torch recommendation models. For examples of migrating the open-source DLRM (DCNv2) model to Rec SDK Torch, see the [DLRM (DCNv2) model migration example](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v1_examples/dlrm/README.md).
 2. For other Rec SDK Torch features, see the [API Description](./api/api_description.md).

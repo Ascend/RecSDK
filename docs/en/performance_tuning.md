@@ -478,7 +478,7 @@ Recommendation inference models often feature many operators with small shapes. 
 
 **Specific Cases**
 
-- TensorFlow demo: Refer to [AtomGit.com](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/rec_infer/README.md) for enabling multi-stream functionality.
+- TensorFlow demo: Refer to [AtomGit.com](https://atomgit.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/rec_infer/README.md) for enabling multi-stream functionality.
 - PyTorch demo: Since the PyTorch community lacks direct multi-stream support, use multi-processing for inference.
 
 ### Core Partitioning
