@@ -210,11 +210,11 @@ source /opt/buildtools/tf1_env/bin/activate
 
 ### TensorFlow镜像验证
 
-可参考[little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/README.md)进行little demo验证，验证前可通过[章节 - 二次开发与底层环境切换](#二次开发与底层环境切换)切换容器内python虚拟环境。
+可参考[little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/README.md)进行little demo验证，验证前可通过[章节 - 二次开发与底层环境切换](#二次开发与底层环境切换)切换容器内python虚拟环境。
 
 ### PyTorch镜像验证
 
-可参考[little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/little_demo/README.md)进行little demo验证，验证前可通过[章节 - 二次开发与底层环境切换](#二次开发与底层环境切换)切换容器内python虚拟环境。
+可参考[little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v1_examples/little_demo/README.md)进行little demo验证，验证前可通过[章节 - 二次开发与底层环境切换](#二次开发与底层环境切换)切换容器内python虚拟环境。
 
 ## 常见问题与故障排查
 

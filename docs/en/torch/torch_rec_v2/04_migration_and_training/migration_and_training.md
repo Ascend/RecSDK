@@ -471,7 +471,7 @@ def bind_memory_to_numa0():
 
 ### DLRM (DCNv2) Model Adaptation
 
-This section describes the main migration changes when migrating the open-source DLRM (DCNv2) model to the Rec SDK Torch framework. For the complete migration changes, see [README](https://gitcode.com/Ascend/RecSDK/tree/develop_examples_and_tools/torch_rec_v2_examples/dlrm/README.md) and review the code after applying the patch file.
+This section describes the main migration changes when migrating the open-source DLRM (DCNv2) model to the Rec SDK Torch framework. For the complete migration changes, see [README](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v2_examples/dlrm/README.md) and review the code after applying the patch file.
 
 The main migration change is to replace the TorchRec native sparse table configuration APIs used by the open-source model with APIs in the Rec SDK Torch framework. The training pipeline still uses the TorchRec native implementation.
 

@@ -210,11 +210,11 @@ source /opt/buildtools/tf1_env/bin/activate
 
 ### TensorFlow Image Verification
 
-Refer to the [little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/examples/demo/README.md) for verification. Before running, switch the Python virtual environment via [Secondary Development and Underlying Environment Switching](#secondary-development-and-underlying-environment-switching).
+Refer to the [little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/tf_rec_v1_examples/demo/README.md) for verification. Before running, switch the Python virtual environment via [Secondary Development and Underlying Environment Switching](#secondary-development-and-underlying-environment-switching).
 
 ### PyTorch Image Verification
 
-Refer to the [little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/little_demo/README.md) for verification. Before running, switch the Python virtual environment via [Secondary Development and Underlying Environment Switching](#secondary-development-and-underlying-environment-switching).
+Refer to the [little demo](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v1_examples/little_demo/README.md) for verification. Before running, switch the Python virtual environment via [Secondary Development and Underlying Environment Switching](#secondary-development-and-underlying-environment-switching).
 
 ## FAQ and Troubleshooting
 

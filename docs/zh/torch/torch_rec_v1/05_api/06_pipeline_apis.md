@@ -87,7 +87,7 @@ def progress(self, dataloader_iter: Iterator[In]) -> Out:
 
 **使用示例<a name="section09971948135814"></a>**
 
-注：样例中省略了Batch和RandomRecDataset的详细定义，详细定义请参见[dataset.py](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/little_demo/dataset.py)。
+注：样例中省略了Batch和RandomRecDataset的详细定义，详细定义请参见[dataset.py](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v1_examples/little_demo/dataset.py)。
 
 ```python
 from dataclasses import dataclass
@@ -236,7 +236,7 @@ def progress(self, dataloader_iter: Iterator[In]) -> Out:
 
 **使用示例<a name="section09971948135815"></a>**
 
-注：样例中省略了Batch和RandomRecDataset的详细定义，详细定义请参见[dataset.py](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_examples/little_demo/dataset.py)。pipeline的完整使用请参见[test](../../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_embedding_ec_cache_pipeline.py)。
+注：样例中省略了Batch和RandomRecDataset的详细定义，详细定义请参见[dataset.py](https://gitcode.com/Ascend/RecSDK/blob/develop_examples_and_tools/torch_rec_v1_examples/little_demo/dataset.py)。pipeline的完整使用请参见[test](../../../../../training/torch_rec_v1/torchrec_embcache/tests/acc_test/test_embedding_ec_cache_pipeline.py)。
 
 ```python
 from dataclasses import dataclass
