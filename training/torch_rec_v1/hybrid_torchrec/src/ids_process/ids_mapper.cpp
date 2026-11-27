@@ -1,10 +1,17 @@
 /*
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
- * All rights reserved.
+ * Copyright 2026 Huawei Technologies Co., Ltd
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 #include "ids_mapper.h"
 
@@ -28,8 +35,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> IdsMapper::UniqueAndLookup(const 
 {
     TORCH_CHECK(globalIds.device() == torch::kCPU, "globalIds must be on CPU but on ", globalIds.device());
     TORCH_CHECK(globalIds.scalar_type() == at::kLong,
-        "globalIds must be int64_t tensor expected but got a tensor with dtype: ", globalIds.scalar_type());
-        at::ThreadLocalStateGuard tlsGrad(state);
+                "globalIds must be int64_t tensor expected but got a tensor with dtype: ", globalIds.scalar_type());
+    at::ThreadLocalStateGuard tlsGrad(state);
     return FindOrInsertHighPrecison(globalIds);
 }
 
@@ -45,8 +52,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> IdsMapper::FindOrInsertHighPrecis
         auto findResult = ids2indicesMap.find(key);
         if (findResult == ids2indicesMap.end()) {
             int64_t r = maxIndex++;
-            TORCH_CHECK(r < initMaxIndex, "Ids map reached maxIndex = ",
-                initMaxIndex, " please reallocate a larger buffer.");
+            TORCH_CHECK(r < initMaxIndex, "Ids map reached maxIndex = ", initMaxIndex,
+                        " please reallocate a larger buffer.");
             ids2indicesMap.insert_or_assign(key, r);
             hashIndicesPtr[i] = r;
         } else {
@@ -62,9 +69,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> IdsMapper::FindOrInsertHighPrecis
 
 void IdsMapper::UniqueAndLookupOut(const torch::Tensor& globalIds, const torch::Tensor& hashIndices,
                                    const torch::Tensor& offset, const torch::Tensor& unique,
-                                   const torch::Tensor& uniqueIds,
-                                   const torch::Tensor& uniqueInverse, const torch::Tensor& uniqueOffset,
-                                   int64_t tableId)
+                                   const torch::Tensor& uniqueIds, const torch::Tensor& uniqueInverse,
+                                   const torch::Tensor& uniqueOffset, int64_t tableId)
 {
     at::ThreadLocalStateGuard tlsGrad(state);
     RECORD_FUNCTION(c10::str("hybrid::UniqueAndLookupOut"), c10::ArrayRef<const c10::IValue>());
@@ -94,8 +100,8 @@ void IdsMapper::UniqueAndLookupOut(const torch::Tensor& globalIds, const torch::
                 int64_t r = maxIndex++;
                 // When `onlyDeviceMem` is true, `initMaxIndex` indicates a complete table size, else only a cache size.
                 if (onlyDeviceMem) {
-                    TORCH_CHECK(r < initMaxIndex, "Ids map reached maxIndex = ",
-                                initMaxIndex, " please reallocate a larger buffer.");
+                    TORCH_CHECK(r < initMaxIndex, "Ids map reached maxIndex = ", initMaxIndex,
+                                " please reallocate a larger buffer.");
                 }
                 ids2indicesMap.insert_or_assign(key, r);
                 indice2id.push_back(key);
@@ -114,8 +120,7 @@ void IdsMapper::UniqueAndLookupOut(const torch::Tensor& globalIds, const torch::
 
 void IdsMapper::UniqueProcessing(const torch::Tensor& hashIndices, const torch::Tensor& offset,
                                  const torch::Tensor& unique, const torch::Tensor& uniqueIds,
-                                 const torch::Tensor& uniqueInverse,
-                                 const torch::Tensor& uniqueOffset, int64_t tableId)
+                                 const torch::Tensor& uniqueInverse, const torch::Tensor& uniqueOffset, int64_t tableId)
 {
     at::ThreadLocalStateGuard tlsGrad(state);
     RECORD_FUNCTION(c10::str("hybrid::UniqueProcessing"), c10::ArrayRef<const c10::IValue>());
@@ -173,9 +178,9 @@ void IdsMapper::UniqueProcessing(const torch::Tensor& hashIndices, const torch::
     DeallocFullHashMap(std::move(aHashMap));
 }
 
-size_t IdsMapper::ProcessIds2Indices(IdsMapper& mapper, std::vector<int64_t>& uniqVec,
-                                     const int64_t start, const int64_t end, const int64_t* gIdsPtr,
-                                     int64_t* hashIdxPtr, int64_t* uniqueInvPtr)
+size_t IdsMapper::ProcessIds2Indices(IdsMapper& mapper, std::vector<int64_t>& uniqVec, const int64_t start,
+                                     const int64_t end, const int64_t* gIdsPtr, int64_t* hashIdxPtr,
+                                     int64_t* uniqueInvPtr)
 {
     auto fullMap = mapper.AllocFullHashMap();
     int64_t* bitmap = fullMap->data();
@@ -225,15 +230,11 @@ size_t IdsMapper::ProcessIds2Indices(IdsMapper& mapper, std::vector<int64_t>& un
     return uniqVec.size();
 }
 
-void IdsMapper::ParallelUniqueHashOut(
-    const c10::List<c10::intrusive_ptr<IdsMapper>>& mappers,
-    const torch::Tensor& globalIds,
-    const torch::Tensor& hashIndices,
-    const torch::Tensor& offsets,
-    const torch::Tensor& unique,
-    const torch::Tensor& uniqueIds,
-    const torch::Tensor& uniqueInverse,
-    const torch::Tensor& uniqueOffset)
+void IdsMapper::ParallelUniqueHashOut(const c10::List<c10::intrusive_ptr<IdsMapper>>& mappers,
+                                      const torch::Tensor& globalIds, const torch::Tensor& hashIndices,
+                                      const torch::Tensor& offsets, const torch::Tensor& unique,
+                                      const torch::Tensor& uniqueIds, const torch::Tensor& uniqueInverse,
+                                      const torch::Tensor& uniqueOffset)
 {
     auto gIdsPtr = GetSafeDataPtr<int64_t>(globalIds, "globalIds");
     auto offPtr = GetSafeDataPtr<int64_t>(offsets, "offsets");
@@ -259,8 +260,8 @@ void IdsMapper::ParallelUniqueHashOut(
                 continue;
             }
 
-            auto uniqueVecSize = ProcessIds2Indices(mapper, tableUniques[t], start, end, gIdsPtr,
-                                                    hashIdxPtr, uniqueInvPtr);
+            auto uniqueVecSize =
+                ProcessIds2Indices(mapper, tableUniques[t], start, end, gIdsPtr, hashIdxPtr, uniqueInvPtr);
             uniqueCnt[t] = static_cast<int64_t>(uniqueVecSize);
         }
     });

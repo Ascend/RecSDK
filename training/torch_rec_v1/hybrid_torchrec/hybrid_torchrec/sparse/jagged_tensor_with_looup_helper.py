@@ -1,10 +1,23 @@
 #!/usr/bin/env python3
-# Copyright (c) Huawei Platforms, Inc. and affiliates.
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
+#
+# Copyright 2026 Huawei Technologies Co., Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import logging
 from typing import Dict, List, Optional, Tuple
 
@@ -18,7 +31,6 @@ from torchrec.sparse.jagged_tensor import (
 
 
 class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
-
     _fields = [
         "_values",
         "_hash_indices",
@@ -70,7 +82,7 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
             offset_per_key,
             index_per_key,
             jt_dict,
-            inverse_indices
+            inverse_indices,
         )
 
         self._hash_indices = hash_indices
@@ -112,7 +124,7 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
     @property
     def unique_indices(self) -> torch.Tensor:
         return self._unique_indices
-    
+
     @unique_indices.setter
     def unique_indices(self, value: torch.Tensor) -> None:
         self._unique_indices = value
@@ -123,12 +135,12 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
 
     @property
     def unique_offset_host(self) -> torch.Tensor:
-        if (self._unique_offset_host is None):
+        if self._unique_offset_host is None:
             logging.warning("There is no unique_offset_host, must d2h")
             return self._unique_offset.cpu().tolist()
         else:
             return self._unique_offset_host
-    
+
     @property
     def unique_ids(self) -> torch.Tensor:
         return self._unique_ids
@@ -136,7 +148,7 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
     @property
     def unique_inverse(self) -> torch.Tensor:
         return self._unique_inverse
-    
+
     @staticmethod
     def from_offsets_sync(
         keys: List[str],
@@ -209,8 +221,11 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
             end_offset = _offset_per_key[end]
             end_unique_offset = self.unique_offset_host[end]
             keys: List[str] = self._keys[start:end]
-            stride, stride_per_key_per_rank = ((None, self.stride_per_key_per_rank()[start:end])
-                                               if self.variable_stride_per_key() else (self._stride, None))
+            stride, stride_per_key_per_rank = (
+                (None, self.stride_per_key_per_rank()[start:end])
+                if self.variable_stride_per_key()
+                else (self._stride, None)
+            )
             if segment == len(self._keys):
                 # no torch slicing required
                 self.split_with_segment_equal_keys_length(split_list, stride, stride_per_key_per_rank)
@@ -220,29 +235,50 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
                 split_length_per_key = _length_per_key[start:end]
                 if start_unique_offset == end_unique_offset:
                     raise RuntimeError(
-                        "start_unique_offset == end_unique_offset, it caused by spliting keys on the same table")
-                split_list.append(KeyedJaggedTensorWithLookHelper(
-                    keys=keys, values=self._values[start_offset:end_offset],
-                    hash_indices=(self._hash_indices[start_offset:end_offset]
-                                  if self._hash_indices is not None else None),
-                    unique_indices=(self._unique_indices[start_unique_offset:end_unique_offset]
-                                    if self._hash_indices is not None else None),
-                    unique_offset=(self._unique_offset[start:end] - self._unique_offset[start]
-                                   if self._unique_offset is not None else None),
-                    unique_ids=(self._unique_ids[start_unique_offset:end_unique_offset]
-                                if self._unique_ids is not None else None),
-                    unique_inverse=(self._unique_inverse[start_offset:end_offset]
-                                    if self._unique_inverse is not None else None),
-                    weights=(None if self.weights_or_none() is None else self.weights()[start_offset:end_offset]),
-                    lengths=self.lengths()[self.lengths_offset_per_key()[start]: self.lengths_offset_per_key()[end]],
-                    offsets=None, stride=stride, stride_per_key_per_rank=stride_per_key_per_rank,
-                    length_per_key=split_length_per_key, offset_per_key=None, index_per_key=None, jt_dict=None,)
+                        "start_unique_offset == end_unique_offset, it caused by splitting keys on the same table"
+                    )
+                split_list.append(
+                    KeyedJaggedTensorWithLookHelper(
+                        keys=keys,
+                        values=self._values[start_offset:end_offset],
+                        hash_indices=(
+                            self._hash_indices[start_offset:end_offset] if self._hash_indices is not None else None
+                        ),
+                        unique_indices=(
+                            self._unique_indices[start_unique_offset:end_unique_offset]
+                            if self._hash_indices is not None
+                            else None
+                        ),
+                        unique_offset=(
+                            self._unique_offset[start:end] - self._unique_offset[start]
+                            if self._unique_offset is not None
+                            else None
+                        ),
+                        unique_ids=(
+                            self._unique_ids[start_unique_offset:end_unique_offset]
+                            if self._unique_ids is not None
+                            else None
+                        ),
+                        unique_inverse=(
+                            self._unique_inverse[start_offset:end_offset] if self._unique_inverse is not None else None
+                        ),
+                        weights=(None if self.weights_or_none() is None else self.weights()[start_offset:end_offset]),
+                        lengths=self.lengths()[
+                            self.lengths_offset_per_key()[start] : self.lengths_offset_per_key()[end]
+                        ],
+                        offsets=None,
+                        stride=stride,
+                        stride_per_key_per_rank=stride_per_key_per_rank,
+                        length_per_key=split_length_per_key,
+                        offset_per_key=None,
+                        index_per_key=None,
+                        jt_dict=None,
+                    )
                 )
             start = end
             start_offset = end_offset
             start_unique_offset = end_unique_offset
         return split_list
-
 
     def split_with_segment_zero(self, keys, split_list, stride, stride_per_key_per_rank):
         empty_int_list: List[int] = torch.jit.annotate(List[int], [])
@@ -288,12 +324,8 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
                         dtype=self.weights().dtype,
                     )
                 ),
-                lengths=torch.tensor(
-                    empty_int_list, device=self.device(), dtype=torch.int
-                ),
-                offsets=torch.tensor(
-                    empty_int_list, device=self.device(), dtype=torch.int
-                ),
+                lengths=torch.tensor(empty_int_list, device=self.device(), dtype=torch.int),
+                offsets=torch.tensor(empty_int_list, device=self.device(), dtype=torch.int),
                 stride=stride,
                 stride_per_key_per_rank=stride_per_key_per_rank,
                 length_per_key=None,
@@ -325,9 +357,7 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
             )
         )
 
-    def permute(
-        self, indices: List[int], indices_tensor: Optional[torch.Tensor] = None
-    ) -> "KeyedJaggedTensor":
+    def permute(self, indices: List[int], indices_tensor: Optional[torch.Tensor] = None) -> "KeyedJaggedTensor":
         return NotImplemented
 
     def to_dict(self) -> Dict[str, JaggedTensor]:
@@ -368,12 +398,12 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
         non_blocking: bool = False,
         dtype: Optional[torch.dtype] = None,
     ) -> "KeyedJaggedTensor":
-
         weights = self._weights
         lengths = self._lengths
         offsets = self._offsets
         stride, stride_per_key_per_rank = (
-            (None, self._stride_per_key_per_rank) if self.variable_stride_per_key() else (self._stride, None))
+            (None, self._stride_per_key_per_rank) if self.variable_stride_per_key() else (self._stride, None)
+        )
         length_per_key = self._length_per_key
         offset_per_key = self._offset_per_key
         index_per_key = self._index_per_key
@@ -399,43 +429,23 @@ class KeyedJaggedTensorWithLookHelper(KeyedJaggedTensor):
             jt_dict=jt_dict,
         )
 
-
-
     def pin_memory(self) -> "KeyedJaggedTensorWithLookHelper":
         weights = self._weights
         lengths = self._lengths
         offsets = self._offsets
         stride, stride_per_key_per_rank = (
-            (None, self._stride_per_key_per_rank)
-            if self.variable_stride_per_key()
-            else (self._stride, None)
+            (None, self._stride_per_key_per_rank) if self.variable_stride_per_key() else (self._stride, None)
         )
 
         return KeyedJaggedTensorWithLookHelper(
             keys=self._keys,
             values=self._values.pin_memory(),
-            hash_indices=(
-                self._hash_indices.pin_memory()
-                if self._hash_indices is not None
-                else None
-            ),
-            unique_indices=(
-                self._unique_indices.pin_memory()
-                if self._unique_indices is not None
-                else None
-            ),
-            unique_offset=(
-                self._unique_offset.pin_memory()
-                if self._unique_offset is not None
-                else None
-            ),
+            hash_indices=(self._hash_indices.pin_memory() if self._hash_indices is not None else None),
+            unique_indices=(self._unique_indices.pin_memory() if self._unique_indices is not None else None),
+            unique_offset=(self._unique_offset.pin_memory() if self._unique_offset is not None else None),
             unique_offset_host=self.unique_offset_host,
             unique_ids=self._unique_ids,
-            unique_inverse=(
-                self._unique_inverse.pin_memory()
-                if self._unique_inverse is not None
-                else None
-            ),
+            unique_inverse=(self._unique_inverse.pin_memory() if self._unique_inverse is not None else None),
             weights=weights.pin_memory() if weights is not None else None,
             lengths=lengths.pin_memory() if lengths is not None else None,
             offsets=offsets.pin_memory() if offsets is not None else None,

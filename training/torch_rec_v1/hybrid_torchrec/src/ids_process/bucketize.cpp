@@ -1,11 +1,25 @@
 /*
-* Copyright (c) Meta Platforms, Inc. and affiliates.
-* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
-* All rights reserved.
-*
-* This source code is licensed under the BSD-style license found in the
-* LICENSE file in the root directory of this source tree.
-*/
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under the BSD-style license found in the
+ * LICENSE file in the root directory of this source tree.
+
+ * Copyright 2026 Huawei Technologies Co., Ltd
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include <ATen/ops/empty_like.h>
 #include <c10/util/Exception.h>
 #include <c10/util/flat_hash_map.h>
@@ -16,9 +30,8 @@
 #include "torch/torch.h"
 #include "common_utils.h"
 
-using BucketResult = std::tuple<at::Tensor, at::Tensor, std::optional<at::Tensor>,
-                     std::optional<at::Tensor>,
-                     std::optional<at::Tensor>, std::optional<at::Tensor>, at::Tensor>;
+using BucketResult = std::tuple<at::Tensor, at::Tensor, std::optional<at::Tensor>, std::optional<at::Tensor>,
+                                std::optional<at::Tensor>, std::optional<at::Tensor>, at::Tensor>;
 namespace hybrid {
 
 // 计算前缀和，preSum数组长度应为length+1
@@ -52,8 +65,8 @@ void ComputeNewLengths(const OffsetT* offsetsData, const IndexT* indicesData, Of
 
 template <bool Sequence, typename OffsetT, typename IndexT>
 void FillNewIndices(const OffsetT* offsetsData, const IndexT* indicesData, OffsetT* newOffsetsData,
-                    IndexT* newIndicesData, IndexT* unbucketizePermuteData, int32_t numFeatures,
-                    int32_t batchSize, int64_t bucketSize, int64_t lengthsSize)
+                    IndexT* newIndicesData, IndexT* unbucketizePermuteData, int32_t numFeatures, int32_t batchSize,
+                    int64_t bucketSize, int64_t lengthsSize)
 {
     for (const auto featureIdx : c10::irange(numFeatures)) {
         const auto blockSize = bucketSize;
@@ -78,8 +91,8 @@ void FillNewIndices(const OffsetT* offsetsData, const IndexT* indicesData, Offse
 template <typename OffsetT, typename IndexT, bool ReturnCount>
 int64_t Deduplicate(OffsetT* newLengthsData, const OffsetT* newOffsetsData, const OffsetT* offsetsData,
                     const IndexT* indicesData, IndexT* newIndicesData, IndexT* unbucketizePermuteData,
-                    int32_t numFeatures, int32_t batchSize, int64_t bucketSize,
-                    at::Tensor& idsCounts, const std::optional<at::Tensor>& labels)
+                    int32_t numFeatures, int32_t batchSize, int64_t bucketSize, at::Tensor& idsCounts,
+                    const std::optional<at::Tensor>& labels)
 {
     int32_t uniqueOffset = 0;
     OffsetT curOffset = 0;
@@ -144,25 +157,22 @@ int64_t Deduplicate(OffsetT* newLengthsData, const OffsetT* newOffsetsData, cons
 
 // 核心分桶逻辑模板
 template <bool Sequence,             // 是否序列模式
-        bool HasWeight,            // 是否包含权重
-        bool ReturnBucketMapping,  // 是否返回分桶映射
-        typename OffsetT,          // 偏移量类型
-        typename IndexT,           // 索引类型
-        typename ScalarT,          // 标量类型
-        bool DoUnique,             // 是否去重
-        bool ReturnCount           // 是否返回key count
-        >
-void BlockBucketizeSparseFeaturesCpuKernel(const at::Tensor& lengths, const at::Tensor& indices,
-                                           const std::optional<at::Tensor>& weights, const bool bucketizePos,
-                                           const at::Tensor& blockSizes,
-                                           const std::optional<at::Tensor>& totalNumBlocks, const int64_t bucketSize,
-                                           at::Tensor newLengths, at::Tensor newIndices,
-                                           std::optional<at::Tensor> newWeights, std::optional<at::Tensor> newPos,
-                                           const std::optional<at::Tensor>& unbucketizePermute,
-                                           const std::optional<at::Tensor>& batchSizePerFeature,
-                                           const std::optional<std::vector<at::Tensor>>& blockBucketizePos,
-                                           const std::optional<at::Tensor>& bucketMapping, const bool keepOrigIdx,
-                                           at::Tensor idsCounts, const std::optional<at::Tensor>& labels)
+          bool HasWeight,            // 是否包含权重
+          bool ReturnBucketMapping,  // 是否返回分桶映射
+          typename OffsetT,          // 偏移量类型
+          typename IndexT,           // 索引类型
+          typename ScalarT,          // 标量类型
+          bool DoUnique,             // 是否去重
+          bool ReturnCount           // 是否返回key count
+          >
+void BlockBucketizeSparseFeaturesCpuKernel(
+    const at::Tensor& lengths, const at::Tensor& indices, const std::optional<at::Tensor>& weights,
+    const bool bucketizePos, const at::Tensor& blockSizes, const std::optional<at::Tensor>& totalNumBlocks,
+    const int64_t bucketSize, at::Tensor newLengths, at::Tensor newIndices, std::optional<at::Tensor> newWeights,
+    std::optional<at::Tensor> newPos, const std::optional<at::Tensor>& unbucketizePermute,
+    const std::optional<at::Tensor>& batchSizePerFeature,
+    const std::optional<std::vector<at::Tensor>>& blockBucketizePos, const std::optional<at::Tensor>& bucketMapping,
+    const bool keepOrigIdx, at::Tensor idsCounts, const std::optional<at::Tensor>& labels)
 {
     // 基本参数校验
     const auto lengthsSize = lengths.numel();
@@ -199,22 +209,21 @@ void BlockBucketizeSparseFeaturesCpuKernel(const at::Tensor& lengths, const at::
     }
 
     // 第一阶段: 计算新长度
-    ComputeNewLengths<OffsetT, IndexT>(offsetsData, indicesData, newLengthsData, numFeatures,
-                                       batchSize, bucketSize, lengthsSize);
+    ComputeNewLengths<OffsetT, IndexT>(offsetsData, indicesData, newLengthsData, numFeatures, batchSize, bucketSize,
+                                       lengthsSize);
 
     // 计算新偏移量
     PrefixSum(newLengthsSize, newLengthsData, newOffsetsData);
 
     // 第二阶段: 填充新索引
     FillNewIndices<Sequence, OffsetT, IndexT>(offsetsData, indicesData, newOffsetsData, newIndicesData,
-                                              unbucketizePermuteData, numFeatures, batchSize, bucketSize,
-                                              lengthsSize);
+                                              unbucketizePermuteData, numFeatures, batchSize, bucketSize, lengthsSize);
 
     // 去重逻辑 (需要时启用)
     if constexpr (DoUnique) {
         int64_t uniqueSize = Deduplicate<OffsetT, IndexT, ReturnCount>(
-            newLengthsData, newOffsetsData, offsetsData, indicesData, newIndicesData,
-            unbucketizePermuteData, numFeatures, batchSize, bucketSize, idsCounts, labels);
+            newLengthsData, newOffsetsData, offsetsData, indicesData, newIndicesData, unbucketizePermuteData,
+            numFeatures, batchSize, bucketSize, idsCounts, labels);
         newIndices.resize_(uniqueSize);
         if (ReturnCount) {
             const bool doClickCount = labels.has_value();
@@ -229,15 +238,12 @@ void BlockBucketizeSparseFeaturesCpuKernel(const at::Tensor& lengths, const at::
 
 // 对外接口函数
 BucketResult BlockBucketizeSparseFeaturesCpu(
-    const at::Tensor& lengths, const at::Tensor& indices,
-    const bool bucketizePos, const bool sequence,
-    const at::Tensor& blockSizes, const int64_t bucketSize,
-    const std::optional<at::Tensor>& totalNumBlocks,
-    const std::optional<at::Tensor>& weights,
-    const std::optional<at::Tensor>& batchSizePerFeature, const int64_t maxBatchSize,
-    const std::optional<std::vector<at::Tensor>>& blockBucketizePos,
-    const bool returnBucketMapping, const bool keepOrigIdx, const bool doUnique,
-    const bool returnCount, const std::optional<at::Tensor>& labels)
+    const at::Tensor& lengths, const at::Tensor& indices, const bool bucketizePos, const bool sequence,
+    const at::Tensor& blockSizes, const int64_t bucketSize, const std::optional<at::Tensor>& totalNumBlocks,
+    const std::optional<at::Tensor>& weights, const std::optional<at::Tensor>& batchSizePerFeature,
+    const int64_t maxBatchSize, const std::optional<std::vector<at::Tensor>>& blockBucketizePos,
+    const bool returnBucketMapping, const bool keepOrigIdx, const bool doUnique, const bool returnCount,
+    const std::optional<at::Tensor>& labels)
 {
     // 参数校验
     TORCH_CHECK(lengths.defined() && lengths.numel() > 0, "Lengths tensor is an empty tensor");
@@ -272,9 +278,9 @@ BucketResult BlockBucketizeSparseFeaturesCpu(
     auto unbucketizePermute = at::empty(indices.sizes(), indices.options());
 
     const int cntDim = doClickCount ? 2 : 1;
-    auto idsCounts = sequence && doUnique && returnCount ?
-        at::zeros({indicesSize, cntDim}, torch::dtype(torch::kInt64)) : torch::tensor({}, torch::dtype(torch::kInt64));
-    
+    auto idsCounts = sequence && doUnique && returnCount ? at::zeros({indicesSize, cntDim}, torch::dtype(torch::kInt64))
+                                                         : torch::tensor({}, torch::dtype(torch::kInt64));
+
     // 根据序列模式选择不同内核
     if (sequence && doUnique) {
         if (returnCount) {
