@@ -106,7 +106,7 @@ jobs:
           mapfile -t lines mapfile -t lines < "${ATOMGIT_WORKSPACE}/$file_path"
           declare -p lines
           for dir in "${lines[@]}"; do
-              if [[ "$dir" == "cmake" || "$dir" == "common" || "$dir" == "hstu_v2" ]]; then
+              if [[ "$dir" == "cmake" || "$dir" == "common" || "$dir" == "hstu_v2" || "$dir" == "lccl" || "$dir" == "pcie_through" ]]; then
                   continue
               else
                   cd ${ATOMGIT_WORKSPACE}/${{ inputs.servicename }}/cust_op/ascendc_op/ai_core_op/"$dir"/c310
