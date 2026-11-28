@@ -52,8 +52,8 @@ log "Installing mx_rec wheel ..."
 pip3 install ${TF_WHL} --force-reinstall --no-cache-dir || die "pip install failed"
 
 #################### 拷贝示例 ####################
-[[ -d ${MODEL_DIR}/examples/demo/${DEMO_DIR} ]] || die "Demo directory not found"
-cp -rf ${MODEL_DIR}/examples/demo/${DEMO_DIR} ./ || die "cp demo failed"
+[[ -d ${MODEL_DIR}/tf_rec_v1_examples/demo/${DEMO_DIR} ]] || die "Demo directory not found"
+cp -rf ${MODEL_DIR}/tf_rec_v1_examples/demo/${DEMO_DIR} ./ || die "cp demo failed"
 cd ${DEMO_DIR} || die "cd demo failed"
 
 #################### 网络IP获取 ####################
